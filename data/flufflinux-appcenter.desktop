@@ -1,0 +1,13 @@
+[Desktop Entry]
+Name=Fluff Linux App Center
+GenericName=Software Center
+Comment=Browse applications for Fluff Linux
+Exec=flufflinux-appcenter
+Icon=flufflinux-appcenter
+Terminal=false
+Type=Application
+OnlyShowIn=KDE;
+Categories=Qt;KDE;System;PackageManager;
+Keywords=software;apps;applications;catalog;store;
+SingleMainWindow=true
+StartupNotify=true
