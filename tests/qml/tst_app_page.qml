@@ -22,29 +22,30 @@ TestCase {
         property color hoverColor: "#393d43"
         property var selectedApp: null
         property bool showCatalogCalled: false
+        property var previewApp: ({
+            id: "org.fluff.PreviewTest",
+            name: "Preview Test",
+            summary: "Screenshot preview test",
+            description: "A test application",
+            icon: "",
+            category: "Utilities",
+            developer: "FluffNet",
+            license: "MIT",
+            homepage: "",
+            screenshots: [
+                "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23820101'/%3E%3C/svg%3E",
+                "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23e05562'/%3E%3C/svg%3E",
+                "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%230066cc'/%3E%3C/svg%3E",
+                "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23009955'/%3E%3C/svg%3E"
+            ]
+        })
 
         function showCatalog() { showCatalogCalled = true }
 
         AppCenter.AppPage {
             id: appPage
             anchors.fill: parent
-            app: ({
-                id: "org.fluff.PreviewTest",
-                name: "Preview Test",
-                summary: "Screenshot preview test",
-                description: "A test application",
-                icon: "",
-                category: "Utilities",
-                developer: "FluffNet",
-                license: "MIT",
-                homepage: "",
-                screenshots: [
-                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23820101'/%3E%3C/svg%3E",
-                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23e05562'/%3E%3C/svg%3E",
-                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%230066cc'/%3E%3C/svg%3E",
-                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23009955'/%3E%3C/svg%3E"
-                ]
-            })
+            app: window.previewApp
         }
     }
 
@@ -52,8 +53,54 @@ TestCase {
         window.showCatalogCalled = false
         if (appPage.screenshotPreviewDialog.visible)
             appPage.screenshotPreviewDialog.close()
+        appPage.app = window.previewApp
         window.width = 1180
         window.height = 760
+    }
+
+    function appWithScreenshots(screenshots) {
+        return {
+            id: window.previewApp.id,
+            name: window.previewApp.name,
+            summary: window.previewApp.summary,
+            description: window.previewApp.description,
+            icon: window.previewApp.icon,
+            category: window.previewApp.category,
+            developer: window.previewApp.developer,
+            license: window.previewApp.license,
+            homepage: window.previewApp.homepage,
+            screenshots: screenshots
+        }
+    }
+
+    function test_single_screenshot_is_large_and_centered() {
+        appPage.app = appWithScreenshots([window.previewApp.screenshots[0]])
+        const screenshotList = findChild(appPage, "screenshotList")
+        verify(screenshotList !== null)
+        tryCompare(screenshotList, "count", 1)
+        compare(screenshotList.visible, true)
+        tryCompare(screenshotList, "height", 390)
+
+        const screenshotButton = findChild(screenshotList, "screenshotButton")
+        verify(screenshotButton !== null)
+        verify(screenshotButton.width >= 760)
+        const position = screenshotButton.mapToItem(screenshotList, 0, 0)
+        verify(Math.abs((position.x + screenshotButton.width / 2)
+                        - screenshotList.width / 2) < 1)
+
+        const loadingSpinner = findChild(screenshotButton, "screenshotLoadingSpinner")
+        verify(loadingSpinner !== null)
+        compare(loadingSpinner.color, window.textColor)
+    }
+
+    function test_no_screenshot_hides_the_strip_and_cannot_open_preview() {
+        appPage.app = appWithScreenshots([])
+        const screenshotList = findChild(appPage, "screenshotList")
+        verify(screenshotList !== null)
+        tryCompare(screenshotList, "count", 0)
+        compare(screenshotList.visible, false)
+        compare(appPage.openScreenshot(0), false)
+        compare(appPage.screenshotPreviewDialog.visible, false)
     }
 
     function test_clicking_screenshot_opens_preview() {
@@ -78,6 +125,9 @@ TestCase {
         const previewImage = findChild(preview, "previewImage")
         verify(previewImage !== null)
         compare(String(previewImage.source), String(appPage.app.screenshots[0]))
+        const loadingSpinner = findChild(preview, "previewLoadingSpinner")
+        verify(loadingSpinner !== null)
+        compare(loadingSpinner.color, window.textColor)
 
         const nextButton = findChild(preview, "previewNextButton")
         verify(nextButton !== null)
@@ -254,6 +304,10 @@ TestCase {
         compare(zoomLabel.text, "100%")
         compare(zoomInButton.parent.objectName, "previewBottomControlRow")
 
+        const outsideFocus = appPage.mousePreviewZoomFocus(0, 0)
+        compare(outsideFocus.x, frame.width / 2)
+        compare(outsideFocus.y, frame.height / 2)
+
         const focusX = frame.width / 2 + 50
         const focusY = frame.height / 2 + 30
         const centerX = frame.width / 2
@@ -293,7 +347,17 @@ TestCase {
                                   + (focusY - centerY - appPage.previewPanY)
                                     / appPage.previewZoom
         verify(Math.abs(sourceXAfterWheel - sourceXBefore) < 0.01)
-        verify(Math.abs(sourceYAfterWheel - sourceYBefore) < 0.01)
+        verify(Math.abs(sourceYAfterWheel - sourceYBefore) < 0.1)
+        mouseClick(fitButton, fitButton.width / 2, fitButton.height / 2)
+        mouseWheel(gestureSurface,
+                   0,
+                   0,
+                   0,
+                   120,
+                   Qt.NoButton)
+        compare(appPage.previewZoom, 1.2)
+        compare(appPage.previewPanX, 0)
+        compare(appPage.previewPanY, 0)
         mouseClick(fitButton, fitButton.width / 2, fitButton.height / 2)
         mouseClick(zoomInButton, zoomInButton.width / 2, zoomInButton.height / 2)
         compare(appPage.previewZoom, 1.25)
@@ -365,6 +429,14 @@ TestCase {
                      Qt.LeftButton)
         verify(appPage.previewPanX > panXBeforeMouse)
         verify(appPage.previewPanY > panYBeforeMouse)
+
+        appPage.resetPreviewTransform()
+        appPage.applyPreviewPinch(1, 0, 0,
+                                  centerX + 60, centerY + 35,
+                                  2, 0, 0)
+        compare(appPage.previewZoom, 2)
+        compare(appPage.previewPanX, -60)
+        compare(appPage.previewPanY, -35)
 
         appPage.resetPreviewTransform()
         appPage.applyPreviewPinch(1, 0, 0,

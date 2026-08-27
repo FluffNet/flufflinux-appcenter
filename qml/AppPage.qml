@@ -25,8 +25,12 @@ Page {
     }
 
     function openScreenshot(index) {
+        const screenshots = app && app.screenshots ? app.screenshots : []
+        if (screenshots.length === 0)
+            return false
         setPreviewIndex(index)
         screenshotPreview.open()
+        return true
     }
 
     function movePreview(offset) {
@@ -45,13 +49,13 @@ Page {
     function previewPanLimitX(zoom) {
         if (!previewImageFrame || !previewImage)
             return 0
-        return Math.max(0, (previewImage.paintedWidth * zoom - previewImageFrame.width) / 2)
+        return Math.max(0, previewImageFrame.width * (zoom - 1) / 2)
     }
 
     function previewPanLimitY(zoom) {
         if (!previewImageFrame || !previewImage)
             return 0
-        return Math.max(0, (previewImage.paintedHeight * zoom - previewImageFrame.height) / 2)
+        return Math.max(0, previewImageFrame.height * (zoom - 1) / 2)
     }
 
     function setPreviewPan(x, y) {
@@ -63,6 +67,28 @@ Page {
 
     function panPreviewBy(x, y) {
         setPreviewPan(previewPanX + x, previewPanY + y)
+    }
+
+    function previewPointIsInsideImage(x, y) {
+        if (!previewImageFrame || !previewImage
+                || previewImage.status !== Image.Ready)
+            return false
+
+        const centerX = previewImageFrame.width / 2 + previewPanX
+        const centerY = previewImageFrame.height / 2 + previewPanY
+        const halfWidth = previewImage.paintedWidth * previewZoom / 2
+        const halfHeight = previewImage.paintedHeight * previewZoom / 2
+        return x >= centerX - halfWidth && x <= centerX + halfWidth
+                && y >= centerY - halfHeight && y <= centerY + halfHeight
+    }
+
+    function mousePreviewZoomFocus(x, y) {
+        const center = Qt.point(previewImageFrame.width / 2,
+                                previewImageFrame.height / 2)
+        if (!Number.isFinite(x) || !Number.isFinite(y)
+                || !previewPointIsInsideImage(x, y))
+            return center
+        return Qt.point(x, y)
     }
 
     function setPreviewZoom(requestedZoom, focusX, focusY) {
@@ -174,14 +200,28 @@ Page {
                 RowLayout {
                     id: heroLayout
                     anchors.fill: parent; anchors.margins: 26; spacing: 24
-                    Image {
-                        Layout.preferredWidth: 112; Layout.preferredHeight: 112
-                        sourceSize: Qt.size(112, 112); fillMode: Image.PreserveAspectFit
-                        source: {
-                            if (!app || !app.icon) return "image://icon/application-x-executable"
-                            if (app.icon.indexOf("/") >= 0 || app.icon.indexOf("://") >= 0)
-                                return app.icon.indexOf("://") >= 0 ? app.icon : "file://" + app.icon
-                            return "image://icon/" + app.icon
+                    Item {
+                        Layout.preferredWidth: 112
+                        Layout.preferredHeight: 112
+
+                        Image {
+                            id: heroIcon
+                            anchors.fill: parent
+                            sourceSize: Qt.size(112, 112)
+                            fillMode: Image.PreserveAspectFit
+                            asynchronous: true
+                            source: {
+                                if (!app || !app.icon) return "image://icon/application-x-executable"
+                                if (app.icon.indexOf("/") >= 0 || app.icon.indexOf("://") >= 0)
+                                    return app.icon.indexOf("://") >= 0 ? app.icon : "file://" + app.icon
+                                return "image://icon/" + app.icon
+                            }
+                        }
+                        LoadingSpinner {
+                            objectName: "heroIconLoadingSpinner"
+                            anchors.centerIn: parent
+                            running: heroIcon.status === Image.Loading
+                            color: window.textColor
                         }
                     }
                     ColumnLayout {
@@ -193,16 +233,34 @@ Page {
                 }
             }
             ListView {
+                id: screenshotList
+                objectName: "screenshotList"
                 Layout.fillWidth: true
-                Layout.preferredHeight: count > 0 ? 290 : 0; visible: count > 0
+                readonly property bool singleImage: count === 1
+                readonly property real singleImageWidth: Math.min(width, 820)
+                implicitHeight: count > 0 ? (singleImage ? 390 : 290) : 0
+                Layout.preferredHeight: implicitHeight
+                visible: count > 0
                 orientation: ListView.Horizontal; spacing: 16; clip: true
                 model: app ? app.screenshots : []
+                header: Item {
+                    width: screenshotList.singleImage
+                           ? Math.max(0, (screenshotList.width
+                                          - screenshotList.singleImageWidth) / 2)
+                           : 0
+                    height: 1
+                }
                 delegate: AbstractButton {
                     id: screenshotButton
                     objectName: "screenshotButton"
                     required property int index
                     required property string modelData
-                    width: 460; height: 276
+                    width: screenshotList.singleImage
+                           ? screenshotList.singleImageWidth
+                           : 460
+                    height: screenshotList.singleImage
+                            ? screenshotList.height
+                            : 276
                     hoverEnabled: true
                     Accessible.name: "Preview screenshot"
                     onClicked: page.openScreenshot(index)
@@ -217,11 +275,18 @@ Page {
                     contentItem: Item {
                         clip: true
                         Image {
+                            id: screenshotThumbnail
                             anchors.fill: parent
                             anchors.margins: 1
                             source: screenshotButton.modelData
                             asynchronous: true
                             fillMode: Image.PreserveAspectFit
+                        }
+                        LoadingSpinner {
+                            objectName: "screenshotLoadingSpinner"
+                            anchors.centerIn: parent
+                            running: screenshotThumbnail.status === Image.Loading
+                            color: window.textColor
                         }
                         Label {
                             anchors.right: parent.right
@@ -468,10 +533,11 @@ Page {
                         onPaintedHeightChanged: page.setPreviewPan(page.previewPanX,
                                                                   page.previewPanY)
                     }
-                    BusyIndicator {
+                    LoadingSpinner {
+                        objectName: "previewLoadingSpinner"
                         anchors.centerIn: parent
                         running: previewImage.status === Image.Loading
-                        visible: running
+                        color: window.textColor
                     }
                     Item {
                         id: previewGestureSurface
@@ -722,9 +788,11 @@ Page {
                                 }
 
                                 const steps = event.angleDelta.y / 120
+                                const focus = page.mousePreviewZoomFocus(point.position.x,
+                                                                         point.position.y)
                                 page.zoomPreviewBy(Math.pow(1.2, steps),
-                                                   point.position.x,
-                                                   point.position.y)
+                                                   focus.x,
+                                                   focus.y)
                             }
                         }
                     }

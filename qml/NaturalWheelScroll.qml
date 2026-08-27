@@ -1,9 +1,14 @@
 import QtQuick
 
 WheelHandler {
+    id: wheelScroll
+
     required property Flickable scrollTarget
     property real wheelStep: 100
-    property real touchpadStep: 32
+    property real touchpadStep: 42
+    property real touchpadPixelScale: 2.15
+    property real smoothTargetY: 0
+    property bool smoothScrolling: false
 
     target: null
     orientation: Qt.Vertical
@@ -15,6 +20,59 @@ WheelHandler {
                    && (device.deviceType === PointerDevice.TouchPad
                        || device.pointerType === PointerDevice.Finger
                        || device.maximumPoints > 1))
+    }
+
+    function minimumContentY() {
+        return scrollTarget.originY
+    }
+
+    function maximumContentY() {
+        const minimum = minimumContentY()
+        return Math.max(minimum,
+                        minimum + scrollTarget.contentHeight - scrollTarget.height)
+    }
+
+    function boundedContentY(value) {
+        return Math.max(minimumContentY(), Math.min(maximumContentY(), value))
+    }
+
+    function stopSmoothScroll() {
+        smoothTimer.stop()
+        smoothScrolling = false
+        smoothTargetY = boundedContentY(scrollTarget.contentY)
+    }
+
+    function scrollBy(delta, smoothly) {
+        if (!smoothly) {
+            stopSmoothScroll()
+            scrollTarget.contentY = boundedContentY(scrollTarget.contentY + delta)
+            smoothTargetY = scrollTarget.contentY
+            return
+        }
+
+        if (!smoothScrolling)
+            smoothTargetY = boundedContentY(scrollTarget.contentY)
+        smoothTargetY = boundedContentY(smoothTargetY + delta)
+        smoothScrolling = true
+        smoothTimer.start()
+    }
+
+    property Timer smoothTimer: Timer {
+        interval: 8
+        repeat: true
+        onTriggered: {
+            const difference = wheelScroll.smoothTargetY
+                               - wheelScroll.scrollTarget.contentY
+            if (Math.abs(difference) < 0.35) {
+                wheelScroll.scrollTarget.contentY = wheelScroll.smoothTargetY
+                wheelScroll.smoothScrolling = false
+                stop()
+                return
+            }
+
+            wheelScroll.scrollTarget.contentY = wheelScroll.boundedContentY(
+                        wheelScroll.scrollTarget.contentY + difference * 0.38)
+        }
     }
 
     onWheel: function(event) {
@@ -34,12 +92,9 @@ WheelHandler {
             return
         }
 
-        const minimum = scrollTarget.originY
-        const maximum = Math.max(minimum,
-                                 minimum + scrollTarget.contentHeight - scrollTarget.height)
-        scrollTarget.contentY = Math.max(minimum,
-                                         Math.min(maximum,
-                                                  scrollTarget.contentY - rawY))
+        const smoothInput = isTouchpad || hasPixelDelta
+        const scale = hasPixelDelta ? touchpadPixelScale : 1
+        scrollBy(-rawY * scale, smoothInput)
         event.accepted = true
     }
 }

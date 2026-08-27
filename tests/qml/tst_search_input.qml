@@ -144,7 +144,8 @@ TestCase {
         verify(catalogGrid !== null)
         verify(naturalScroll !== null)
         compare(naturalScroll.wheelStep, 100)
-        compare(naturalScroll.touchpadStep, 32)
+        compare(naturalScroll.touchpadStep, 42)
+        compare(naturalScroll.touchpadPixelScale, 2.15)
     }
 
     function test_category_sidebar_grows_for_translated_labels() {

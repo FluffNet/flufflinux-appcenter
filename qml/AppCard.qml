@@ -18,14 +18,28 @@ AbstractButton {
     }
     contentItem: RowLayout {
         spacing: 16
-        Image {
+        Item {
             Layout.preferredWidth: 64; Layout.preferredHeight: 64; Layout.alignment: Qt.AlignTop
-            sourceSize: Qt.size(64, 64); fillMode: Image.PreserveAspectFit
-            source: {
-                if (!app.icon) return "image://icon/application-x-executable"
-                if (app.icon.indexOf("/") >= 0 || app.icon.indexOf("://") >= 0)
-                    return app.icon.indexOf("://") >= 0 ? app.icon : "file://" + app.icon
-                return "image://icon/" + app.icon
+
+            Image {
+                id: appIcon
+                anchors.fill: parent
+                sourceSize: Qt.size(64, 64)
+                fillMode: Image.PreserveAspectFit
+                asynchronous: true
+                source: {
+                    if (!app.icon) return "image://icon/application-x-executable"
+                    if (app.icon.indexOf("/") >= 0 || app.icon.indexOf("://") >= 0)
+                        return app.icon.indexOf("://") >= 0 ? app.icon : "file://" + app.icon
+                    return "image://icon/" + app.icon
+                }
+            }
+            LoadingSpinner {
+                anchors.centerIn: parent
+                width: 26
+                height: 26
+                running: appIcon.status === Image.Loading
+                color: window.textColor
             }
         }
         ColumnLayout {

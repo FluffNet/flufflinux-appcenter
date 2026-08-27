@@ -28,6 +28,7 @@ TestCase {
     }
 
     function init() {
+        naturalWheel.stopSmoothScroll()
         scrollView.contentY = 0
     }
 
@@ -49,7 +50,8 @@ TestCase {
         verify((naturalWheel.acceptedDevices & PointerDevice.Mouse) !== 0)
         verify((naturalWheel.acceptedDevices & PointerDevice.TouchPad) !== 0)
         compare(naturalWheel.wheelStep, 100)
-        compare(naturalWheel.touchpadStep, 32)
+        compare(naturalWheel.touchpadStep, 42)
+        compare(naturalWheel.touchpadPixelScale, 2.15)
         compare(naturalWheel.isTouchpadDevice(null, true), true)
         compare(naturalWheel.isTouchpadDevice({
                     deviceType: PointerDevice.TouchPad,
@@ -61,5 +63,15 @@ TestCase {
                     pointerType: PointerDevice.Generic,
                     maximumPoints: 1
                 }, false), false)
+    }
+
+    function test_touchpad_scroll_follows_a_smooth_target() {
+        naturalWheel.scrollBy(215, true)
+        compare(naturalWheel.smoothScrolling, true)
+        compare(naturalWheel.smoothTargetY, 215)
+        verify(scrollView.contentY < naturalWheel.smoothTargetY)
+
+        tryCompare(scrollView, "contentY", 215, 1000)
+        compare(naturalWheel.smoothScrolling, false)
     }
 }
