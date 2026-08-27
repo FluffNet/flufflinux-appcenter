@@ -25,6 +25,7 @@ TestCase {
         property url appIconUrl: ""
         property string searchText: ""
         property string selectedCategory: "All Apps"
+        property string searchCategoryFilter: "All Apps"
         property bool catalogLoaded: true
         property var selectedApp: null
         property var catalog: [{
@@ -40,6 +41,19 @@ TestCase {
             searchDescription: "a block-building game",
             searchMetadata: "mojang com.mojang.minecraft games",
             searchHaystack: "minecraft create your own world a block-building game mojang com.mojang.minecraft games"
+        }, {
+            id: "org.fluff.MinecraftTool",
+            name: "Minecraft Tool",
+            summary: "Edit Minecraft resources",
+            description: "A developer utility",
+            icon: "",
+            category: "Development",
+            developer: "FluffNet",
+            searchName: "minecraft tool",
+            searchSummary: "edit minecraft resources",
+            searchDescription: "a developer utility",
+            searchMetadata: "fluffnet org.fluff.minecrafttool development",
+            searchHaystack: "minecraft tool edit minecraft resources a developer utility fluffnet org.fluff.minecrafttool development"
         }]
 
         function openApp(app) { selectedApp = app }
@@ -52,6 +66,8 @@ TestCase {
 
     function init() {
         window.searchText = ""
+        window.searchCategoryFilter = "All Apps"
+        window.selectedCategory = "All Apps"
         const searchField = findChild(catalogPage, "searchField")
         searchField.clear()
     }
@@ -76,6 +92,23 @@ TestCase {
 
         compare(searchField.text, "minecraft")
         tryCompare(window, "searchText", "minecraft", 500)
+        compare(catalogPage.visibleApps.length, 2)
+        compare(catalogPage.visibleApps[0].name, "Minecraft")
+    }
+
+    function test_search_filter_is_separate_from_sidebar_navigation() {
+        const searchField = findChild(catalogPage, "searchField")
+        searchField.text = "minecraft"
+        window.searchText = "minecraft"
+        window.searchCategoryFilter = "Development"
+        compare(catalogPage.visibleApps.length, 1)
+        compare(catalogPage.visibleApps[0].name, "Minecraft Tool")
+
+        catalogPage.openCategory("Games")
+        compare(searchField.text, "")
+        compare(window.searchText, "")
+        compare(window.searchCategoryFilter, "All Apps")
+        compare(window.selectedCategory, "Games")
         compare(catalogPage.visibleApps.length, 1)
         compare(catalogPage.visibleApps[0].name, "Minecraft")
     }

@@ -23,6 +23,7 @@ ApplicationWindow {
     property var catalog: fluffInitialCatalog
     property var selectedApp: null
     property string selectedCategory: "All Apps"
+    property string searchCategoryFilter: "All Apps"
     property string searchText: ""
     readonly property bool catalogLoaded: true
     function openApp(app) { selectedApp = app; stack.replace(appPage) }

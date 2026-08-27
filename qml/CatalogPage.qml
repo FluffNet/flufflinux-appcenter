@@ -21,8 +21,9 @@ Page {
     ]
     readonly property var visibleApps: {
         const query = window.searchText.trim().toLowerCase()
+        const activeCategory = query ? window.searchCategoryFilter : window.selectedCategory
         const matches = window.catalog.filter(function(app) {
-            const categoryMatches = window.selectedCategory === "All Apps" || app.category === window.selectedCategory
+            const categoryMatches = activeCategory === "All Apps" || app.category === activeCategory
             return categoryMatches && (!query || app.searchHaystack.indexOf(query) >= 0)
         })
         if (!query)
@@ -40,6 +41,22 @@ Page {
                    : left.app.name.localeCompare(right.app.name)
         })
         return scoredMatches.map(function(entry) { return entry.app })
+    }
+
+    function openCategory(category) {
+        searchTimer.stop()
+        searchField.clear()
+        window.searchText = ""
+        window.searchCategoryFilter = "All Apps"
+        window.selectedCategory = category
+    }
+
+    function categoryIndex(category) {
+        for (let index = 0; index < categories.length; ++index) {
+            if (categories[index].name === category)
+                return index
+        }
+        return 0
     }
 
     function containsWholeWord(text, query) {
@@ -120,11 +137,18 @@ Page {
                 leftPadding: 17; rightPadding: 17; implicitHeight: 44
                 activeFocusOnPress: true
                 Component.onCompleted: text = window.searchText
-                onTextEdited: searchTimer.restart()
+                onTextEdited: {
+                    if (text.length > 0)
+                        window.selectedCategory = "All Apps"
+                    else
+                        window.searchCategoryFilter = "All Apps"
+                    searchTimer.restart()
+                }
                 Keys.onEscapePressed: {
                     clear()
                     searchTimer.stop()
                     window.searchText = ""
+                    window.searchCategoryFilter = "All Apps"
                 }
                 background: Rectangle {
                     radius: 7
@@ -161,7 +185,7 @@ Page {
                     icon.width: 20; icon.height: 20
                     display: AbstractButton.TextBesideIcon
                     highlighted: window.selectedCategory === modelData.name
-                    onClicked: window.selectedCategory = modelData.name
+                    onClicked: page.openCategory(modelData.name)
                     leftPadding: 15
                     palette.buttonText: highlighted ? window.accentColor : window.textColor
                     font.weight: highlighted ? Font.DemiBold : Font.Normal
@@ -180,10 +204,46 @@ Page {
             Layout.fillWidth: true; Layout.fillHeight: true; clip: true
             ColumnLayout {
                 anchors.fill: parent; spacing: 18
-                ColumnLayout {
-                    Layout.fillWidth: true; Layout.leftMargin: 28; Layout.rightMargin: 28; Layout.topMargin: 26; spacing: 5
-                    Label { text: window.searchText ? "Search results" : window.selectedCategory; color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold }
-                    Label { text: page.visibleApps.length + (page.visibleApps.length === 1 ? " application" : " applications"); color: window.mutedTextColor }
+                RowLayout {
+                    Layout.fillWidth: true
+                    Layout.leftMargin: 28
+                    Layout.rightMargin: 28
+                    Layout.topMargin: 26
+                    spacing: 18
+
+                    ColumnLayout {
+                        spacing: 5
+                        Label { text: window.searchText ? "Search results" : window.selectedCategory; color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold }
+                        Label { text: page.visibleApps.length + (page.visibleApps.length === 1 ? " application" : " applications"); color: window.mutedTextColor }
+                    }
+                    Item { Layout.fillWidth: true }
+                    ComboBox {
+                        id: searchCategoryFilter
+                        visible: window.searchText.length > 0
+                        Layout.preferredWidth: 210
+                        Layout.preferredHeight: 42
+                        model: page.categories
+                        textRole: "name"
+                        currentIndex: page.categoryIndex(window.searchCategoryFilter)
+                        displayText: currentIndex === 0
+                                     ? "Category: All"
+                                     : "Category: " + currentText
+                        onActivated: window.searchCategoryFilter = page.categories[index].name
+                        palette.button: window.raisedSurfaceColor
+                        palette.buttonText: window.textColor
+                        palette.window: window.raisedSurfaceColor
+                        palette.text: window.textColor
+                        palette.highlight: window.accentColor
+                        palette.highlightedText: "white"
+                        background: Rectangle {
+                            radius: 7
+                            color: window.raisedSurfaceColor
+                            border.color: searchCategoryFilter.activeFocus
+                                          ? window.accentColor
+                                          : window.borderColor
+                            border.width: searchCategoryFilter.activeFocus ? 2 : 1
+                        }
+                    }
                 }
                 GridView {
                     id: catalogGrid
@@ -219,5 +279,6 @@ Page {
         target: window
         function onSearchTextChanged() { catalogGrid.positionViewAtBeginning() }
         function onSelectedCategoryChanged() { catalogGrid.positionViewAtBeginning() }
+        function onSearchCategoryFilterChanged() { catalogGrid.positionViewAtBeginning() }
     }
 }
