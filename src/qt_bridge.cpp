@@ -43,6 +43,7 @@ extern "C" int fluff_run_qml(const char *qml_path,
     QGuiApplication application(argc, arguments);
 
     QCoreApplication::setApplicationName(QStringLiteral("flufflinux-appcenter"));
+    QGuiApplication::setApplicationDisplayName(QStringLiteral("App Center"));
     QCoreApplication::setApplicationVersion(QStringLiteral("0.1.0"));
     QCoreApplication::setOrganizationName(QStringLiteral("FluffNet"));
     QGuiApplication::setDesktopFileName(QStringLiteral("flufflinux-appcenter"));

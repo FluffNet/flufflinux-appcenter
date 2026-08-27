@@ -1,4 +1,4 @@
-# Fluff Linux App Center
+# App Center
 
 A focused, native application catalog for Fluff Linux, built with Rust and
 Qt 6/QML. It provides the window, searchable catalog, category layout, and app
@@ -6,7 +6,7 @@ details view—without update services, notifications, settings, or tray code.
 
 ## Supported platform
 
-Fluff Linux App Center is intentionally built only for **Fluff Linux**, based
+App Center is intentionally built only for **Fluff Linux**, based
 on Arch Linux, running **KDE Plasma 6 on Wayland**. macOS, Windows, X11-only
 desktops, other Linux distributions, and cross-compilation are not supported
 targets. The build fails immediately on a non-Linux host.

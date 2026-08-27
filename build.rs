@@ -20,7 +20,7 @@ fn command_output(program: &str, arguments: &[&str]) -> String {
 
 fn main() {
     if env::var("CARGO_CFG_TARGET_OS").as_deref() != Ok("linux") {
-        panic!("Fluff Linux App Center can only be built on Fluff Linux/Arch Linux");
+        panic!("App Center can only be built on Fluff Linux/Arch Linux");
     }
 
     let output_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is missing"));

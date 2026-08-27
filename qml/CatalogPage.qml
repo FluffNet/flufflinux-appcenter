@@ -83,26 +83,28 @@ Page {
             border.width: 1
         }
         contentItem: Item {
-            RowLayout {
-                id: brandLockup
-                x: headerControl.width >= 1100
-                   ? Math.round((parent.width - width) / 2)
-                   : 24
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 14
+            Item {
+                width: 220
+                height: parent.height
 
-                Image {
-                    Layout.preferredWidth: 48
-                    Layout.preferredHeight: 48
-                    source: window.appIconUrl
-                    sourceSize: Qt.size(96, 96)
-                    fillMode: Image.PreserveAspectFit
-                    smooth: true
-                }
-                ColumnLayout {
-                    spacing: 0
-                    Label { text: "Fluff Linux"; color: window.accentColor; font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 1.2 }
-                    Label { text: "App Center"; color: window.textColor; font.pixelSize: 24; font.weight: Font.DemiBold }
+                RowLayout {
+                    id: brandLockup
+                    anchors.centerIn: parent
+                    spacing: 12
+
+                    Image {
+                        Layout.preferredWidth: 44
+                        Layout.preferredHeight: 44
+                        source: window.appIconUrl
+                        sourceSize: Qt.size(88, 88)
+                        fillMode: Image.PreserveAspectFit
+                        smooth: true
+                    }
+                    ColumnLayout {
+                        spacing: 0
+                        Label { text: "Fluff Linux"; color: window.accentColor; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1.1 }
+                        Label { text: "App Center"; color: window.textColor; font.pixelSize: 21; font.weight: Font.DemiBold }
+                    }
                 }
             }
 

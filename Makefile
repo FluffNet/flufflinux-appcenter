@@ -2,7 +2,7 @@ PREFIX ?= /usr
 DESTDIR ?=
 
 ifneq ($(shell uname -s),Linux)
-$(error Fluff Linux App Center can only be built on Fluff Linux/Arch Linux)
+$(error App Center can only be built on Fluff Linux/Arch Linux)
 endif
 
 .PHONY: build install uninstall clean

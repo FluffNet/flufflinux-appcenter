@@ -1,7 +1,7 @@
 mod appstream;
 
 #[cfg(not(target_os = "linux"))]
-compile_error!("Fluff Linux App Center supports Fluff Linux/Arch Linux only.");
+compile_error!("App Center supports Fluff Linux/Arch Linux only.");
 
 use std::env;
 use std::ffi::CString;

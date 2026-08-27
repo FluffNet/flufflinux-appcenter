@@ -6,7 +6,7 @@ ApplicationWindow {
     width: 1180; height: 760
     minimumWidth: 720; minimumHeight: 520
     visible: true
-    title: "Fluff Linux App Center"
+    title: "App Center"
     color: "transparent"
 
     readonly property bool darkMode: palette.window.hslLightness < 0.5
