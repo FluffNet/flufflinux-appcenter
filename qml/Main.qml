@@ -7,7 +7,6 @@ ApplicationWindow {
     minimumWidth: 720; minimumHeight: 520
     visible: true
     title: "Fluff Linux App Center"
-    icon: Qt.resolvedUrl("flufflinux-appcenter.svg")
     color: "transparent"
 
     readonly property bool darkMode: palette.window.hslLightness < 0.5

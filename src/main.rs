@@ -51,6 +51,9 @@ fn run() -> Result<i32, String> {
     fs::write(&cache, appstream::to_json(&catalog)).map_err(|error| error.to_string())?;
 
     let status = Command::new(qml)
+        // Qt requires a UTF-8 locale. Fluff's live/development environment can
+        // otherwise inherit the legacy C locale from a terminal session.
+        .env("LC_ALL", "C.UTF-8")
         .arg(main_qml)
         .arg("--")
         .arg("--catalog")
