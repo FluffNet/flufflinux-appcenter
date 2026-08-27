@@ -5,6 +5,8 @@ import QtQuick.Layouts
 Page {
     id: page
     required property var app
+    property string previewScreenshot: ""
+    readonly property alias screenshotPreviewDialog: screenshotPreview
     background: null
     header: Control {
         height: 70; padding: 0
@@ -33,6 +35,7 @@ Page {
         contentHeight: detailsLayout.implicitHeight + 40
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar {}
+        DirectWheelScroll { scrollTarget: detailsFlickable; stepSize: 140 }
 
         ColumnLayout {
             id: detailsLayout
@@ -71,11 +74,49 @@ Page {
                 Layout.preferredHeight: count > 0 ? 290 : 0; visible: count > 0
                 orientation: ListView.Horizontal; spacing: 16; clip: true
                 model: app ? app.screenshots : []
-                delegate: Rectangle {
+                delegate: AbstractButton {
+                    id: screenshotButton
+                    objectName: "screenshotButton"
                     required property string modelData
-                    width: 460; height: 276; radius: 8; color: window.raisedSurfaceColor; clip: true
-                    border.color: window.borderColor; border.width: 1
-                    Image { anchors.fill: parent; source: modelData; asynchronous: true; fillMode: Image.PreserveAspectFit }
+                    width: 460; height: 276
+                    hoverEnabled: true
+                    Accessible.name: "Preview screenshot"
+                    onClicked: {
+                        page.previewScreenshot = modelData
+                        screenshotPreview.open()
+                    }
+                    background: Rectangle {
+                        radius: 8
+                        color: window.raisedSurfaceColor
+                        border.color: screenshotButton.activeFocus || screenshotButton.hovered
+                                      ? window.accentColor
+                                      : window.borderColor
+                        border.width: screenshotButton.activeFocus ? 2 : 1
+                    }
+                    contentItem: Item {
+                        clip: true
+                        Image {
+                            anchors.fill: parent
+                            anchors.margins: 1
+                            source: screenshotButton.modelData
+                            asynchronous: true
+                            fillMode: Image.PreserveAspectFit
+                        }
+                        Label {
+                            anchors.right: parent.right
+                            anchors.bottom: parent.bottom
+                            anchors.margins: 12
+                            visible: screenshotButton.hovered || screenshotButton.activeFocus
+                            text: "Preview"
+                            color: "white"
+                            padding: 7
+                            background: Rectangle {
+                                radius: 5
+                                color: Qt.rgba(0, 0, 0, 0.72)
+                            }
+                        }
+                    }
+                    HoverHandler { cursorShape: Qt.PointingHandCursor }
                 }
             }
             Rectangle {
@@ -109,6 +150,58 @@ Page {
                     palette.buttonText: window.accentColor
                     font.weight: Font.DemiBold
                     onClicked: Qt.openUrlExternally(text)
+                }
+            }
+        }
+    }
+
+    Dialog {
+        id: screenshotPreview
+        parent: Overlay.overlay
+        modal: true
+        focus: true
+        width: Math.min(1180, window.width - 72)
+        height: Math.min(820, window.height - 72)
+        x: Math.round((window.width - width) / 2)
+        y: Math.round((window.height - height) / 2)
+        padding: 14
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onClosed: page.previewScreenshot = ""
+        Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.72) }
+        background: Rectangle {
+            radius: 10
+            color: window.surfaceColor
+            border.color: window.borderColor
+            border.width: 1
+        }
+        contentItem: Item {
+            Image {
+                id: previewImage
+                anchors.fill: parent
+                anchors.margins: 8
+                source: page.previewScreenshot
+                asynchronous: true
+                fillMode: Image.PreserveAspectFit
+            }
+            BusyIndicator {
+                anchors.centerIn: parent
+                running: previewImage.status === Image.Loading
+                visible: running
+            }
+            ToolButton {
+                objectName: "previewCloseButton"
+                anchors.top: parent.top
+                anchors.right: parent.right
+                anchors.margins: 4
+                text: "×"
+                font.pixelSize: 26
+                Accessible.name: "Close screenshot preview"
+                onClicked: screenshotPreview.close()
+                palette.buttonText: window.textColor
+                background: Rectangle {
+                    radius: width / 2
+                    color: parent.hovered ? window.hoverColor : window.raisedSurfaceColor
+                    border.color: window.borderColor
                 }
             }
         }

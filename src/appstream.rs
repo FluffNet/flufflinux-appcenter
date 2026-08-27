@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -100,10 +100,12 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         .unwrap_or_default();
     let license = base_text(xml, "project_license").unwrap_or_default();
     let homepage = tagged_text(xml, "url", "homepage").unwrap_or_default();
-    let screenshots = blocks(xml, "image")
+    let mut seen_screenshots = HashSet::new();
+    let screenshots = blocks(xml, "screenshot")
         .into_iter()
-        .map(clean_markup)
+        .filter_map(preferred_screenshot)
         .filter(|value| value.starts_with("http://") || value.starts_with("https://"))
+        .filter(|value| seen_screenshots.insert(value.clone()))
         .take(8)
         .collect();
     Some(App {
@@ -118,6 +120,20 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         homepage,
         screenshots,
     })
+}
+
+fn preferred_screenshot(screenshot: &str) -> Option<String> {
+    let images = blocks(screenshot, "image");
+    images
+        .iter()
+        .find(|image| image.contains("type=\"source\"") || image.contains("type='source'"))
+        .or_else(|| {
+            images.iter().find(|image| {
+                !image.contains("type=\"thumbnail\"") && !image.contains("type='thumbnail'")
+            })
+        })
+        .or_else(|| images.first())
+        .map(|image| clean_markup(image))
 }
 
 fn merge(current: &mut App, incoming: &App) {
@@ -359,5 +375,35 @@ mod tests {
         assert!(json.contains("a\\\"b"));
         assert!(json.contains("Line\\nName"));
         assert!(json.contains("\"searchName\":\"line\\nname\""));
+    }
+
+    #[test]
+    fn keeps_one_source_image_per_unique_screenshot() {
+        let xml = r#"
+            <component type="desktop-application">
+                <id>org.fluff.Test</id>
+                <name>Screenshot Test</name>
+                <screenshots>
+                    <screenshot type="default">
+                        <image type="thumbnail">https://example.test/first-thumb.png</image>
+                        <image type="source">https://example.test/first.png</image>
+                    </screenshot>
+                    <screenshot>
+                        <image type="source">https://example.test/second.png</image>
+                    </screenshot>
+                    <screenshot>
+                        <image type="source">https://example.test/first.png</image>
+                    </screenshot>
+                </screenshots>
+            </component>
+        "#;
+        let app = parse_component(xml, Path::new("/tmp/appstream.xml")).unwrap();
+        assert_eq!(
+            app.screenshots,
+            vec![
+                "https://example.test/first.png",
+                "https://example.test/second.png"
+            ]
+        );
     }
 }

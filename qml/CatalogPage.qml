@@ -175,7 +175,9 @@ Page {
                 border.width: 1
             }
             ListView {
+                id: categoryList
                 anchors.fill: parent; anchors.topMargin: 12; spacing: 4; clip: true; model: page.categories
+                DirectWheelScroll { scrollTarget: categoryList; stepSize: 92 }
                 delegate: ItemDelegate {
                     id: categoryButton
                     required property var modelData
@@ -256,6 +258,7 @@ Page {
                     cellHeight: 158
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar {}
+                    DirectWheelScroll { scrollTarget: catalogGrid; stepSize: catalogGrid.cellHeight }
                     delegate: AppCard {
                         required property var modelData
                         width: GridView.view.cellWidth - 16
