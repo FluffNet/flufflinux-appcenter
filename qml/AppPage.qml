@@ -263,8 +263,28 @@ Page {
         parent: Overlay.overlay
         modal: true
         focus: true
-        width: Math.min(1180, window.width - 72)
-        height: Math.min(820, window.height - 72)
+        readonly property real framePadding: 64
+        readonly property real sourcePreviewWidth: previewSizeProbe.status === Image.Ready
+                                                   && previewSizeProbe.implicitWidth > 0
+                                                   ? previewSizeProbe.implicitWidth
+                                                   : 1600
+        readonly property real sourcePreviewHeight: previewSizeProbe.status === Image.Ready
+                                                    && previewSizeProbe.implicitHeight > 0
+                                                    ? previewSizeProbe.implicitHeight
+                                                    : 900
+        readonly property real maximumPreviewWidth: Math.max(240,
+                                                              Math.min(1040,
+                                                                       window.width * 0.84)
+                                                              - framePadding)
+        readonly property real maximumPreviewHeight: Math.max(180,
+                                                               Math.min(720,
+                                                                        window.height * 0.82)
+                                                               - framePadding)
+        readonly property real previewScale: Math.min(1,
+                                                       maximumPreviewWidth / sourcePreviewWidth,
+                                                       maximumPreviewHeight / sourcePreviewHeight)
+        width: Math.round(sourcePreviewWidth * previewScale + framePadding)
+        height: Math.round(sourcePreviewHeight * previewScale + framePadding)
         x: Math.round((window.width - width) / 2)
         y: Math.round((window.height - height) / 2)
         padding: 14
@@ -281,6 +301,13 @@ Page {
             border.width: 1
         }
         contentItem: Item {
+            Image {
+                id: previewSizeProbe
+                objectName: "previewSizeProbe"
+                source: page.previewScreenshot
+                asynchronous: true
+                visible: false
+            }
             SwipeView {
                 id: previewSwipe
                 objectName: "previewSwipe"
@@ -300,8 +327,9 @@ Page {
                         required property string modelData
                         Image {
                             id: previewPageImage
+                            objectName: "previewPageImage"
                             anchors.fill: parent
-                            anchors.margins: 48
+                            anchors.margins: 18
                             source: modelData
                             asynchronous: true
                             fillMode: Image.PreserveAspectFit
@@ -313,6 +341,11 @@ Page {
                         }
                     }
                 }
+            }
+            Item {
+                anchors.fill: previewSwipe
+                z: 1
+
                 WheelHandler {
                     id: previewTouchpadSwipe
                     objectName: "previewTouchpadSwipe"
@@ -353,6 +386,7 @@ Page {
             ToolButton {
                 objectName: "previewPreviousButton"
                 anchors.left: parent.left
+                anchors.leftMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
                 text: "←"
                 font.pixelSize: 28
@@ -369,6 +403,7 @@ Page {
             ToolButton {
                 objectName: "previewNextButton"
                 anchors.right: parent.right
+                anchors.rightMargin: 8
                 anchors.verticalCenter: parent.verticalCenter
                 text: "→"
                 font.pixelSize: 28
@@ -385,7 +420,7 @@ Page {
             Label {
                 anchors.horizontalCenter: parent.horizontalCenter
                 anchors.bottom: parent.bottom
-                anchors.bottomMargin: 6
+                anchors.bottomMargin: 8
                 visible: app && app.screenshots.length > 1
                 text: (page.previewScreenshotIndex + 1) + " / " + app.screenshots.length
                 color: window.textColor
@@ -400,7 +435,7 @@ Page {
                 objectName: "previewCloseButton"
                 anchors.top: parent.top
                 anchors.right: parent.right
-                anchors.margins: 4
+                anchors.margins: 8
                 text: "×"
                 font.pixelSize: 26
                 Accessible.name: "Close screenshot preview"

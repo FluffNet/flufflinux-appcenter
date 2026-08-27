@@ -64,12 +64,23 @@ TestCase {
 
         const preview = appPage.screenshotPreviewDialog
         tryCompare(preview, "visible", true)
+        const sizeProbe = findChild(preview, "previewSizeProbe")
+        verify(sizeProbe !== null)
+        tryCompare(sizeProbe, "status", Image.Ready)
         compare(appPage.previewScreenshot, screenshotButton.modelData)
         compare(appPage.previewScreenshotIndex, 0)
+        verify(preview.width <= window.width * 0.85)
+        verify(preview.height <= window.height * 0.83)
+        verify(preview.x >= window.width * 0.07)
+        verify(preview.y >= window.height * 0.07)
+        const fittedAspect = (preview.width - preview.framePadding)
+                             / (preview.height - preview.framePadding)
+        verify(Math.abs(fittedAspect - 640 / 360) < 0.02)
 
         const nextButton = findChild(preview, "previewNextButton")
         verify(nextButton !== null)
         verify(nextButton.visible)
+        compare(nextButton.anchors.rightMargin, 8)
         mouseClick(nextButton, nextButton.width / 2, nextButton.height / 2)
         compare(appPage.previewScreenshotIndex, 1)
 
@@ -82,6 +93,15 @@ TestCase {
         const closeButton = findChild(preview, "previewCloseButton")
         verify(closeButton !== null)
         mouseClick(closeButton, closeButton.width / 2, closeButton.height / 2)
+        tryCompare(preview, "visible", false)
+    }
+
+    function test_clicking_outside_closes_preview() {
+        appPage.openScreenshot(0)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "visible", true)
+
+        mouseClick(window.contentItem, 2, 2)
         tryCompare(preview, "visible", false)
     }
 
@@ -158,11 +178,15 @@ TestCase {
                    0,
                    Qt.NoButton)
         compare(appPage.previewScreenshotIndex, 1)
+    }
 
-        preview.close()
-        tryCompare(preview, "visible", false)
+    function test_preview_touchpad_swipe_previous() {
         appPage.openScreenshot(1)
+        const preview = appPage.screenshotPreviewDialog
         tryCompare(preview, "visible", true)
+
+        const swipeView = findChild(preview, "previewSwipe")
+        verify(swipeView !== null)
         mouseWheel(swipeView,
                    swipeView.width / 2,
                    swipeView.height / 2,
