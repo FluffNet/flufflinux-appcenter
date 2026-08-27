@@ -204,7 +204,7 @@ Page {
             ListView {
                 id: categoryList
                 anchors.fill: parent; anchors.topMargin: 12; spacing: 4; clip: true; model: page.categories
-                DirectWheelScroll { scrollTarget: categoryList; stepSize: 92 }
+                NaturalWheelScroll { scrollTarget: categoryList }
                 delegate: ItemDelegate {
                     id: categoryButton
                     objectName: "categoryButton-" + modelData.name
@@ -278,6 +278,7 @@ Page {
                 }
                 GridView {
                     id: catalogGrid
+                    objectName: "catalogGrid"
                     Layout.fillWidth: true; Layout.fillHeight: true
                     Layout.leftMargin: 20; Layout.rightMargin: 20; Layout.bottomMargin: 20
                     clip: true
@@ -287,10 +288,9 @@ Page {
                     cellHeight: 158
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar {}
-                    DirectWheelScroll {
-                        objectName: "catalogWheelScroll"
+                    NaturalWheelScroll {
+                        objectName: "catalogNaturalScroll"
                         scrollTarget: catalogGrid
-                        stepSize: catalogGrid.cellHeight * 3
                     }
                     delegate: AppCard {
                         required property var modelData

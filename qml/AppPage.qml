@@ -71,7 +71,10 @@ Page {
         contentHeight: detailsLayout.implicitHeight + 40
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar {}
-        DirectWheelScroll { scrollTarget: detailsFlickable; stepSize: 360 }
+        NaturalWheelScroll {
+            objectName: "detailsNaturalScroll"
+            scrollTarget: detailsFlickable
+        }
         ColumnLayout {
             id: detailsLayout
             width: Math.min(1120, detailsFlickable.width - 64)
@@ -227,22 +230,30 @@ Page {
             objectName: "pageTouchpadBackGesture"
             target: null
             orientation: Qt.Horizontal
-            acceptedDevices: PointerDevice.TouchPad
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            enabled: !screenshotPreview.visible
+            blocking: false
             property real travel: 0
             onWheel: function(event) {
-                const rawDistance = event.pixelDelta.x !== 0
-                                    ? event.pixelDelta.x
-                                    : event.angleDelta.x / 2
-                travel += event.inverted ? -rawDistance : rawDistance
-                event.accepted = true
+                const rawX = event.pixelDelta.x !== 0
+                             ? event.pixelDelta.x
+                             : event.angleDelta.x / 2
+                const rawY = event.pixelDelta.y !== 0
+                             ? event.pixelDelta.y
+                             : event.angleDelta.y / 2
+                if (rawX === 0 || Math.abs(rawX) <= Math.abs(rawY))
+                    return
+
+                const fingerDistance = event.inverted ? rawX : -rawX
+                travel += fingerDistance
+                if (travel >= 80) {
+                    travel = 0
+                    window.showCatalog()
+                }
             }
             onActiveChanged: {
-                if (!active) {
-                    const shouldGoBack = travel >= 90
+                if (!active)
                     travel = 0
-                    if (shouldGoBack)
-                        window.showCatalog()
-                }
             }
         }
     }
@@ -302,28 +313,40 @@ Page {
                         }
                     }
                 }
-            }
-            WheelHandler {
-                id: previewTouchpadSwipe
-                objectName: "previewTouchpadSwipe"
-                target: null
-                orientation: Qt.Horizontal
-                acceptedDevices: PointerDevice.TouchPad
-                property real travel: 0
-                onWheel: function(event) {
-                    const rawDistance = event.pixelDelta.x !== 0
-                                        ? event.pixelDelta.x
-                                        : event.angleDelta.x / 2
-                    travel += event.inverted ? -rawDistance : rawDistance
-                    event.accepted = true
-                }
-                onActiveChanged: {
-                    if (!active) {
-                        if (travel <= -70)
-                            page.movePreview(1)
-                        else if (travel >= 70)
+                WheelHandler {
+                    id: previewTouchpadSwipe
+                    objectName: "previewTouchpadSwipe"
+                    target: null
+                    orientation: Qt.Horizontal
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    blocking: true
+                    property real travel: 0
+                    onWheel: function(event) {
+                        const rawX = event.pixelDelta.x !== 0
+                                     ? event.pixelDelta.x
+                                     : event.angleDelta.x / 2
+                        const rawY = event.pixelDelta.y !== 0
+                                     ? event.pixelDelta.y
+                                     : event.angleDelta.y / 2
+                        if (rawX === 0 || Math.abs(rawX) <= Math.abs(rawY)) {
+                            event.accepted = false
+                            return
+                        }
+
+                        event.accepted = true
+                        const fingerDistance = event.inverted ? rawX : -rawX
+                        travel += fingerDistance
+                        if (travel >= 70) {
+                            travel = 0
                             page.movePreview(-1)
-                        travel = 0
+                        } else if (travel <= -70) {
+                            travel = 0
+                            page.movePreview(1)
+                        }
+                    }
+                    onActiveChanged: {
+                        if (!active)
+                            travel = 0
                     }
                 }
             }

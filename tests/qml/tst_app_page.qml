@@ -100,6 +100,8 @@ TestCase {
         verify(touchpadGesture !== null)
         verify((touchGesture.acceptedDevices & PointerDevice.TouchScreen) !== 0)
         verify((touchpadGesture.acceptedDevices & PointerDevice.TouchPad) !== 0)
+        verify((touchpadGesture.acceptedDevices & PointerDevice.Mouse) !== 0)
+        compare(touchpadGesture.blocking, false)
 
         const swipeSurface = findChild(appPage, "pageSwipeSurface")
         verify(swipeSurface !== null)
@@ -109,6 +111,30 @@ TestCase {
         window.showCatalogCalled = false
         compare(appPage.finishPageSwipe(60, 10), false)
         compare(window.showCatalogCalled, false)
+
+        mouseWheel(swipeSurface,
+                   swipeSurface.width / 2,
+                   swipeSurface.height / 2,
+                   -240,
+                   0,
+                   Qt.NoButton)
+        compare(window.showCatalogCalled, true)
+    }
+
+    function test_vertical_wheel_scrolls_without_gesture_blocking() {
+        window.requestActivate()
+        tryCompare(window, "active", true)
+
+        const details = findChild(appPage, "detailsFlickable")
+        verify(details !== null)
+        details.contentY = 0
+        mouseWheel(details,
+                   details.width / 2,
+                   details.height / 2,
+                   0,
+                   -120,
+                   Qt.NoButton)
+        verify(details.contentY > 0)
     }
 
     function test_preview_supports_touch_and_touchpad_swiping() {
@@ -122,5 +148,27 @@ TestCase {
         verify(swipeView.interactive)
         verify(touchpadGesture !== null)
         verify((touchpadGesture.acceptedDevices & PointerDevice.TouchPad) !== 0)
+        verify((touchpadGesture.acceptedDevices & PointerDevice.Mouse) !== 0)
+        compare(touchpadGesture.blocking, true)
+
+        mouseWheel(swipeView,
+                   swipeView.width / 2,
+                   swipeView.height / 2,
+                   240,
+                   0,
+                   Qt.NoButton)
+        compare(appPage.previewScreenshotIndex, 1)
+
+        preview.close()
+        tryCompare(preview, "visible", false)
+        appPage.openScreenshot(1)
+        tryCompare(preview, "visible", true)
+        mouseWheel(swipeView,
+                   swipeView.width / 2,
+                   swipeView.height / 2,
+                   -240,
+                   0,
+                   Qt.NoButton)
+        compare(appPage.previewScreenshotIndex, 0)
     }
 }

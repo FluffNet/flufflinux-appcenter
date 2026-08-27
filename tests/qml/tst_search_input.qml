@@ -138,9 +138,11 @@ TestCase {
         verify(searchIcon.x < searchField.leftPadding)
     }
 
-    function test_catalog_wheel_moves_three_rows_per_tick() {
-        const wheelScroll = findChild(catalogPage, "catalogWheelScroll")
-        verify(wheelScroll !== null)
-        compare(wheelScroll.stepSize, 158 * 3)
+    function test_catalog_uses_natural_scrolling() {
+        const catalogGrid = findChild(catalogPage, "catalogGrid")
+        const naturalScroll = findChild(catalogPage, "catalogNaturalScroll")
+        verify(catalogGrid !== null)
+        verify(naturalScroll !== null)
+        compare(naturalScroll.wheelStep, 100)
     }
 }

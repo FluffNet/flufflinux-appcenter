@@ -20,9 +20,8 @@ TestCase {
             contentHeight: 2000
             boundsBehavior: Flickable.StopAtBounds
 
-            AppCenter.DirectWheelScroll {
+            AppCenter.NaturalWheelScroll {
                 scrollTarget: scrollView
-                stepSize: 140
             }
         }
     }
@@ -31,7 +30,7 @@ TestCase {
         scrollView.contentY = 0
     }
 
-    function test_mouse_wheel_moves_immediately() {
+    function test_mouse_wheel_uses_a_normal_step() {
         window.requestActivate()
         tryCompare(window, "active", true)
 
@@ -42,6 +41,6 @@ TestCase {
                    -120,
                    Qt.NoButton)
 
-        compare(scrollView.contentY, 140)
+        compare(scrollView.contentY, 100)
     }
 }
