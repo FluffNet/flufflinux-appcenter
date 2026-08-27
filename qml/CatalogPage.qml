@@ -214,7 +214,8 @@ Page {
                     icon.name: modelData.icon
                     icon.width: 20; icon.height: 20
                     display: AbstractButton.TextBesideIcon
-                    highlighted: window.selectedCategory === modelData.name
+                    highlighted: searchField.text.trim().length === 0
+                                 && window.selectedCategory === modelData.name
                     onClicked: page.openCategory(modelData.name)
                     leftPadding: 15
                     palette.buttonText: highlighted ? window.accentColor : window.textColor
@@ -286,7 +287,11 @@ Page {
                     cellHeight: 158
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: ScrollBar {}
-                    DirectWheelScroll { scrollTarget: catalogGrid; stepSize: catalogGrid.cellHeight }
+                    DirectWheelScroll {
+                        objectName: "catalogWheelScroll"
+                        scrollTarget: catalogGrid
+                        stepSize: catalogGrid.cellHeight * 3
+                    }
                     delegate: AppCard {
                         required property var modelData
                         width: GridView.view.cellWidth - 16

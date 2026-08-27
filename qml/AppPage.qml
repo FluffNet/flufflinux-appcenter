@@ -6,7 +6,36 @@ Page {
     id: page
     required property var app
     property string previewScreenshot: ""
+    property int previewScreenshotIndex: -1
     readonly property alias screenshotPreviewDialog: screenshotPreview
+
+    function setPreviewIndex(index) {
+        const screenshots = app && app.screenshots ? app.screenshots : []
+        if (screenshots.length === 0)
+            return
+        const boundedIndex = Math.max(0, Math.min(screenshots.length - 1, index))
+        previewScreenshotIndex = boundedIndex
+        previewScreenshot = screenshots[boundedIndex]
+        previewSwipe.setCurrentIndex(boundedIndex)
+    }
+
+    function openScreenshot(index) {
+        setPreviewIndex(index)
+        screenshotPreview.open()
+    }
+
+    function movePreview(offset) {
+        setPreviewIndex(previewScreenshotIndex + offset)
+    }
+
+    function finishPageSwipe(horizontalTravel, verticalTravel) {
+        const shouldGoBack = horizontalTravel >= Math.min(180, page.width * 0.18)
+                                 && horizontalTravel > verticalTravel * 1.5
+        if (shouldGoBack)
+            window.showCatalog()
+        return shouldGoBack
+    }
+
     background: null
     header: Control {
         height: 70; padding: 0
@@ -15,16 +44,11 @@ Page {
             anchors.leftMargin: 14; anchors.rightMargin: 24
             ToolButton {
                 objectName: "backButton"
-                text: "Back"
-                icon.name: "go-previous"
-                icon.width: 20
-                icon.height: 20
-                display: AbstractButton.TextBesideIcon
-                implicitWidth: 94
+                text: "←  Back"
+                implicitWidth: 106
                 leftPadding: 12
                 rightPadding: 14
-                spacing: 7
-                font.pixelSize: 15
+                font.pixelSize: 16
                 font.weight: Font.DemiBold
                 palette.buttonText: window.textColor
                 Accessible.name: "Back to app catalog"
@@ -35,20 +59,19 @@ Page {
                 }
                 onClicked: window.showCatalog()
             }
-            Label { text: app ? app.name : "Application"; color: window.textColor; font.pixelSize: 20; font.weight: Font.DemiBold }
             Item { Layout.fillWidth: true }
         }
     }
     Flickable {
         id: detailsFlickable
+        objectName: "detailsFlickable"
         anchors.fill: parent
         clip: true
         contentWidth: width
         contentHeight: detailsLayout.implicitHeight + 40
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar {}
-        DirectWheelScroll { scrollTarget: detailsFlickable; stepSize: 140 }
-
+        DirectWheelScroll { scrollTarget: detailsFlickable; stepSize: 360 }
         ColumnLayout {
             id: detailsLayout
             width: Math.min(1120, detailsFlickable.width - 64)
@@ -89,14 +112,12 @@ Page {
                 delegate: AbstractButton {
                     id: screenshotButton
                     objectName: "screenshotButton"
+                    required property int index
                     required property string modelData
                     width: 460; height: 276
                     hoverEnabled: true
                     Accessible.name: "Preview screenshot"
-                    onClicked: {
-                        page.previewScreenshot = modelData
-                        screenshotPreview.open()
-                    }
+                    onClicked: page.openScreenshot(index)
                     background: Rectangle {
                         radius: 8
                         color: window.raisedSurfaceColor
@@ -167,6 +188,65 @@ Page {
         }
     }
 
+    Item {
+        id: pageSwipeSurface
+        objectName: "pageSwipeSurface"
+        anchors.fill: parent
+        z: 10
+
+        PointHandler {
+            id: pageTouchBackGesture
+            objectName: "pageTouchBackGesture"
+            target: null
+            acceptedDevices: PointerDevice.TouchScreen
+            acceptedButtons: Qt.NoButton
+            property real travel: 0
+            property real verticalTravel: 0
+            property point startPosition: Qt.point(0, 0)
+            onPointChanged: {
+                if (active) {
+                    travel = Math.max(travel, point.position.x - startPosition.x)
+                    verticalTravel = Math.max(verticalTravel,
+                                              Math.abs(point.position.y - startPosition.y))
+                }
+            }
+            onActiveChanged: {
+                if (active) {
+                    travel = 0
+                    verticalTravel = 0
+                    startPosition = point.position
+                } else {
+                    page.finishPageSwipe(travel, verticalTravel)
+                    travel = 0
+                    verticalTravel = 0
+                }
+            }
+        }
+        WheelHandler {
+            id: pageTouchpadBackGesture
+            objectName: "pageTouchpadBackGesture"
+            target: null
+            orientation: Qt.Horizontal
+            acceptedDevices: PointerDevice.TouchPad
+            property real travel: 0
+            onWheel: function(event) {
+                const rawDistance = event.pixelDelta.x !== 0
+                                    ? event.pixelDelta.x
+                                    : event.angleDelta.x / 2
+                travel += event.inverted ? -rawDistance : rawDistance
+                event.accepted = true
+            }
+            onActiveChanged: {
+                if (!active) {
+                    const shouldGoBack = travel >= 90
+                    travel = 0
+                    if (shouldGoBack)
+                        window.showCatalog()
+                }
+            }
+        }
+    }
+
     Dialog {
         id: screenshotPreview
         parent: Overlay.overlay
@@ -178,7 +258,10 @@ Page {
         y: Math.round((window.height - height) / 2)
         padding: 14
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        onClosed: page.previewScreenshot = ""
+        onClosed: {
+            page.previewScreenshot = ""
+            page.previewScreenshotIndex = -1
+        }
         Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.72) }
         background: Rectangle {
             radius: 10
@@ -187,18 +270,108 @@ Page {
             border.width: 1
         }
         contentItem: Item {
-            Image {
-                id: previewImage
+            SwipeView {
+                id: previewSwipe
+                objectName: "previewSwipe"
                 anchors.fill: parent
                 anchors.margins: 8
-                source: page.previewScreenshot
-                asynchronous: true
-                fillMode: Image.PreserveAspectFit
+                clip: true
+                interactive: count > 1
+                onCurrentIndexChanged: {
+                    if (currentIndex >= 0 && app && currentIndex < app.screenshots.length) {
+                        page.previewScreenshotIndex = currentIndex
+                        page.previewScreenshot = app.screenshots[currentIndex]
+                    }
+                }
+                Repeater {
+                    model: app ? app.screenshots : []
+                    delegate: Item {
+                        required property string modelData
+                        Image {
+                            id: previewPageImage
+                            anchors.fill: parent
+                            anchors.margins: 48
+                            source: modelData
+                            asynchronous: true
+                            fillMode: Image.PreserveAspectFit
+                        }
+                        BusyIndicator {
+                            anchors.centerIn: parent
+                            running: previewPageImage.status === Image.Loading
+                            visible: running
+                        }
+                    }
+                }
             }
-            BusyIndicator {
-                anchors.centerIn: parent
-                running: previewImage.status === Image.Loading
-                visible: running
+            WheelHandler {
+                id: previewTouchpadSwipe
+                objectName: "previewTouchpadSwipe"
+                target: null
+                orientation: Qt.Horizontal
+                acceptedDevices: PointerDevice.TouchPad
+                property real travel: 0
+                onWheel: function(event) {
+                    const rawDistance = event.pixelDelta.x !== 0
+                                        ? event.pixelDelta.x
+                                        : event.angleDelta.x / 2
+                    travel += event.inverted ? -rawDistance : rawDistance
+                    event.accepted = true
+                }
+                onActiveChanged: {
+                    if (!active) {
+                        if (travel <= -70)
+                            page.movePreview(1)
+                        else if (travel >= 70)
+                            page.movePreview(-1)
+                        travel = 0
+                    }
+                }
+            }
+            ToolButton {
+                objectName: "previewPreviousButton"
+                anchors.left: parent.left
+                anchors.verticalCenter: parent.verticalCenter
+                text: "←"
+                font.pixelSize: 28
+                visible: page.previewScreenshotIndex > 0
+                Accessible.name: "Previous screenshot"
+                onClicked: page.movePreview(-1)
+                palette.buttonText: window.textColor
+                background: Rectangle {
+                    radius: width / 2
+                    color: parent.hovered ? window.hoverColor : window.raisedSurfaceColor
+                    border.color: window.borderColor
+                }
+            }
+            ToolButton {
+                objectName: "previewNextButton"
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                text: "→"
+                font.pixelSize: 28
+                visible: app && page.previewScreenshotIndex < app.screenshots.length - 1
+                Accessible.name: "Next screenshot"
+                onClicked: page.movePreview(1)
+                palette.buttonText: window.textColor
+                background: Rectangle {
+                    radius: width / 2
+                    color: parent.hovered ? window.hoverColor : window.raisedSurfaceColor
+                    border.color: window.borderColor
+                }
+            }
+            Label {
+                anchors.horizontalCenter: parent.horizontalCenter
+                anchors.bottom: parent.bottom
+                anchors.bottomMargin: 6
+                visible: app && app.screenshots.length > 1
+                text: (page.previewScreenshotIndex + 1) + " / " + app.screenshots.length
+                color: window.textColor
+                padding: 7
+                background: Rectangle {
+                    radius: 5
+                    color: window.raisedSurfaceColor
+                    border.color: window.borderColor
+                }
             }
             ToolButton {
                 objectName: "previewCloseButton"

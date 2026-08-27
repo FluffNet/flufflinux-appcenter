@@ -121,6 +121,12 @@ TestCase {
 
         catalogPage.openCategory("All Apps")
         compare(window.selectedCategory, "All Apps")
+        verify(homeButton.highlighted)
+
+        const searchField = findChild(catalogPage, "searchField")
+        searchField.text = "minecraft"
+        window.searchText = "minecraft"
+        compare(homeButton.highlighted, false)
     }
 
     function test_search_icon_is_on_the_left() {
@@ -130,5 +136,11 @@ TestCase {
         compare(searchIcon.width, 20)
         compare(searchIcon.height, 20)
         verify(searchIcon.x < searchField.leftPadding)
+    }
+
+    function test_catalog_wheel_moves_three_rows_per_tick() {
+        const wheelScroll = findChild(catalogPage, "catalogWheelScroll")
+        verify(wheelScroll !== null)
+        compare(wheelScroll.stepSize, 158 * 3)
     }
 }
