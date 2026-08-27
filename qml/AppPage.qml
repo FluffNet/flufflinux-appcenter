@@ -76,8 +76,23 @@ Page {
                 && device.maximumPoints <= 1
     }
 
-    function wheelDeviceIsTouchpad(device, hasPixelDelta) {
+    function wheelEventIsMouse(device, angleX, angleY) {
         if (wheelDeviceIsMouse(device))
+            return true
+
+        // Some Wayland/X11 combinations attach incomplete pointing-device
+        // metadata (and occasionally a pixel delta) to an ordinary wheel
+        // event. A physical wheel still reports its standard 120-unit notch,
+        // so use that as a reliable fallback instead of treating it as a
+        // touchpad gesture.
+        const dominantAngle = Math.abs(angleY) >= Math.abs(angleX)
+                              ? Math.abs(angleY) : Math.abs(angleX)
+        return dominantAngle >= 120
+                && Math.abs(dominantAngle % 120) < 0.01
+    }
+
+    function wheelEventIsTouchpad(device, hasPixelDelta, angleX, angleY) {
+        if (wheelEventIsMouse(device, angleX, angleY))
             return false
         return hasPixelDelta
                 || (device
@@ -310,8 +325,10 @@ Page {
                     onWheel: function(event) {
                         const hasPixelDelta = event.pixelDelta.x !== 0
                                               || event.pixelDelta.y !== 0
-                        if (!page.wheelDeviceIsTouchpad(point.device,
-                                                        hasPixelDelta)) {
+                        if (!page.wheelEventIsTouchpad(point.device,
+                                                       hasPixelDelta,
+                                                       event.angleDelta.x,
+                                                       event.angleDelta.y)) {
                             event.accepted = false
                             return
                         }
@@ -878,8 +895,10 @@ Page {
                                 const hasPixelDelta = event.pixelDelta.x !== 0
                                                       || event.pixelDelta.y !== 0
                                 const device = point.device
-                                const isTouchpad = page.wheelDeviceIsTouchpad(
-                                            device, hasPixelDelta)
+                                const isTouchpad = page.wheelEventIsTouchpad(
+                                            device, hasPixelDelta,
+                                            event.angleDelta.x,
+                                            event.angleDelta.y)
                                 if (isTouchpad) {
                                     if (page.previewZoom > 1.001) {
                                         const fingerDistance = event.inverted ? rawY : -rawY

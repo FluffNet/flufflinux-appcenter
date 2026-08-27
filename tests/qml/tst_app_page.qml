@@ -349,16 +349,26 @@ TestCase {
         compare(appPage.previewZoom, 1)
         compare(zoomLabel.text, "100%")
         compare(zoomInButton.parent.objectName, "previewBottomControlRow")
-        compare(appPage.wheelDeviceIsTouchpad({
+        compare(appPage.wheelEventIsTouchpad({
                     deviceType: PointerDevice.Mouse,
                     pointerType: PointerDevice.Generic,
                     maximumPoints: 1
-                }, true), false)
-        compare(appPage.wheelDeviceIsTouchpad({
+                }, true, 0, 120), false)
+        compare(appPage.wheelEventIsTouchpad({
                     deviceType: PointerDevice.TouchPad,
                     pointerType: PointerDevice.Finger,
                     maximumPoints: 2
-                }, true), true)
+                }, true, 0, 8), true)
+        compare(appPage.wheelEventIsMouse({
+                    deviceType: PointerDevice.Unknown,
+                    pointerType: PointerDevice.Unknown,
+                    maximumPoints: 0
+                }, 0, 120), true)
+        compare(appPage.wheelEventIsTouchpad({
+                    deviceType: PointerDevice.Unknown,
+                    pointerType: PointerDevice.Unknown,
+                    maximumPoints: 0
+                }, true, 0, 120), false)
 
         const outsideFocus = appPage.mousePreviewZoomFocus(0, 0)
         compare(outsideFocus.x, frame.width / 2)
