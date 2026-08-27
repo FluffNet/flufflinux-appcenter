@@ -15,7 +15,6 @@ install: build
 	mkdir -p "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps" "$(DESTDIR)$(PREFIX)/share/applications"
 	install -m755 target/release/flufflinux-appcenter "$(DESTDIR)$(PREFIX)/bin/flufflinux-appcenter"
 	install -m644 qml/Main.qml qml/AppCard.qml qml/CatalogPage.qml qml/AppPage.qml qml/FluffBackground.qml "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/"
-	install -m644 qml/wallpaper-light.svg qml/wallpaper-dark.svg "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/"
 	install -m644 assets/flufflinux-appcenter.svg "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/flufflinux-appcenter.svg"
 	install -m644 assets/flufflinux-appcenter.svg "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/flufflinux-appcenter.svg"
 	install -m644 data/flufflinux-appcenter.desktop "$(DESTDIR)$(PREFIX)/share/applications/flufflinux-appcenter.desktop"

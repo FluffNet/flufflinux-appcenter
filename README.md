@@ -13,31 +13,33 @@ targets. The build fails immediately on a non-Linux host.
 
 ## Design
 
-- **Rust (standard library only):** reads installed AppStream metadata and
+- **Rust (standard library only):** reads Flatpak AppStream metadata and
   creates a small normalized catalog for the UI.
-- **Qt 6/QML:** renders the responsive Plasma-native interface.
-- **System metadata:** uses AppStream catalogs already supplied by Arch Linux,
-  Flathub, and other configured software sources.
+- **Qt 6/QML:** renders the responsive Plasma-native interface through a tiny
+  native bridge compiled directly against the system Qt libraries.
+- **Flatpak metadata:** uses the AppStream catalogs downloaded from configured
+  Flatpak remotes such as Flathub.
 
 ## Visual design and themes
 
 The interface follows the Fluff Linux design language established by
 `fluffsetup` and `fluffinstall`: spacious layouts, layered surfaces, strong
 headings, and the Fluff red accent. It still respects the active Breeze color
-scheme. Text, panels, borders, hover states, and focus contrast update from the
-Qt palette, and the bundled background artwork switches automatically between
-light and dark variants when the Plasma theme changes.
+scheme. Text, panels, borders, hover states, focus contrast, and the flat
+background update automatically from the Qt palette when the Plasma theme
+changes.
 
 The Rust package has no third-party crate dependencies.
 
 ## Requirements
 
 ```sh
-sudo pacman -S --needed rust qt6-declarative appstream gzip make
+sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak gzip make
 ```
 
-`qml6` or `/usr/lib/qt6/bin/qml` must be present. AppStream metadata is read
-from the standard system catalog and metainfo directories.
+AppStream metadata is read from Flatpak's system and per-user catalog
+directories. The native Qt bridge sets the correct Plasma application identity
+and injects the catalog directly into QML.
 
 ## Run from the source tree
 

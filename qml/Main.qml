@@ -19,34 +19,13 @@ ApplicationWindow {
     readonly property color borderColor: darkMode ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(0.08, 0.10, 0.14, 0.16)
     readonly property color hoverColor: darkMode ? Qt.rgba(1, 1, 1, 0.075) : Qt.rgba(0.13, 0.15, 0.20, 0.065)
 
-    property var catalog: []
+    property var catalog: fluffInitialCatalog
     property var selectedApp: null
     property string selectedCategory: "All Apps"
     property string searchText: ""
-    property bool catalogLoaded: false
-
-    function argumentValue(name) {
-        const args = Qt.application.arguments
-        const index = args.indexOf(name)
-        return index >= 0 && index + 1 < args.length ? args[index + 1] : ""
-    }
-    function loadCatalog() {
-        const source = argumentValue("--catalog")
-        if (!source) { catalogLoaded = true; return }
-        const request = new XMLHttpRequest()
-        request.onreadystatechange = function() {
-            if (request.readyState === XMLHttpRequest.DONE) {
-                if (request.status === 0 || request.status === 200)
-                    catalog = JSON.parse(request.responseText)
-                catalogLoaded = true
-            }
-        }
-        request.open("GET", source); request.send()
-    }
+    readonly property bool catalogLoaded: true
     function openApp(app) { selectedApp = app; stack.replace(appPage) }
     function showCatalog() { selectedApp = null; stack.replace(catalogPage) }
-    Component.onCompleted: loadCatalog()
-
     FluffBackground { anchors.fill: parent }
     StackView {
         id: stack

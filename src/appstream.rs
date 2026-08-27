@@ -17,19 +17,16 @@ pub struct App {
     pub screenshots: Vec<String>,
 }
 
-const CATALOG_DIRS: &[&str] = &[
-    "/usr/share/swcatalog/xml",
-    "/var/cache/swcatalog/xml",
-    "/usr/share/app-info/xmls",
-    "/var/lib/flatpak/appstream",
-];
-const METAINFO_DIRS: &[&str] = &["/usr/share/metainfo", "/usr/share/appdata"];
-
 pub fn load_catalog() -> Vec<App> {
     let mut apps = HashMap::<String, App>::new();
     let mut files = Vec::new();
-    for directory in CATALOG_DIRS.iter().chain(METAINFO_DIRS) {
-        collect_files(Path::new(directory), 0, &mut files);
+    collect_files(Path::new("/var/lib/flatpak/appstream"), 0, &mut files);
+    if let Some(home) = std::env::var_os("HOME") {
+        collect_files(
+            &PathBuf::from(home).join(".local/share/flatpak/appstream"),
+            0,
+            &mut files,
+        );
     }
     for path in files {
         let Some(text) = read_metadata(&path) else {
@@ -42,7 +39,7 @@ pub fn load_catalog() -> Vec<App> {
             {
                 continue;
             }
-            if let Some(app) = parse_component(component) {
+            if let Some(app) = parse_component(component, &path) {
                 apps.entry(app.id.clone())
                     .and_modify(|current| merge(current, &app))
                     .or_insert(app);
@@ -86,23 +83,22 @@ fn read_metadata(path: &Path) -> Option<String> {
     }
 }
 
-fn parse_component(xml: &str) -> Option<App> {
-    let id = text(xml, "id")?;
-    let name = text(xml, "name").filter(|value| !value.is_empty())?;
-    let summary = text(xml, "summary").unwrap_or_default();
-    let description = element(xml, "description")
-        .map(clean_markup)
-        .unwrap_or_default();
-    let icon = preferred_icon(xml);
+fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
+    let id = base_text(xml, "id")?;
+    let name = base_text(xml, "name").filter(|value| !value.is_empty())?;
+    let summary = base_text(xml, "summary").unwrap_or_default();
+    let description = base_description(xml);
+    let icon = preferred_icon(xml, catalog_path);
     let categories: Vec<_> = blocks(xml, "category")
         .into_iter()
         .map(clean_markup)
         .collect();
     let category = display_category(&categories).to_string();
-    let developer = text(xml, "developer_name")
-        .or_else(|| text(xml, "developer-name"))
+    let developer = base_text(xml, "developer_name")
+        .or_else(|| base_text(xml, "developer-name"))
+        .or_else(|| element(xml, "developer").and_then(|value| base_text(value, "name")))
         .unwrap_or_default();
-    let license = text(xml, "project_license").unwrap_or_default();
+    let license = base_text(xml, "project_license").unwrap_or_default();
     let homepage = tagged_text(xml, "url", "homepage").unwrap_or_default();
     let screenshots = blocks(xml, "image")
         .into_iter()
@@ -166,13 +162,24 @@ fn display_category(values: &[String]) -> &'static str {
     "Other"
 }
 
-fn preferred_icon(xml: &str) -> String {
-    for kind in ["cached", "local", "stock", "remote"] {
+fn preferred_icon(xml: &str, catalog_path: &Path) -> String {
+    if let Some(value) = tagged_text(xml, "icon", "cached") {
+        if let Some(catalog_dir) = catalog_path.parent() {
+            for size in ["128x128", "64x64"] {
+                let candidate = catalog_dir.join("icons").join(size).join(&value);
+                if candidate.is_file() {
+                    return candidate.to_string_lossy().into_owned();
+                }
+            }
+        }
+        return value;
+    }
+    for kind in ["local", "stock", "remote"] {
         if let Some(value) = tagged_text(xml, "icon", kind) {
             return value;
         }
     }
-    text(xml, "icon").unwrap_or_else(|| "application-x-executable".into())
+    base_text(xml, "icon").unwrap_or_else(|| "application-x-executable".into())
 }
 
 fn blocks<'a>(input: &'a str, tag: &str) -> Vec<&'a str> {
@@ -182,6 +189,14 @@ fn blocks<'a>(input: &'a str, tag: &str) -> Vec<&'a str> {
     let close = format!("</{tag}>");
     while let Some(start) = rest.find(&open) {
         let candidate = &rest[start..];
+        let boundary = candidate.as_bytes().get(open.len()).copied();
+        if !matches!(
+            boundary,
+            Some(b'>') | Some(b' ') | Some(b'\t') | Some(b'\r') | Some(b'\n')
+        ) {
+            rest = &candidate[open.len()..];
+            continue;
+        }
         let Some(end) = candidate.find(&close) else {
             break;
         };
@@ -195,8 +210,41 @@ fn blocks<'a>(input: &'a str, tag: &str) -> Vec<&'a str> {
 fn element<'a>(input: &'a str, tag: &str) -> Option<&'a str> {
     blocks(input, tag).into_iter().next()
 }
-fn text(input: &str, tag: &str) -> Option<String> {
-    element(input, tag).map(clean_markup)
+fn base_text(input: &str, tag: &str) -> Option<String> {
+    blocks(input, tag)
+        .into_iter()
+        .find(|block| !is_localized(block))
+        .map(clean_markup)
+}
+
+fn base_description(input: &str) -> String {
+    let Some(description) = blocks(input, "description")
+        .into_iter()
+        .find(|block| !is_localized(block))
+    else {
+        return String::new();
+    };
+    let mut paragraphs: Vec<String> = blocks(description, "p")
+        .into_iter()
+        .filter(|block| !is_localized(block))
+        .map(clean_markup)
+        .filter(|text| !text.is_empty())
+        .collect();
+    paragraphs.extend(
+        blocks(description, "li")
+            .into_iter()
+            .filter(|block| !is_localized(block))
+            .map(clean_markup)
+            .filter(|text| !text.is_empty()),
+    );
+    paragraphs.join("\n\n")
+}
+
+fn is_localized(block: &str) -> bool {
+    block
+        .split_once('>')
+        .map(|(opening_tag, _)| opening_tag.contains("xml:lang=") || opening_tag.contains(" lang="))
+        .unwrap_or(false)
 }
 fn tagged_text(input: &str, tag: &str, kind: &str) -> Option<String> {
     blocks(input, tag)
@@ -278,9 +326,17 @@ mod tests {
     #[test]
     fn parses_a_desktop_component() {
         let xml = r#"<component type="desktop-application"><id>org.fluff.Test</id><name>Test &amp; App</name><summary>Small test</summary><categories><category>Utility</category></categories></component>"#;
-        let app = parse_component(xml).unwrap();
+        let app = parse_component(xml, Path::new("/tmp/appstream.xml")).unwrap();
         assert_eq!(app.name, "Test & App");
         assert_eq!(app.category, "Utilities");
+    }
+    #[test]
+    fn prefers_base_language_metadata() {
+        let xml = r#"<component type="desktop-application"><id>org.fluff.Test</id><name xml:lang="sv">Test på svenska</name><name>English Test</name><summary xml:lang="he">בדיקה</summary><summary>Base summary</summary><description><p>Base description</p><p xml:lang="fr">Description française</p></description><launchable type="desktop-id">org.fluff.Test.desktop</launchable></component>"#;
+        let app = parse_component(xml, Path::new("/tmp/appstream.xml")).unwrap();
+        assert_eq!(app.name, "English Test");
+        assert_eq!(app.summary, "Base summary");
+        assert_eq!(app.description, "Base description");
     }
     #[test]
     fn serializes_escaped_strings() {

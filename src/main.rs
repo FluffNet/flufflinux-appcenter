@@ -4,20 +4,13 @@ mod appstream;
 compile_error!("Fluff Linux App Center supports Fluff Linux/Arch Linux only.");
 
 use std::env;
+use std::ffi::CString;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, ExitCode};
+use std::process::ExitCode;
 
-fn find_qml() -> Option<PathBuf> {
-    if let Some(path) = env::var_os("FLUFF_APP_CENTER_QML_RUNTIME") {
-        return Some(path.into());
-    }
-    for path in ["/usr/lib/qt6/bin/qml", "/usr/bin/qml6", "/usr/bin/qml"] {
-        if Path::new(path).is_file() {
-            return Some(path.into());
-        }
-    }
-    None
+unsafe extern "C" {
+    fn fluff_run_qml(qml_path: *const i8, catalog_path: *const i8, icon_path: *const i8) -> i32;
 }
 
 fn find_main_qml() -> Option<PathBuf> {
@@ -40,9 +33,24 @@ fn cache_path() -> PathBuf {
         .join("flufflinux-appcenter/catalog.json")
 }
 
+fn find_icon() -> Option<PathBuf> {
+    let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/flufflinux-appcenter.svg");
+    if source.is_file() {
+        return Some(source);
+    }
+    let installed =
+        PathBuf::from("/usr/share/icons/hicolor/scalable/apps/flufflinux-appcenter.svg");
+    installed.is_file().then_some(installed)
+}
+
+fn c_path(path: &Path) -> Result<CString, String> {
+    CString::new(path.as_os_str().to_string_lossy().as_bytes())
+        .map_err(|_| format!("path contains an invalid null byte: {}", path.display()))
+}
+
 fn run() -> Result<i32, String> {
-    let qml = find_qml().ok_or("Qt 6 QML runtime not found. Install qt6-declarative.")?;
     let main_qml = find_main_qml().ok_or("The App Center QML files could not be found.")?;
+    let icon = find_icon().ok_or("The App Center icon could not be found.")?;
     let catalog = appstream::load_catalog();
     let cache = cache_path();
     if let Some(parent) = cache.parent() {
@@ -50,14 +58,12 @@ fn run() -> Result<i32, String> {
     }
     fs::write(&cache, appstream::to_json(&catalog)).map_err(|error| error.to_string())?;
 
-    let status = Command::new(qml)
-        .arg(main_qml)
-        .arg("--")
-        .arg("--catalog")
-        .arg(format!("file://{}", cache.display()))
-        .status()
-        .map_err(|error| format!("Unable to start the QML interface: {error}"))?;
-    Ok(status.code().unwrap_or(1))
+    let qml_path = c_path(&main_qml)?;
+    let catalog_path = c_path(&cache)?;
+    let icon_path = c_path(&icon)?;
+    // The bridge owns the Qt event loop and keeps all borrowed C strings alive
+    // for the duration of the call.
+    Ok(unsafe { fluff_run_qml(qml_path.as_ptr(), catalog_path.as_ptr(), icon_path.as_ptr()) })
 }
 
 fn main() -> ExitCode {
