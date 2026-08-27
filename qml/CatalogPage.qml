@@ -29,13 +29,19 @@ Page {
         })
         if (!query)
             return matches
-        return matches.sort(function(left, right) {
-            const scoreDifference = page.searchScore(left, query) - page.searchScore(right, query)
+        const scoredMatches = matches.map(function(app) {
+            return { app: app, score: page.searchScore(app, query) }
+        })
+        scoredMatches.sort(function(left, right) {
+            const scoreDifference = left.score - right.score
             if (scoreDifference !== 0)
                 return scoreDifference
-            const lengthDifference = left.name.length - right.name.length
-            return lengthDifference !== 0 ? lengthDifference : left.name.localeCompare(right.name)
+            const lengthDifference = left.app.name.length - right.app.name.length
+            return lengthDifference !== 0
+                   ? lengthDifference
+                   : left.app.name.localeCompare(right.app.name)
         })
+        return scoredMatches.map(function(entry) { return entry.app })
     }
 
     function containsWholeWord(text, query) {
@@ -65,34 +71,65 @@ Page {
         return 120
     }
     header: Control {
-        height: 78
+        id: headerControl
+        height: 88
         padding: 0
         background: Rectangle {
             color: window.surfaceColor
             border.color: window.borderColor
             border.width: 1
         }
-        contentItem: RowLayout {
-            anchors.leftMargin: 26; anchors.rightMargin: 26; spacing: 18
-            ColumnLayout {
-                spacing: 0
-                Label { text: "Fluff Linux"; color: window.accentColor; font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 1.2 }
-                Label { text: "App Center"; color: window.textColor; font.pixelSize: 24; font.weight: Font.DemiBold }
+        contentItem: Item {
+            RowLayout {
+                id: brandLockup
+                x: headerControl.width >= 1100
+                   ? Math.round((parent.width - width) / 2)
+                   : 24
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: 14
+
+                Image {
+                    Layout.preferredWidth: 48
+                    Layout.preferredHeight: 48
+                    source: window.appIconUrl
+                    sourceSize: Qt.size(96, 96)
+                    fillMode: Image.PreserveAspectFit
+                    smooth: true
+                }
+                ColumnLayout {
+                    spacing: 0
+                    Label { text: "Fluff Linux"; color: window.accentColor; font.pixelSize: 12; font.weight: Font.Bold; font.letterSpacing: 1.2 }
+                    Label { text: "App Center"; color: window.textColor; font.pixelSize: 24; font.weight: Font.DemiBold }
+                }
             }
-            Item { Layout.fillWidth: true }
+
             TextField {
-                Layout.preferredWidth: Math.min(420, page.width * 0.42)
+                id: searchField
+                width: Math.min(420, page.width * 0.38)
+                anchors.right: parent.right
+                anchors.rightMargin: 24
+                anchors.verticalCenter: parent.verticalCenter
                 placeholderText: "Search applications…"; text: window.searchText
                 color: window.textColor; placeholderTextColor: window.mutedTextColor
                 leftPadding: 17; rightPadding: 17; implicitHeight: 44
-                onTextEdited: window.searchText = text
-                Keys.onEscapePressed: clear()
+                onTextEdited: searchTimer.restart()
+                Keys.onEscapePressed: {
+                    clear()
+                    searchTimer.stop()
+                    window.searchText = ""
+                }
                 background: Rectangle {
                     radius: 7
                     color: window.raisedSurfaceColor
                     border.color: parent.activeFocus ? window.accentColor : window.borderColor
                     border.width: parent.activeFocus ? 2 : 1
                 }
+            }
+            Timer {
+                id: searchTimer
+                interval: 140
+                repeat: false
+                onTriggered: window.searchText = searchField.text
             }
         }
     }

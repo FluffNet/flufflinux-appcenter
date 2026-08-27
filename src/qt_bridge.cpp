@@ -60,6 +60,9 @@ extern "C" int fluff_run_qml(const char *qml_path,
 
     QQmlApplicationEngine engine;
     engine.addImageProvider(QStringLiteral("icon"), new ThemeIconProvider);
+    engine.rootContext()->setContextProperty(
+        QStringLiteral("fluffAppIconUrl"),
+        QUrl::fromLocalFile(QString::fromUtf8(icon_path)));
     engine.rootContext()->setContextProperty(QStringLiteral("fluffInitialCatalog"),
                                              document.array().toVariantList());
     engine.load(QUrl::fromLocalFile(QString::fromUtf8(qml_path)));
