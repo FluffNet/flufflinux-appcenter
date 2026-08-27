@@ -25,15 +25,28 @@ Page {
             Item { Layout.fillWidth: true }
         }
     }
-    ScrollView {
-        anchors.fill: parent; clip: true
+    Flickable {
+        id: detailsFlickable
+        anchors.fill: parent
+        clip: true
+        contentWidth: width
+        contentHeight: detailsLayout.implicitHeight + 40
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar {}
+
         ColumnLayout {
-            width: Math.min(parent.width, 980); anchors.horizontalCenter: parent.horizontalCenter; spacing: 24
+            id: detailsLayout
+            width: Math.min(1120, detailsFlickable.width - 64)
+            x: Math.max(32, (detailsFlickable.width - width) / 2)
+            spacing: 24
+
             Rectangle {
-                Layout.fillWidth: true; Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.topMargin: 32
-                implicitHeight: 172; radius: 9; color: window.surfaceColor
+                Layout.fillWidth: true; Layout.topMargin: 32
+                implicitHeight: Math.max(172, heroLayout.implicitHeight + 52)
+                radius: 9; color: window.surfaceColor
                 border.color: window.borderColor; border.width: 1
                 RowLayout {
+                    id: heroLayout
                     anchors.fill: parent; anchors.margins: 26; spacing: 24
                     Image {
                         Layout.preferredWidth: 112; Layout.preferredHeight: 112
@@ -54,7 +67,7 @@ Page {
                 }
             }
             ListView {
-                Layout.fillWidth: true; Layout.leftMargin: 32; Layout.rightMargin: 32
+                Layout.fillWidth: true
                 Layout.preferredHeight: count > 0 ? 290 : 0; visible: count > 0
                 orientation: ListView.Horizontal; spacing: 16; clip: true
                 model: app ? app.screenshots : []
@@ -66,7 +79,7 @@ Page {
                 }
             }
             Rectangle {
-                Layout.fillWidth: true; Layout.leftMargin: 32; Layout.rightMargin: 32
+                Layout.fillWidth: true
                 implicitHeight: aboutLayout.implicitHeight + 44; radius: 9
                 color: window.surfaceColor; border.color: window.borderColor; border.width: 1
                 ColumnLayout {
@@ -81,7 +94,7 @@ Page {
                 }
             }
             GridLayout {
-                Layout.fillWidth: true; Layout.leftMargin: 32; Layout.rightMargin: 32; Layout.bottomMargin: 38
+                Layout.fillWidth: true; Layout.bottomMargin: 38
                 columns: 2; columnSpacing: 28; rowSpacing: 10
                 Label { text: "Category"; color: window.mutedTextColor }
                 Label { text: app ? app.category : ""; color: window.textColor; Layout.fillWidth: true }

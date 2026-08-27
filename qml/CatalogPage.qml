@@ -21,11 +21,48 @@ Page {
     ]
     readonly property var visibleApps: {
         const query = window.searchText.trim().toLowerCase()
-        return window.catalog.filter(function(app) {
+        const matches = window.catalog.filter(function(app) {
             const categoryMatches = window.selectedCategory === "All Apps" || app.category === window.selectedCategory
-            const haystack = (app.name + " " + app.summary + " " + app.description + " " + app.category).toLowerCase()
+            const haystack = (app.name + " " + app.summary + " " + app.description + " "
+                              + app.developer + " " + app.id + " " + app.category).toLowerCase()
             return categoryMatches && (!query || haystack.indexOf(query) >= 0)
         })
+        if (!query)
+            return matches
+        return matches.sort(function(left, right) {
+            const scoreDifference = page.searchScore(left, query) - page.searchScore(right, query)
+            if (scoreDifference !== 0)
+                return scoreDifference
+            const lengthDifference = left.name.length - right.name.length
+            return lengthDifference !== 0 ? lengthDifference : left.name.localeCompare(right.name)
+        })
+    }
+
+    function containsWholeWord(text, query) {
+        const words = text.toLowerCase().split(/[^\p{L}\p{N}]+/u)
+        return words.indexOf(query) >= 0
+    }
+
+    function searchScore(app, query) {
+        const name = app.name.toLowerCase()
+        const summary = app.summary.toLowerCase()
+        const description = app.description.toLowerCase()
+        const id = app.id.toLowerCase()
+        const developer = app.developer.toLowerCase()
+        const category = app.category.toLowerCase()
+        if (name === query) return 0
+        if (name.startsWith(query)) return 10
+        if (containsWholeWord(name, query)) return 20
+        if (name.indexOf(query) >= 0) return 30
+        if (summary.startsWith(query)) return 40
+        if (containsWholeWord(summary, query)) return 50
+        if (summary.indexOf(query) >= 0) return 60
+        if (containsWholeWord(description, query)) return 70
+        if (description.indexOf(query) >= 0) return 80
+        if (developer.indexOf(query) >= 0) return 90
+        if (id.indexOf(query) >= 0) return 100
+        if (category.indexOf(query) >= 0) return 110
+        return 120
     }
     header: Control {
         height: 78
@@ -131,5 +168,11 @@ Page {
                 color: window.mutedTextColor; font.pixelSize: 17
             }
         }
+    }
+
+    Connections {
+        target: window
+        function onSearchTextChanged() { catalogGrid.positionViewAtBeginning() }
+        function onSelectedCategoryChanged() { catalogGrid.positionViewAtBeginning() }
     }
 }
