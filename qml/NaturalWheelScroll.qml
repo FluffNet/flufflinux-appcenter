@@ -57,6 +57,15 @@ WheelHandler {
         smoothTimer.start()
     }
 
+    function applyTouchpadDelta(rawDelta, hasPixelDelta) {
+        const scale = hasPixelDelta ? touchpadPixelScale : 1
+        // Pixel deltas already arrive as a continuous stream, including the
+        // compositor's momentum phase. Apply them immediately so the content
+        // stays under the user's fingers. Only legacy angle-only touchpads
+        // need interpolation between coarse ticks.
+        scrollBy(rawDelta * scale, !hasPixelDelta)
+    }
+
     property Timer smoothTimer: Timer {
         interval: 8
         repeat: true
@@ -92,9 +101,10 @@ WheelHandler {
             return
         }
 
-        const smoothInput = isTouchpad || hasPixelDelta
-        const scale = hasPixelDelta ? touchpadPixelScale : 1
-        scrollBy(-rawY * scale, smoothInput)
+        if (isTouchpad)
+            applyTouchpadDelta(-rawY, hasPixelDelta)
+        else
+            scrollBy(-rawY, false)
         event.accepted = true
     }
 }

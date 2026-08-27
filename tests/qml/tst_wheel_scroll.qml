@@ -66,12 +66,22 @@ TestCase {
     }
 
     function test_touchpad_scroll_follows_a_smooth_target() {
-        naturalWheel.scrollBy(215, true)
+        naturalWheel.applyTouchpadDelta(215, false)
         compare(naturalWheel.smoothScrolling, true)
         compare(naturalWheel.smoothTargetY, 215)
         verify(scrollView.contentY < naturalWheel.smoothTargetY)
 
         tryCompare(scrollView, "contentY", 215, 1000)
         compare(naturalWheel.smoothScrolling, false)
+    }
+
+    function test_high_resolution_touchpad_scroll_has_no_catch_up_delay() {
+        naturalWheel.applyTouchpadDelta(20, true)
+        compare(naturalWheel.smoothScrolling, false)
+        compare(scrollView.contentY, 43)
+
+        naturalWheel.applyTouchpadDelta(10, true)
+        compare(naturalWheel.smoothScrolling, false)
+        compare(scrollView.contentY, 64.5)
     }
 }

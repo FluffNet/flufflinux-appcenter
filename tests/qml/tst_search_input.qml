@@ -141,11 +141,15 @@ TestCase {
     function test_catalog_uses_natural_scrolling() {
         const catalogGrid = findChild(catalogPage, "catalogGrid")
         const naturalScroll = findChild(catalogPage, "catalogNaturalScroll")
+        const categoryScroll = findChild(catalogPage, "categoryNaturalScroll")
         verify(catalogGrid !== null)
         verify(naturalScroll !== null)
+        verify(categoryScroll !== null)
         compare(naturalScroll.wheelStep, 100)
         compare(naturalScroll.touchpadStep, 42)
         compare(naturalScroll.touchpadPixelScale, 2.15)
+        compare(categoryScroll.touchpadPixelScale, 2.15)
+        compare(categoryScroll.smoothScrolling, false)
     }
 
     function test_category_sidebar_grows_for_translated_labels() {

@@ -241,7 +241,10 @@ Page {
                 implicitHeight: count > 0 ? (singleImage ? 390 : 290) : 0
                 Layout.preferredHeight: implicitHeight
                 visible: count > 0
-                orientation: ListView.Horizontal; spacing: 16; clip: true
+                orientation: ListView.Horizontal
+                flickableDirection: Flickable.HorizontalFlick
+                spacing: 16
+                clip: true
                 model: app ? app.screenshots : []
                 header: Item {
                     width: screenshotList.singleImage
@@ -755,8 +758,8 @@ Page {
                             }
                         }
                         WheelHandler {
-                            id: previewWheelZoom
-                            objectName: "previewWheelZoom"
+                            id: previewVerticalWheel
+                            objectName: "previewVerticalWheel"
                             target: null
                             orientation: Qt.Vertical
                             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
@@ -774,11 +777,15 @@ Page {
                                 }
 
                                 event.accepted = true
-                                const isTouchpad = point.device
-                                                   && point.device.deviceType
-                                                      === PointerDevice.TouchPad
                                 const hasPixelDelta = event.pixelDelta.x !== 0
                                                       || event.pixelDelta.y !== 0
+                                const device = point.device
+                                const isTouchpad = device
+                                                   && (device.deviceType
+                                                       === PointerDevice.TouchPad
+                                                       || device.pointerType
+                                                          === PointerDevice.Finger
+                                                       || device.maximumPoints > 1)
                                 if (isTouchpad || hasPixelDelta) {
                                     if (page.previewZoom > 1.001) {
                                         const fingerDistance = event.inverted ? rawY : -rawY
@@ -787,12 +794,17 @@ Page {
                                     return
                                 }
 
-                                const steps = event.angleDelta.y / 120
-                                const focus = page.mousePreviewZoomFocus(point.position.x,
-                                                                         point.position.y)
-                                page.zoomPreviewBy(Math.pow(1.2, steps),
-                                                   focus.x,
-                                                   focus.y)
+                                if (page.previewPointIsInsideImage(point.position.x,
+                                                                   point.position.y)) {
+                                    const steps = event.angleDelta.y / 120
+                                    page.zoomPreviewBy(Math.pow(1.2, steps),
+                                                       point.position.x,
+                                                       point.position.y)
+                                } else {
+                                    // In the empty space around the photo, an
+                                    // ordinary mouse wheel browses screenshots.
+                                    page.movePreview(event.angleDelta.y > 0 ? -1 : 1)
+                                }
                             }
                         }
                     }

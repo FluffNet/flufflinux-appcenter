@@ -79,6 +79,7 @@ TestCase {
         verify(screenshotList !== null)
         tryCompare(screenshotList, "count", 1)
         compare(screenshotList.visible, true)
+        compare(screenshotList.flickableDirection, Flickable.HorizontalFlick)
         tryCompare(screenshotList, "height", 390)
 
         const screenshotButton = findChild(screenshotList, "screenshotButton")
@@ -205,7 +206,9 @@ TestCase {
         tryCompare(window, "active", true)
 
         const details = findChild(appPage, "detailsFlickable")
+        const naturalScroll = findChild(appPage, "detailsNaturalScroll")
         verify(details !== null)
+        verify(naturalScroll !== null)
         details.contentY = 0
         mouseWheel(details,
                    details.width / 2,
@@ -214,6 +217,11 @@ TestCase {
                    -120,
                    Qt.NoButton)
         verify(details.contentY > 0)
+
+        details.contentY = 0
+        naturalScroll.applyTouchpadDelta(12, true)
+        compare(naturalScroll.smoothScrolling, false)
+        compare(details.contentY, 25.8)
     }
 
     function test_preview_supports_touch_and_touchpad_swiping() {
@@ -349,12 +357,8 @@ TestCase {
         verify(Math.abs(sourceXAfterWheel - sourceXBefore) < 0.01)
         verify(Math.abs(sourceYAfterWheel - sourceYBefore) < 0.1)
         mouseClick(fitButton, fitButton.width / 2, fitButton.height / 2)
-        mouseWheel(gestureSurface,
-                   0,
-                   0,
-                   0,
-                   120,
-                   Qt.NoButton)
+        const centeredFocus = appPage.mousePreviewZoomFocus(0, 0)
+        appPage.zoomPreviewBy(1.2, centeredFocus.x, centeredFocus.y)
         compare(appPage.previewZoom, 1.2)
         compare(appPage.previewPanX, 0)
         compare(appPage.previewPanY, 0)
@@ -362,6 +366,34 @@ TestCase {
         mouseClick(zoomInButton, zoomInButton.width / 2, zoomInButton.height / 2)
         compare(appPage.previewZoom, 1.25)
         mouseClick(zoomOutButton, zoomOutButton.width / 2, zoomOutButton.height / 2)
+        compare(appPage.previewZoom, 1)
+    }
+
+    function test_mouse_wheel_outside_photo_browses_one_screenshot_per_notch() {
+        appPage.openScreenshot(1)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "visible", true)
+        const gestureSurface = findChild(preview, "previewGestureSurface")
+        const verticalWheel = findChild(preview, "previewVerticalWheel")
+        verify(gestureSurface !== null)
+        verify(verticalWheel !== null)
+
+        mouseWheel(gestureSurface,
+                   0,
+                   0,
+                   0,
+                   120,
+                   Qt.NoButton)
+        compare(appPage.previewScreenshotIndex, 0)
+        compare(appPage.previewZoom, 1)
+
+        mouseWheel(gestureSurface,
+                   0,
+                   0,
+                   0,
+                   -120,
+                   Qt.NoButton)
+        compare(appPage.previewScreenshotIndex, 1)
         compare(appPage.previewZoom, 1)
     }
 

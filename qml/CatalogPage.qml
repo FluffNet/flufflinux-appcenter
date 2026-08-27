@@ -225,7 +225,10 @@ Page {
             ListView {
                 id: categoryList
                 anchors.fill: parent; anchors.topMargin: 12; spacing: 4; clip: true; model: page.categories
-                NaturalWheelScroll { scrollTarget: categoryList }
+                NaturalWheelScroll {
+                    objectName: "categoryNaturalScroll"
+                    scrollTarget: categoryList
+                }
                 delegate: ItemDelegate {
                     id: categoryButton
                     objectName: "categoryButton-" + modelData.name
