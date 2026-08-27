@@ -1003,14 +1003,6 @@ Page {
                                                       previewImageFrame.width / 2,
                                                       previewImageFrame.height / 2)
                     }
-                    ToolButton {
-                        objectName: "previewFitButton"
-                        Layout.preferredHeight: 44
-                        text: "Fit"
-                        enabled: page.previewZoom > 1.001
-                        Accessible.name: "Fit screenshot to preview"
-                        onClicked: page.resetPreviewTransform()
-                    }
                     Rectangle {
                         Layout.preferredWidth: 1
                         Layout.preferredHeight: 24
