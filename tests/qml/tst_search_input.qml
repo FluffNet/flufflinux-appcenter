@@ -144,5 +144,25 @@ TestCase {
         verify(catalogGrid !== null)
         verify(naturalScroll !== null)
         compare(naturalScroll.wheelStep, 100)
+        compare(naturalScroll.touchpadStep, 32)
+    }
+
+    function test_category_sidebar_grows_for_translated_labels() {
+        const sidebar = findChild(catalogPage, "categorySidebar")
+        const homeButton = findChild(catalogPage, "categoryButton-All Apps")
+        verify(sidebar !== null)
+        verify(homeButton !== null)
+        compare(sidebar.width, catalogPage.categorySidebarWidth)
+        verify(sidebar.width >= 240)
+        verify(homeButton.height >= 52)
+        compare(homeButton.icon.width, 24)
+        compare(homeButton.icon.height, 24)
+        compare(homeButton.font.pixelSize, 16)
+
+        const shortWidth = catalogPage.categoryWidthForLabels(["Home"])
+        const translatedWidth = catalogPage.categoryWidthForLabels([
+            "A considerably longer translated category label"
+        ])
+        verify(translatedWidth > shortWidth)
     }
 }

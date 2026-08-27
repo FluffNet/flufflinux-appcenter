@@ -52,6 +52,8 @@ TestCase {
         window.showCatalogCalled = false
         if (appPage.screenshotPreviewDialog.visible)
             appPage.screenshotPreviewDialog.close()
+        window.width = 1180
+        window.height = 760
     }
 
     function test_clicking_screenshot_opens_preview() {
@@ -282,6 +284,16 @@ TestCase {
                    120,
                    Qt.NoButton)
         compare(appPage.previewZoom, 1.2)
+        verify(appPage.previewPanX < 0)
+        verify(appPage.previewPanY < 0)
+        const sourceXAfterWheel = centerX
+                                  + (focusX - centerX - appPage.previewPanX)
+                                    / appPage.previewZoom
+        const sourceYAfterWheel = centerY
+                                  + (focusY - centerY - appPage.previewPanY)
+                                    / appPage.previewZoom
+        verify(Math.abs(sourceXAfterWheel - sourceXBefore) < 0.01)
+        verify(Math.abs(sourceYAfterWheel - sourceYBefore) < 0.01)
         mouseClick(fitButton, fitButton.width / 2, fitButton.height / 2)
         mouseClick(zoomInButton, zoomInButton.width / 2, zoomInButton.height / 2)
         compare(appPage.previewZoom, 1.25)
@@ -310,7 +322,7 @@ TestCase {
         compare(touchPan.minimumTouchPoints, 1)
         compare(touchPan.maximumTouchPoints, 2)
         compare(touchPan.mouseEnabled, false)
-        verify((mousePan.acceptedDevices & PointerDevice.Mouse) !== 0)
+        verify((mousePan.acceptedButtons & Qt.LeftButton) !== 0)
         tryCompare(previewImage, "status", Image.Ready)
 
         const centerX = gestureSurface.width / 2
@@ -342,6 +354,19 @@ TestCase {
         verify(appPage.previewPanY > panYBeforeTouch)
 
         appPage.resetPreviewTransform()
+        appPage.setPreviewZoom(2, centerX, centerY)
+        const panXBeforeMouse = appPage.previewPanX
+        const panYBeforeMouse = appPage.previewPanY
+        mousePress(gestureSurface, centerX, centerY, Qt.LeftButton)
+        mouseMove(gestureSurface, centerX + 44, centerY + 28)
+        mouseRelease(gestureSurface,
+                     centerX + 44,
+                     centerY + 28,
+                     Qt.LeftButton)
+        verify(appPage.previewPanX > panXBeforeMouse)
+        verify(appPage.previewPanY > panYBeforeMouse)
+
+        appPage.resetPreviewTransform()
         appPage.applyPreviewPinch(1, 0, 0,
                                   frame.width / 2, frame.height / 2,
                                   2, 24, 16)
@@ -371,5 +396,25 @@ TestCase {
         swipe.move(0, gestureSurface, gestureSurface.width * 0.2, y).commit()
         swipe.release(0, gestureSurface, gestureSurface.width * 0.2, y).commit()
         compare(appPage.previewScreenshotIndex, 1)
+    }
+
+    function test_preview_uses_most_of_a_large_window() {
+        window.width = 1800
+        window.height = 1000
+        tryCompare(window, "width", 1800)
+        tryCompare(window, "height", 1000)
+        tryCompare(appPage, "width", 1800)
+        tryCompare(appPage, "height", 1000)
+
+        appPage.openScreenshot(0)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "visible", true)
+        compare(appPage.width, window.width)
+        compare(preview.desiredWidth, Math.round(window.width * 0.78))
+        compare(preview.desiredHeight, Math.round(window.height * 0.78))
+        compare(preview.width, Math.round(window.width * 0.78))
+        compare(preview.height, Math.round(window.height * 0.78))
+        verify(preview.width > 1040)
+        verify(preview.height > 720)
     }
 }

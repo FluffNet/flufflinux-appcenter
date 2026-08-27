@@ -6,19 +6,24 @@ Page {
     id: page
     background: null
     readonly property var categories: [
-        { name: "All Apps", label: "Home", icon: "go-home" },
-        { name: "Audio & Video", icon: "applications-multimedia" },
-        { name: "Development", icon: "applications-development" },
-        { name: "Education", icon: "applications-education" },
-        { name: "Games", icon: "applications-games" },
-        { name: "Graphics", icon: "applications-graphics" },
-        { name: "Internet", icon: "applications-internet" },
-        { name: "Office", icon: "applications-office" },
-        { name: "Science", icon: "applications-science" },
-        { name: "System", icon: "applications-system" },
-        { name: "Utilities", icon: "applications-utilities" },
-        { name: "Other", icon: "applications-other" }
+        { name: "All Apps", label: qsTr("Home"), icon: "go-home" },
+        { name: "Audio & Video", label: qsTr("Audio & Video"), icon: "applications-multimedia" },
+        { name: "Development", label: qsTr("Development"), icon: "applications-development" },
+        { name: "Education", label: qsTr("Education"), icon: "applications-education" },
+        { name: "Games", label: qsTr("Games"), icon: "applications-games" },
+        { name: "Graphics", label: qsTr("Graphics"), icon: "applications-graphics" },
+        { name: "Internet", label: qsTr("Internet"), icon: "applications-internet" },
+        { name: "Office", label: qsTr("Office"), icon: "applications-office" },
+        { name: "Science", label: qsTr("Science"), icon: "applications-science" },
+        { name: "System", label: qsTr("System"), icon: "applications-system" },
+        { name: "Utilities", label: qsTr("Utilities"), icon: "applications-utilities" },
+        { name: "Other", label: qsTr("Other"), icon: "applications-other" }
     ]
+    readonly property real categorySidebarWidth: Math.min(page.width * 0.46,
+                                                           categoryWidthForLabels(categories.map(
+                                                               function(category) {
+                                                                   return category.label
+                                                               })))
     readonly property var visibleApps: {
         const query = window.searchText.trim().toLowerCase()
         const activeCategory = query ? window.searchCategoryFilter : window.selectedCategory
@@ -49,6 +54,19 @@ Page {
         window.searchText = ""
         window.searchCategoryFilter = "All Apps"
         window.selectedCategory = category
+    }
+
+    function categoryWidthForLabels(labels) {
+        let widestLabel = 0
+        for (let index = 0; index < labels.length; ++index)
+            widestLabel = Math.max(widestLabel,
+                                   categoryFontMetrics.advanceWidth(labels[index]))
+        return Math.max(240, Math.ceil(widestLabel + 92))
+    }
+
+    FontMetrics {
+        id: categoryFontMetrics
+        font.pixelSize: 16
     }
 
     function categoryIndex(category) {
@@ -101,7 +119,7 @@ Page {
         }
         contentItem: Item {
             Item {
-                width: 220
+                width: page.categorySidebarWidth
                 height: parent.height
 
                 RowLayout {
@@ -195,7 +213,10 @@ Page {
     RowLayout {
         anchors.fill: parent; spacing: 0
         Pane {
-            Layout.fillHeight: true; Layout.preferredWidth: 220; padding: 12
+            objectName: "categorySidebar"
+            Layout.fillHeight: true
+            Layout.preferredWidth: page.categorySidebarWidth
+            padding: 12
             background: Rectangle {
                 color: window.sidebarColor
                 border.color: window.borderColor
@@ -209,16 +230,21 @@ Page {
                     id: categoryButton
                     objectName: "categoryButton-" + modelData.name
                     required property var modelData
-                    width: ListView.view.width; height: 42
-                    text: modelData.label || modelData.name
+                    width: ListView.view.width
+                    height: Math.max(52, categoryFontMetrics.height + 24)
+                    text: modelData.label
                     icon.name: modelData.icon
-                    icon.width: 20; icon.height: 20
+                    icon.width: 24
+                    icon.height: 24
                     display: AbstractButton.TextBesideIcon
                     highlighted: searchField.text.trim().length === 0
                                  && window.selectedCategory === modelData.name
                     onClicked: page.openCategory(modelData.name)
-                    leftPadding: 15
+                    leftPadding: 16
+                    rightPadding: 16
+                    spacing: 12
                     palette.buttonText: highlighted ? window.accentColor : window.textColor
+                    font.pixelSize: 16
                     font.weight: highlighted ? Font.DemiBold : Font.Normal
                     background: Rectangle {
                         radius: 6

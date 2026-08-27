@@ -45,7 +45,21 @@ TestCase {
         compare(scrollView.contentY, 100)
     }
 
-    function test_touchpad_is_left_to_native_flickable_scrolling() {
-        compare(naturalWheel.acceptedDevices, PointerDevice.Mouse)
+    function test_touchpad_uses_smaller_continuous_deltas() {
+        verify((naturalWheel.acceptedDevices & PointerDevice.Mouse) !== 0)
+        verify((naturalWheel.acceptedDevices & PointerDevice.TouchPad) !== 0)
+        compare(naturalWheel.wheelStep, 100)
+        compare(naturalWheel.touchpadStep, 32)
+        compare(naturalWheel.isTouchpadDevice(null, true), true)
+        compare(naturalWheel.isTouchpadDevice({
+                    deviceType: PointerDevice.TouchPad,
+                    pointerType: PointerDevice.Finger,
+                    maximumPoints: 2
+                }, false), true)
+        compare(naturalWheel.isTouchpadDevice({
+                    deviceType: PointerDevice.Mouse,
+                    pointerType: PointerDevice.Generic,
+                    maximumPoints: 1
+                }, false), false)
     }
 }

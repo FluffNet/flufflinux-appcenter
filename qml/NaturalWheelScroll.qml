@@ -3,28 +3,32 @@ import QtQuick
 WheelHandler {
     required property Flickable scrollTarget
     property real wheelStep: 100
+    property real touchpadStep: 32
 
     target: null
     orientation: Qt.Vertical
-    // A physical wheel benefits from a predictable step. Touchpads stay with
-    // Flickable's native pixel-based path so their scrolling keeps its flow.
-    acceptedDevices: PointerDevice.Mouse
+    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+
+    function isTouchpadDevice(device, hasPixelDelta) {
+        return hasPixelDelta
+               || (device
+                   && (device.deviceType === PointerDevice.TouchPad
+                       || device.pointerType === PointerDevice.Finger
+                       || device.maximumPoints > 1))
+    }
 
     onWheel: function(event) {
-        const isTouchpad = point.device
-                           && point.device.deviceType === PointerDevice.TouchPad
         const hasPixelDelta = event.pixelDelta.x !== 0 || event.pixelDelta.y !== 0
-        if (isTouchpad || hasPixelDelta) {
-            event.accepted = false
-            return
-        }
+        const isTouchpad = isTouchpadDevice(point.device, hasPixelDelta)
 
         const rawX = event.pixelDelta.x !== 0
                      ? event.pixelDelta.x
-                     : event.angleDelta.x / 120 * wheelStep
+                     : event.angleDelta.x / 120
+                       * (isTouchpad ? touchpadStep : wheelStep)
         const rawY = event.pixelDelta.y !== 0
                      ? event.pixelDelta.y
-                     : event.angleDelta.y / 120 * wheelStep
+                     : event.angleDelta.y / 120
+                       * (isTouchpad ? touchpadStep : wheelStep)
         if (rawY === 0 || Math.abs(rawY) <= Math.abs(rawX)) {
             event.accepted = false
             return

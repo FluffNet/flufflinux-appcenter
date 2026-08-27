@@ -348,12 +348,24 @@ Page {
         parent: Overlay.overlay
         modal: true
         focus: true
-        width: Math.max(360, Math.min(1040, Math.round(window.width * 0.84)))
-        height: Math.max(320, Math.min(720, Math.round(window.height * 0.82)))
+        readonly property real desiredWidth: Math.max(360,
+                                                       Math.min(window.width - 48,
+                                                                Math.round(window.width * 0.78)))
+        readonly property real desiredHeight: Math.max(320,
+                                                        Math.min(window.height - 48,
+                                                                 Math.round(window.height * 0.78)))
+        width: desiredWidth
+        height: desiredHeight
         x: Math.round((window.width - width) / 2)
         y: Math.round((window.height - height) / 2)
         padding: 14
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onDesiredWidthChanged: width = desiredWidth
+        onDesiredHeightChanged: height = desiredHeight
+        onAboutToShow: {
+            width = desiredWidth
+            height = desiredHeight
+        }
         onOpened: {
             previewTouchpadSwipe.travel = 0
             previewTouchpadSwipe.gestureTriggered = false
@@ -570,27 +582,29 @@ Page {
                                 gesture.grab()
                             }
                         }
-                        DragHandler {
+                        MouseArea {
                             id: previewMousePan
                             objectName: "previewMousePan"
-                            target: null
+                            anchors.fill: parent
                             enabled: page.previewZoom > 1.001
-                            acceptedDevices: PointerDevice.Mouse
                             acceptedButtons: Qt.LeftButton
-                            cursorShape: active ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                            property real startPanX: 0
-                            property real startPanY: 0
-                            onActiveChanged: {
-                                if (active) {
-                                    startPanX = page.previewPanX
-                                    startPanY = page.previewPanY
-                                }
+                            hoverEnabled: true
+                            cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                            property real lastX: 0
+                            property real lastY: 0
+                            onPressed: function(mouse) {
+                                lastX = mouse.x
+                                lastY = mouse.y
                             }
-                            onActiveTranslationChanged: {
-                                if (active) {
-                                    page.setPreviewPan(startPanX + activeTranslation.x,
-                                                       startPanY + activeTranslation.y)
-                                }
+                            onPositionChanged: function(mouse) {
+                                if (!pressed)
+                                    return
+                                page.panPreviewBy(mouse.x - lastX, mouse.y - lastY)
+                                lastX = mouse.x
+                                lastY = mouse.y
+                            }
+                            onWheel: function(event) {
+                                event.accepted = false
                             }
                         }
                         PinchHandler {
@@ -708,7 +722,9 @@ Page {
                                 }
 
                                 const steps = event.angleDelta.y / 120
-                                page.zoomPreviewBy(Math.pow(1.2, steps), event.x, event.y)
+                                page.zoomPreviewBy(Math.pow(1.2, steps),
+                                                   point.position.x,
+                                                   point.position.y)
                             }
                         }
                     }
