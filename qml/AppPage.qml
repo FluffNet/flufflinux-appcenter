@@ -7,6 +7,11 @@ Page {
     required property var app
     property string previewScreenshot: ""
     property int previewScreenshotIndex: -1
+    property real previewZoom: 1
+    property real previewPanX: 0
+    property real previewPanY: 0
+    property bool previewPinching: false
+    readonly property real maximumPreviewZoom: 5
     readonly property alias screenshotPreviewDialog: screenshotPreview
 
     function setPreviewIndex(index) {
@@ -14,6 +19,7 @@ Page {
         if (screenshots.length === 0)
             return
         const boundedIndex = Math.max(0, Math.min(screenshots.length - 1, index))
+        resetPreviewTransform()
         previewScreenshotIndex = boundedIndex
         previewScreenshot = screenshots[boundedIndex]
     }
@@ -28,11 +34,83 @@ Page {
     }
 
     function finishPreviewSwipe(horizontalTravel, verticalTravel) {
-        const shouldMove = Math.abs(horizontalTravel) >= 70
+        const shouldMove = previewZoom <= 1.001
+                           && Math.abs(horizontalTravel) >= 70
                            && Math.abs(horizontalTravel) > verticalTravel * 1.5
         if (shouldMove)
             movePreview(horizontalTravel > 0 ? -1 : 1)
         return shouldMove
+    }
+
+    function previewPanLimitX(zoom) {
+        if (!previewImageFrame || !previewImage)
+            return 0
+        return Math.max(0, (previewImage.paintedWidth * zoom - previewImageFrame.width) / 2)
+    }
+
+    function previewPanLimitY(zoom) {
+        if (!previewImageFrame || !previewImage)
+            return 0
+        return Math.max(0, (previewImage.paintedHeight * zoom - previewImageFrame.height) / 2)
+    }
+
+    function setPreviewPan(x, y) {
+        const limitX = previewPanLimitX(previewZoom)
+        const limitY = previewPanLimitY(previewZoom)
+        previewPanX = Math.max(-limitX, Math.min(limitX, x))
+        previewPanY = Math.max(-limitY, Math.min(limitY, y))
+    }
+
+    function panPreviewBy(x, y) {
+        setPreviewPan(previewPanX + x, previewPanY + y)
+    }
+
+    function setPreviewZoom(requestedZoom, focusX, focusY) {
+        const oldZoom = previewZoom
+        const newZoom = Math.max(1, Math.min(maximumPreviewZoom, requestedZoom))
+        if (newZoom <= 1.001) {
+            resetPreviewTransform()
+            return
+        }
+
+        const centerX = previewImageFrame.width / 2
+        const centerY = previewImageFrame.height / 2
+        const safeFocusX = Number.isFinite(focusX) ? focusX : centerX
+        const safeFocusY = Number.isFinite(focusY) ? focusY : centerY
+        const ratio = newZoom / oldZoom
+        const nextPanX = safeFocusX - centerX
+                         - ratio * (safeFocusX - centerX - previewPanX)
+        const nextPanY = safeFocusY - centerY
+                         - ratio * (safeFocusY - centerY - previewPanY)
+        previewZoom = newZoom
+        setPreviewPan(nextPanX, nextPanY)
+    }
+
+    function zoomPreviewBy(factor, focusX, focusY) {
+        setPreviewZoom(previewZoom * factor, focusX, focusY)
+    }
+
+    function applyPreviewPinch(startZoom, startPanX, startPanY,
+                               focusX, focusY, activeScale,
+                               translationX, translationY) {
+        const newZoom = Math.max(1,
+                                 Math.min(maximumPreviewZoom,
+                                          startZoom * activeScale))
+        const centerX = previewImageFrame.width / 2
+        const centerY = previewImageFrame.height / 2
+        const ratio = newZoom / startZoom
+        previewZoom = newZoom
+        setPreviewPan(focusX + translationX - centerX
+                      - ratio * (focusX - centerX - startPanX),
+                      focusY + translationY - centerY
+                      - ratio * (focusY - centerY - startPanY))
+    }
+
+    function resetPreviewTransform() {
+        previewZoom = 1
+        previewPanX = 0
+        previewPanY = 0
+        previewPinching = false
     }
 
     function finishPageSwipe(horizontalTravel, verticalTravel) {
@@ -279,10 +357,13 @@ Page {
         onOpened: {
             previewTouchpadSwipe.travel = 0
             previewTouchpadSwipe.gestureTriggered = false
+            previewTouchArea.resetTouchGesture()
         }
         onClosed: {
             previewTouchpadSwipe.travel = 0
             previewTouchpadSwipe.gestureTriggered = false
+            previewTouchArea.resetTouchGesture()
+            page.resetPreviewTransform()
             page.previewScreenshot = ""
             page.previewScreenshotIndex = -1
         }
@@ -355,14 +436,25 @@ Page {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     clip: true
+                    onWidthChanged: page.setPreviewPan(page.previewPanX, page.previewPanY)
+                    onHeightChanged: page.setPreviewPan(page.previewPanX, page.previewPanY)
 
                     Image {
                         id: previewImage
                         objectName: "previewImage"
-                        anchors.fill: parent
+                        width: parent.width
+                        height: parent.height
+                        x: page.previewPanX
+                        y: page.previewPanY
+                        scale: page.previewZoom
+                        transformOrigin: Item.Center
                         source: page.previewScreenshot
                         asynchronous: true
                         fillMode: Image.PreserveAspectFit
+                        onPaintedWidthChanged: page.setPreviewPan(page.previewPanX,
+                                                                 page.previewPanY)
+                        onPaintedHeightChanged: page.setPreviewPan(page.previewPanX,
+                                                                  page.previewPanY)
                     }
                     BusyIndicator {
                         anchors.centerIn: parent
@@ -374,32 +466,167 @@ Page {
                         objectName: "previewGestureSurface"
                         anchors.fill: parent
 
-                        PointHandler {
-                            id: previewTouchSwipe
+                        MultiPointTouchArea {
+                            id: previewTouchArea
                             objectName: "previewTouchSwipe"
-                            target: null
-                            acceptedDevices: PointerDevice.TouchScreen
-                            acceptedButtons: Qt.NoButton
+                            anchors.fill: parent
+                            minimumTouchPoints: 1
+                            maximumTouchPoints: 2
+                            mouseEnabled: false
                             property real horizontalTravel: 0
                             property real verticalTravel: 0
                             property point startPosition: Qt.point(0, 0)
-                            onPointChanged: {
-                                if (active) {
-                                    horizontalTravel = point.position.x - startPosition.x
-                                    verticalTravel = Math.abs(point.position.y - startPosition.y)
-                                }
+                            property point lastPosition: Qt.point(0, 0)
+                            property bool singleTouchActive: false
+                            property bool pinchWasActive: false
+                            property real pinchStartDistance: 1
+                            property point pinchStartCenter: Qt.point(0, 0)
+                            property real pinchStartZoom: 1
+                            property real pinchStartPanX: 0
+                            property real pinchStartPanY: 0
+
+                            function resetTouchGesture() {
+                                horizontalTravel = 0
+                                verticalTravel = 0
+                                singleTouchActive = false
+                                pinchWasActive = false
+                                page.previewPinching = false
                             }
+
+                            function handleTouches(points) {
+                                const activePoints = []
+                                for (let index = 0; index < points.length; ++index) {
+                                    if (points[index].pressed)
+                                        activePoints.push(points[index])
+                                }
+
+                                if (activePoints.length >= 2) {
+                                    const first = activePoints[0]
+                                    const second = activePoints[1]
+                                    const deltaX = second.x - first.x
+                                    const deltaY = second.y - first.y
+                                    const distance = Math.max(1,
+                                                              Math.sqrt(deltaX * deltaX
+                                                                        + deltaY * deltaY))
+                                    const center = Qt.point((first.x + second.x) / 2,
+                                                            (first.y + second.y) / 2)
+                                    if (!page.previewPinching) {
+                                        page.previewPinching = true
+                                        pinchWasActive = true
+                                        pinchStartDistance = distance
+                                        pinchStartCenter = center
+                                        pinchStartZoom = page.previewZoom
+                                        pinchStartPanX = page.previewPanX
+                                        pinchStartPanY = page.previewPanY
+                                    } else {
+                                        page.applyPreviewPinch(pinchStartZoom,
+                                                               pinchStartPanX,
+                                                               pinchStartPanY,
+                                                               pinchStartCenter.x,
+                                                               pinchStartCenter.y,
+                                                               distance / pinchStartDistance,
+                                                               center.x - pinchStartCenter.x,
+                                                               center.y - pinchStartCenter.y)
+                                    }
+                                    lastPosition = center
+                                    return
+                                }
+
+                                if (activePoints.length === 1) {
+                                    const point = activePoints[0]
+                                    if (page.previewPinching) {
+                                        page.previewPinching = false
+                                        singleTouchActive = false
+                                    }
+                                    if (!singleTouchActive) {
+                                        singleTouchActive = true
+                                        startPosition = Qt.point(point.x, point.y)
+                                        lastPosition = startPosition
+                                    } else if (!pinchWasActive) {
+                                        if (page.previewZoom > 1.001) {
+                                            page.panPreviewBy(point.x - lastPosition.x,
+                                                              point.y - lastPosition.y)
+                                        } else {
+                                            horizontalTravel = point.x - startPosition.x
+                                            verticalTravel = Math.abs(point.y - startPosition.y)
+                                        }
+                                        lastPosition = Qt.point(point.x, point.y)
+                                    }
+                                    return
+                                }
+
+                                if (singleTouchActive && !pinchWasActive)
+                                    page.finishPreviewSwipe(horizontalTravel, verticalTravel)
+                                resetTouchGesture()
+                            }
+
+                            onTouchUpdated: function(points) {
+                                handleTouches(points)
+                            }
+                            onCanceled: function(points) {
+                                resetTouchGesture()
+                            }
+                            onGestureStarted: function(gesture) {
+                                gesture.grab()
+                            }
+                        }
+                        DragHandler {
+                            id: previewMousePan
+                            objectName: "previewMousePan"
+                            target: null
+                            enabled: page.previewZoom > 1.001
+                            acceptedDevices: PointerDevice.Mouse
+                            acceptedButtons: Qt.LeftButton
+                            cursorShape: active ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+                            property real startPanX: 0
+                            property real startPanY: 0
                             onActiveChanged: {
                                 if (active) {
-                                    horizontalTravel = 0
-                                    verticalTravel = 0
-                                    startPosition = point.position
-                                } else {
-                                    page.finishPreviewSwipe(horizontalTravel, verticalTravel)
-                                    horizontalTravel = 0
-                                    verticalTravel = 0
+                                    startPanX = page.previewPanX
+                                    startPanY = page.previewPanY
                                 }
                             }
+                            onActiveTranslationChanged: {
+                                if (active) {
+                                    page.setPreviewPan(startPanX + activeTranslation.x,
+                                                       startPanY + activeTranslation.y)
+                                }
+                            }
+                        }
+                        PinchHandler {
+                            id: previewTouchpadPinch
+                            objectName: "previewTouchpadPinch"
+                            target: null
+                            acceptedDevices: PointerDevice.TouchPad
+                            rotationAxis.enabled: false
+                            property real startZoom: 1
+                            property real startPanX: 0
+                            property real startPanY: 0
+                            property point startFocus: Qt.point(0, 0)
+
+                            function applyPinch() {
+                                if (!active)
+                                    return
+                                page.applyPreviewPinch(startZoom, startPanX, startPanY,
+                                                       startFocus.x, startFocus.y,
+                                                       activeScale,
+                                                       activeTranslation.x,
+                                                       activeTranslation.y)
+                            }
+
+                            onActiveChanged: {
+                                page.previewPinching = active
+                                if (active) {
+                                    startZoom = page.previewZoom
+                                    startPanX = page.previewPanX
+                                    startPanY = page.previewPanY
+                                    startFocus = centroid.position
+                                } else {
+                                    page.setPreviewPan(page.previewPanX, page.previewPanY)
+                                }
+                            }
+                            onActiveScaleChanged: applyPinch()
+                            onActiveTranslationChanged: applyPinch()
                         }
                         WheelHandler {
                             id: previewTouchpadSwipe
@@ -423,10 +650,14 @@ Page {
                                 }
 
                                 event.accepted = true
+                                const fingerDistance = event.inverted ? rawX : -rawX
+                                if (page.previewZoom > 1.001) {
+                                    page.panPreviewBy(fingerDistance, 0)
+                                    return
+                                }
                                 if (gestureTriggered)
                                     return
 
-                                const fingerDistance = event.inverted ? rawX : -rawX
                                 travel += fingerDistance
                                 if (travel >= 70) {
                                     gestureTriggered = true
@@ -441,6 +672,43 @@ Page {
                                     travel = 0
                                     gestureTriggered = false
                                 }
+                            }
+                        }
+                        WheelHandler {
+                            id: previewWheelZoom
+                            objectName: "previewWheelZoom"
+                            target: null
+                            orientation: Qt.Vertical
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            blocking: true
+                            onWheel: function(event) {
+                                const rawX = event.pixelDelta.x !== 0
+                                             ? event.pixelDelta.x
+                                             : event.angleDelta.x
+                                const rawY = event.pixelDelta.y !== 0
+                                             ? event.pixelDelta.y
+                                             : event.angleDelta.y
+                                if (rawY === 0 || Math.abs(rawY) <= Math.abs(rawX)) {
+                                    event.accepted = false
+                                    return
+                                }
+
+                                event.accepted = true
+                                const isTouchpad = point.device
+                                                   && point.device.deviceType
+                                                      === PointerDevice.TouchPad
+                                const hasPixelDelta = event.pixelDelta.x !== 0
+                                                      || event.pixelDelta.y !== 0
+                                if (isTouchpad || hasPixelDelta) {
+                                    if (page.previewZoom > 1.001) {
+                                        const fingerDistance = event.inverted ? rawY : -rawY
+                                        page.panPreviewBy(0, fingerDistance)
+                                    }
+                                    return
+                                }
+
+                                const steps = event.angleDelta.y / 120
+                                page.zoomPreviewBy(Math.pow(1.2, steps), event.x, event.y)
                             }
                         }
                     }
@@ -474,19 +742,70 @@ Page {
             Item {
                 objectName: "previewBottomControls"
                 Layout.fillWidth: true
-                Layout.preferredHeight: 34
+                Layout.preferredHeight: 46
 
-                Label {
-                    objectName: "previewCounter"
+                RowLayout {
+                    objectName: "previewBottomControlRow"
                     anchors.centerIn: parent
-                    visible: app && app.screenshots.length > 1
-                    text: (page.previewScreenshotIndex + 1) + " / " + app.screenshots.length
-                    color: window.textColor
-                    padding: 6
-                    background: Rectangle {
-                        radius: 5
-                        color: window.raisedSurfaceColor
-                        border.color: window.borderColor
+                    spacing: 6
+
+                    ToolButton {
+                        objectName: "previewZoomOutButton"
+                        Layout.preferredWidth: 44
+                        Layout.preferredHeight: 44
+                        text: "−"
+                        font.pixelSize: 24
+                        enabled: page.previewZoom > 1.001
+                        Accessible.name: "Zoom out"
+                        onClicked: page.zoomPreviewBy(1 / 1.25,
+                                                      previewImageFrame.width / 2,
+                                                      previewImageFrame.height / 2)
+                    }
+                    Label {
+                        objectName: "previewZoomLabel"
+                        Layout.preferredWidth: 56
+                        horizontalAlignment: Text.AlignHCenter
+                        text: Math.round(page.previewZoom * 100) + "%"
+                        color: window.textColor
+                    }
+                    ToolButton {
+                        objectName: "previewZoomInButton"
+                        Layout.preferredWidth: 44
+                        Layout.preferredHeight: 44
+                        text: "+"
+                        font.pixelSize: 22
+                        enabled: page.previewZoom < page.maximumPreviewZoom - 0.001
+                        Accessible.name: "Zoom in"
+                        onClicked: page.zoomPreviewBy(1.25,
+                                                      previewImageFrame.width / 2,
+                                                      previewImageFrame.height / 2)
+                    }
+                    ToolButton {
+                        objectName: "previewFitButton"
+                        Layout.preferredHeight: 44
+                        text: "Fit"
+                        enabled: page.previewZoom > 1.001
+                        Accessible.name: "Fit screenshot to preview"
+                        onClicked: page.resetPreviewTransform()
+                    }
+                    Rectangle {
+                        Layout.preferredWidth: 1
+                        Layout.preferredHeight: 24
+                        Layout.leftMargin: 4
+                        Layout.rightMargin: 4
+                        color: window.borderColor
+                    }
+                    Label {
+                        objectName: "previewCounter"
+                        visible: app && app.screenshots.length > 1
+                        text: (page.previewScreenshotIndex + 1) + " / " + app.screenshots.length
+                        color: window.textColor
+                        padding: 6
+                        background: Rectangle {
+                            radius: 5
+                            color: window.raisedSurfaceColor
+                            border.color: window.borderColor
+                        }
                     }
                 }
             }

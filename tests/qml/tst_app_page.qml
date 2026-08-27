@@ -98,7 +98,7 @@ TestCase {
         compare(closeButton.parent.objectName, "previewTopControls")
         const counter = findChild(preview, "previewCounter")
         verify(counter !== null)
-        compare(counter.parent.objectName, "previewBottomControls")
+        compare(counter.parent.objectName, "previewBottomControlRow")
         mouseClick(closeButton, closeButton.width / 2, closeButton.height / 2)
         tryCompare(preview, "visible", false)
     }
@@ -177,7 +177,9 @@ TestCase {
         verify(touchGesture !== null)
         verify(touchpadGesture !== null)
         verify(previewImage !== null)
-        verify((touchGesture.acceptedDevices & PointerDevice.TouchScreen) !== 0)
+        compare(touchGesture.minimumTouchPoints, 1)
+        compare(touchGesture.maximumTouchPoints, 2)
+        compare(touchGesture.mouseEnabled, false)
         verify((touchpadGesture.acceptedDevices & PointerDevice.TouchPad) !== 0)
         verify((touchpadGesture.acceptedDevices & PointerDevice.Mouse) !== 0)
         compare(touchpadGesture.blocking, true)
@@ -224,5 +226,150 @@ TestCase {
                    Qt.NoButton)
         compare(appPage.previewScreenshotIndex, 0)
         compare(String(previewImage.source), String(appPage.app.screenshots[0]))
+    }
+
+    function test_preview_zoom_controls_and_cursor_centering() {
+        appPage.openScreenshot(0)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "visible", true)
+
+        const frame = findChild(preview, "previewImageFrame")
+        const gestureSurface = findChild(preview, "previewGestureSurface")
+        const previewImage = findChild(preview, "previewImage")
+        const zoomInButton = findChild(preview, "previewZoomInButton")
+        const zoomOutButton = findChild(preview, "previewZoomOutButton")
+        const fitButton = findChild(preview, "previewFitButton")
+        const zoomLabel = findChild(preview, "previewZoomLabel")
+        verify(frame !== null)
+        verify(gestureSurface !== null)
+        verify(previewImage !== null)
+        verify(zoomInButton !== null)
+        verify(zoomOutButton !== null)
+        verify(fitButton !== null)
+        verify(zoomLabel !== null)
+        tryCompare(previewImage, "status", Image.Ready)
+        compare(appPage.previewZoom, 1)
+        compare(zoomLabel.text, "100%")
+        compare(zoomInButton.parent.objectName, "previewBottomControlRow")
+
+        const focusX = frame.width / 2 + 50
+        const focusY = frame.height / 2 + 30
+        const centerX = frame.width / 2
+        const centerY = frame.height / 2
+        const sourceXBefore = centerX + (focusX - centerX - appPage.previewPanX)
+                                           / appPage.previewZoom
+        const sourceYBefore = centerY + (focusY - centerY - appPage.previewPanY)
+                                           / appPage.previewZoom
+        appPage.setPreviewZoom(2, focusX, focusY)
+        const sourceXAfter = centerX + (focusX - centerX - appPage.previewPanX)
+                                          / appPage.previewZoom
+        const sourceYAfter = centerY + (focusY - centerY - appPage.previewPanY)
+                                          / appPage.previewZoom
+        compare(appPage.previewZoom, 2)
+        compare(previewImage.scale, 2)
+        verify(Math.abs(sourceXAfter - sourceXBefore) < 0.01)
+        verify(Math.abs(sourceYAfter - sourceYBefore) < 0.01)
+        compare(appPage.finishPreviewSwipe(-120, 5), false)
+
+        mouseClick(fitButton, fitButton.width / 2, fitButton.height / 2)
+        compare(appPage.previewZoom, 1)
+        compare(appPage.previewPanX, 0)
+        compare(appPage.previewPanY, 0)
+        mouseWheel(gestureSurface,
+                   focusX,
+                   focusY,
+                   0,
+                   120,
+                   Qt.NoButton)
+        compare(appPage.previewZoom, 1.2)
+        mouseClick(fitButton, fitButton.width / 2, fitButton.height / 2)
+        mouseClick(zoomInButton, zoomInButton.width / 2, zoomInButton.height / 2)
+        compare(appPage.previewZoom, 1.25)
+        mouseClick(zoomOutButton, zoomOutButton.width / 2, zoomOutButton.height / 2)
+        compare(appPage.previewZoom, 1)
+    }
+
+    function test_preview_has_touch_pinch_and_pan_support() {
+        appPage.openScreenshot(0)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "visible", true)
+
+        const frame = findChild(preview, "previewImageFrame")
+        const gestureSurface = findChild(preview, "previewGestureSurface")
+        const previewImage = findChild(preview, "previewImage")
+        const touchpadPinch = findChild(preview, "previewTouchpadPinch")
+        const touchPan = findChild(preview, "previewTouchSwipe")
+        const mousePan = findChild(preview, "previewMousePan")
+        verify(frame !== null)
+        verify(gestureSurface !== null)
+        verify(previewImage !== null)
+        verify(touchpadPinch !== null)
+        verify(touchPan !== null)
+        verify(mousePan !== null)
+        verify((touchpadPinch.acceptedDevices & PointerDevice.TouchPad) !== 0)
+        compare(touchPan.minimumTouchPoints, 1)
+        compare(touchPan.maximumTouchPoints, 2)
+        compare(touchPan.mouseEnabled, false)
+        verify((mousePan.acceptedDevices & PointerDevice.Mouse) !== 0)
+        tryCompare(previewImage, "status", Image.Ready)
+
+        const centerX = gestureSurface.width / 2
+        const centerY = gestureSurface.height / 2
+        let pinch = touchEvent(gestureSurface)
+        pinch.press(0, gestureSurface, centerX - 40, centerY).commit()
+        pinch.stationary(0)
+             .press(1, gestureSurface, centerX + 40, centerY).commit()
+        pinch.move(0, gestureSurface, centerX - 60, centerY)
+             .move(1, gestureSurface, centerX + 60, centerY)
+             .commit()
+        pinch.move(0, gestureSurface, centerX - 100, centerY)
+             .move(1, gestureSurface, centerX + 100, centerY)
+             .commit()
+        tryVerify(function() { return appPage.previewZoom > 1.5 })
+        pinch.release(0, gestureSurface, centerX - 100, centerY)
+             .release(1, gestureSurface, centerX + 100, centerY)
+             .commit()
+
+        appPage.resetPreviewTransform()
+        appPage.setPreviewZoom(2, centerX, centerY)
+        const panXBeforeTouch = appPage.previewPanX
+        const panYBeforeTouch = appPage.previewPanY
+        let pan = touchEvent(gestureSurface)
+        pan.press(0, gestureSurface, centerX, centerY).commit()
+        pan.move(0, gestureSurface, centerX + 40, centerY + 24).commit()
+        pan.release(0, gestureSurface, centerX + 40, centerY + 24).commit()
+        verify(appPage.previewPanX > panXBeforeTouch)
+        verify(appPage.previewPanY > panYBeforeTouch)
+
+        appPage.resetPreviewTransform()
+        appPage.applyPreviewPinch(1, 0, 0,
+                                  frame.width / 2, frame.height / 2,
+                                  2, 24, 16)
+        compare(appPage.previewZoom, 2)
+        compare(appPage.previewPanX, 24)
+        compare(appPage.previewPanY, 16)
+        appPage.panPreviewBy(-10, -6)
+        compare(appPage.previewPanX, 14)
+        compare(appPage.previewPanY, 10)
+
+        appPage.movePreview(1)
+        compare(appPage.previewZoom, 1)
+        compare(appPage.previewPanX, 0)
+        compare(appPage.previewPanY, 0)
+    }
+
+    function test_preview_touch_swipe_changes_one_screenshot_when_fitted() {
+        appPage.openScreenshot(0)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "visible", true)
+        const gestureSurface = findChild(preview, "previewGestureSurface")
+        verify(gestureSurface !== null)
+
+        const y = gestureSurface.height / 2
+        let swipe = touchEvent(gestureSurface)
+        swipe.press(0, gestureSurface, gestureSurface.width * 0.75, y).commit()
+        swipe.move(0, gestureSurface, gestureSurface.width * 0.2, y).commit()
+        swipe.release(0, gestureSurface, gestureSurface.width * 0.2, y).commit()
+        compare(appPage.previewScreenshotIndex, 1)
     }
 }
