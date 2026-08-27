@@ -309,11 +309,21 @@ pub fn to_json(apps: &[App]) -> String {
             .map(|value| escape_json(value))
             .collect::<Vec<_>>()
             .join(",");
+        let search_name = app.name.to_lowercase();
+        let search_summary = app.summary.to_lowercase();
+        let search_description = app.description.to_lowercase();
+        let search_metadata =
+            format!("{} {} {}", app.developer, app.id, app.category).to_lowercase();
+        let search_haystack =
+            format!("{search_name} {search_summary} {search_description} {search_metadata}");
         output.push_str(&format!(
-            "{{\"id\":{},\"name\":{},\"summary\":{},\"description\":{},\"icon\":{},\"category\":{},\"developer\":{},\"license\":{},\"homepage\":{},\"screenshots\":[{}]}}",
+            "{{\"id\":{},\"name\":{},\"summary\":{},\"description\":{},\"icon\":{},\"category\":{},\"developer\":{},\"license\":{},\"homepage\":{},\"screenshots\":[{}],\"searchName\":{},\"searchSummary\":{},\"searchDescription\":{},\"searchMetadata\":{},\"searchHaystack\":{}}}",
             escape_json(&app.id), escape_json(&app.name), escape_json(&app.summary),
             escape_json(&app.description), escape_json(&app.icon), escape_json(&app.category),
-            escape_json(&app.developer), escape_json(&app.license), escape_json(&app.homepage), screenshots
+            escape_json(&app.developer), escape_json(&app.license), escape_json(&app.homepage), screenshots,
+            escape_json(&search_name), escape_json(&search_summary),
+            escape_json(&search_description), escape_json(&search_metadata),
+            escape_json(&search_haystack)
         ));
     }
     output.push(']');
@@ -342,11 +352,12 @@ mod tests {
     fn serializes_escaped_strings() {
         let app = App {
             id: "a\"b".into(),
-            name: "line\nname".into(),
+            name: "Line\nName".into(),
             ..App::default()
         };
         let json = to_json(&[app]);
         assert!(json.contains("a\\\"b"));
-        assert!(json.contains("line\\nname"));
+        assert!(json.contains("Line\\nName"));
+        assert!(json.contains("\"searchName\":\"line\\nname\""));
     }
 }

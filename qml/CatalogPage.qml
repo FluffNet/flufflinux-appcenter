@@ -23,9 +23,7 @@ Page {
         const query = window.searchText.trim().toLowerCase()
         const matches = window.catalog.filter(function(app) {
             const categoryMatches = window.selectedCategory === "All Apps" || app.category === window.selectedCategory
-            const haystack = (app.name + " " + app.summary + " " + app.description + " "
-                              + app.developer + " " + app.id + " " + app.category).toLowerCase()
-            return categoryMatches && (!query || haystack.indexOf(query) >= 0)
+            return categoryMatches && (!query || app.searchHaystack.indexOf(query) >= 0)
         })
         if (!query)
             return matches
@@ -45,17 +43,24 @@ Page {
     }
 
     function containsWholeWord(text, query) {
-        const words = text.toLowerCase().split(/[^\p{L}\p{N}]+/u)
-        return words.indexOf(query) >= 0
+        let index = text.indexOf(query)
+        while (index >= 0) {
+            const leftBoundary = index === 0 || !/[\p{L}\p{N}]/u.test(text.charAt(index - 1))
+            const rightIndex = index + query.length
+            const rightBoundary = rightIndex === text.length
+                                  || !/[\p{L}\p{N}]/u.test(text.charAt(rightIndex))
+            if (leftBoundary && rightBoundary)
+                return true
+            index = text.indexOf(query, index + 1)
+        }
+        return false
     }
 
     function searchScore(app, query) {
-        const name = app.name.toLowerCase()
-        const summary = app.summary.toLowerCase()
-        const description = app.description.toLowerCase()
-        const id = app.id.toLowerCase()
-        const developer = app.developer.toLowerCase()
-        const category = app.category.toLowerCase()
+        const name = app.searchName
+        const summary = app.searchSummary
+        const description = app.searchDescription
+        const metadata = app.searchMetadata
         if (name === query) return 0
         if (name.startsWith(query)) return 10
         if (containsWholeWord(name, query)) return 20
@@ -65,9 +70,7 @@ Page {
         if (summary.indexOf(query) >= 0) return 60
         if (containsWholeWord(description, query)) return 70
         if (description.indexOf(query) >= 0) return 80
-        if (developer.indexOf(query) >= 0) return 90
-        if (id.indexOf(query) >= 0) return 100
-        if (category.indexOf(query) >= 0) return 110
+        if (metadata.indexOf(query) >= 0) return 90
         return 120
     }
     header: Control {
@@ -105,13 +108,16 @@ Page {
 
             TextField {
                 id: searchField
+                objectName: "searchField"
                 width: Math.min(420, page.width * 0.38)
                 anchors.right: parent.right
                 anchors.rightMargin: 24
                 anchors.verticalCenter: parent.verticalCenter
-                placeholderText: "Search applications…"; text: window.searchText
+                placeholderText: "Search applications…"
                 color: window.textColor; placeholderTextColor: window.mutedTextColor
                 leftPadding: 17; rightPadding: 17; implicitHeight: 44
+                activeFocusOnPress: true
+                Component.onCompleted: text = window.searchText
                 onTextEdited: searchTimer.restart()
                 Keys.onEscapePressed: {
                     clear()
