@@ -21,6 +21,7 @@ TestCase {
             boundsBehavior: Flickable.StopAtBounds
 
             AppCenter.NaturalWheelScroll {
+                id: naturalWheel
                 scrollTarget: scrollView
             }
         }
@@ -42,5 +43,9 @@ TestCase {
                    Qt.NoButton)
 
         compare(scrollView.contentY, 100)
+    }
+
+    function test_touchpad_is_left_to_native_flickable_scrolling() {
+        compare(naturalWheel.acceptedDevices, PointerDevice.Mouse)
     }
 }

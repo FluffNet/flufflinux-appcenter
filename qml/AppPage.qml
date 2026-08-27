@@ -16,7 +16,6 @@ Page {
         const boundedIndex = Math.max(0, Math.min(screenshots.length - 1, index))
         previewScreenshotIndex = boundedIndex
         previewScreenshot = screenshots[boundedIndex]
-        previewSwipe.setCurrentIndex(boundedIndex)
     }
 
     function openScreenshot(index) {
@@ -26,6 +25,14 @@ Page {
 
     function movePreview(offset) {
         setPreviewIndex(previewScreenshotIndex + offset)
+    }
+
+    function finishPreviewSwipe(horizontalTravel, verticalTravel) {
+        const shouldMove = Math.abs(horizontalTravel) >= 70
+                           && Math.abs(horizontalTravel) > verticalTravel * 1.5
+        if (shouldMove)
+            movePreview(horizontalTravel > 0 ? -1 : 1)
+        return shouldMove
     }
 
     function finishPageSwipe(horizontalTravel, verticalTravel) {
@@ -263,33 +270,19 @@ Page {
         parent: Overlay.overlay
         modal: true
         focus: true
-        readonly property real framePadding: 64
-        readonly property real sourcePreviewWidth: previewSizeProbe.status === Image.Ready
-                                                   && previewSizeProbe.implicitWidth > 0
-                                                   ? previewSizeProbe.implicitWidth
-                                                   : 1600
-        readonly property real sourcePreviewHeight: previewSizeProbe.status === Image.Ready
-                                                    && previewSizeProbe.implicitHeight > 0
-                                                    ? previewSizeProbe.implicitHeight
-                                                    : 900
-        readonly property real maximumPreviewWidth: Math.max(240,
-                                                              Math.min(1040,
-                                                                       window.width * 0.84)
-                                                              - framePadding)
-        readonly property real maximumPreviewHeight: Math.max(180,
-                                                               Math.min(720,
-                                                                        window.height * 0.82)
-                                                               - framePadding)
-        readonly property real previewScale: Math.min(1,
-                                                       maximumPreviewWidth / sourcePreviewWidth,
-                                                       maximumPreviewHeight / sourcePreviewHeight)
-        width: Math.round(sourcePreviewWidth * previewScale + framePadding)
-        height: Math.round(sourcePreviewHeight * previewScale + framePadding)
+        width: Math.max(360, Math.min(1040, Math.round(window.width * 0.84)))
+        height: Math.max(320, Math.min(720, Math.round(window.height * 0.82)))
         x: Math.round((window.width - width) / 2)
         y: Math.round((window.height - height) / 2)
         padding: 14
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        onOpened: {
+            previewTouchpadSwipe.travel = 0
+            previewTouchpadSwipe.gestureTriggered = false
+        }
         onClosed: {
+            previewTouchpadSwipe.travel = 0
+            previewTouchpadSwipe.gestureTriggered = false
             page.previewScreenshot = ""
             page.previewScreenshotIndex = -1
         }
@@ -300,151 +293,201 @@ Page {
             border.color: window.borderColor
             border.width: 1
         }
-        contentItem: Item {
-            Image {
-                id: previewSizeProbe
-                objectName: "previewSizeProbe"
-                source: page.previewScreenshot
-                asynchronous: true
-                visible: false
-            }
-            SwipeView {
-                id: previewSwipe
-                objectName: "previewSwipe"
-                anchors.fill: parent
-                anchors.margins: 8
-                clip: true
-                interactive: count > 1
-                onCurrentIndexChanged: {
-                    if (currentIndex >= 0 && app && currentIndex < app.screenshots.length) {
-                        page.previewScreenshotIndex = currentIndex
-                        page.previewScreenshot = app.screenshots[currentIndex]
-                    }
-                }
-                Repeater {
-                    model: app ? app.screenshots : []
-                    delegate: Item {
-                        required property string modelData
-                        Image {
-                            id: previewPageImage
-                            objectName: "previewPageImage"
-                            anchors.fill: parent
-                            anchors.margins: 18
-                            source: modelData
-                            asynchronous: true
-                            fillMode: Image.PreserveAspectFit
-                        }
-                        BusyIndicator {
-                            anchors.centerIn: parent
-                            running: previewPageImage.status === Image.Loading
-                            visible: running
-                        }
-                    }
-                }
-            }
+        contentItem: ColumnLayout {
+            spacing: 8
+
             Item {
-                anchors.fill: previewSwipe
-                z: 1
+                objectName: "previewTopControls"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 42
 
-                WheelHandler {
-                    id: previewTouchpadSwipe
-                    objectName: "previewTouchpadSwipe"
-                    target: null
-                    orientation: Qt.Horizontal
-                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                    blocking: true
-                    property real travel: 0
-                    onWheel: function(event) {
-                        const rawX = event.pixelDelta.x !== 0
-                                     ? event.pixelDelta.x
-                                     : event.angleDelta.x / 2
-                        const rawY = event.pixelDelta.y !== 0
-                                     ? event.pixelDelta.y
-                                     : event.angleDelta.y / 2
-                        if (rawX === 0 || Math.abs(rawX) <= Math.abs(rawY)) {
-                            event.accepted = false
-                            return
-                        }
-
-                        event.accepted = true
-                        const fingerDistance = event.inverted ? rawX : -rawX
-                        travel += fingerDistance
-                        if (travel >= 70) {
-                            travel = 0
-                            page.movePreview(-1)
-                        } else if (travel <= -70) {
-                            travel = 0
-                            page.movePreview(1)
-                        }
-                    }
-                    onActiveChanged: {
-                        if (!active)
-                            travel = 0
+                ToolButton {
+                    objectName: "previewCloseButton"
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 40
+                    height: 40
+                    text: "×"
+                    font.pixelSize: 24
+                    Accessible.name: "Close screenshot preview"
+                    onClicked: screenshotPreview.close()
+                    palette.buttonText: window.textColor
+                    background: Rectangle {
+                        radius: width / 2
+                        color: parent.hovered ? window.hoverColor : window.raisedSurfaceColor
+                        border.color: window.borderColor
                     }
                 }
             }
-            ToolButton {
-                objectName: "previewPreviousButton"
-                anchors.left: parent.left
-                anchors.leftMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                text: "←"
-                font.pixelSize: 28
-                visible: page.previewScreenshotIndex > 0
-                Accessible.name: "Previous screenshot"
-                onClicked: page.movePreview(-1)
-                palette.buttonText: window.textColor
-                background: Rectangle {
-                    radius: width / 2
-                    color: parent.hovered ? window.hoverColor : window.raisedSurfaceColor
-                    border.color: window.borderColor
+
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: 8
+
+                Item {
+                    objectName: "previewPreviousControls"
+                    Layout.preferredWidth: 46
+                    Layout.fillHeight: true
+
+                    ToolButton {
+                        objectName: "previewPreviousButton"
+                        anchors.centerIn: parent
+                        width: 42
+                        height: 42
+                        text: "←"
+                        font.pixelSize: 25
+                        visible: page.previewScreenshotIndex > 0
+                        Accessible.name: "Previous screenshot"
+                        onClicked: page.movePreview(-1)
+                        palette.buttonText: window.textColor
+                        background: Rectangle {
+                            radius: width / 2
+                            color: parent.hovered ? window.hoverColor : window.raisedSurfaceColor
+                            border.color: window.borderColor
+                        }
+                    }
+                }
+
+                Item {
+                    id: previewImageFrame
+                    objectName: "previewImageFrame"
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+
+                    Image {
+                        id: previewImage
+                        objectName: "previewImage"
+                        anchors.fill: parent
+                        source: page.previewScreenshot
+                        asynchronous: true
+                        fillMode: Image.PreserveAspectFit
+                    }
+                    BusyIndicator {
+                        anchors.centerIn: parent
+                        running: previewImage.status === Image.Loading
+                        visible: running
+                    }
+                    Item {
+                        id: previewGestureSurface
+                        objectName: "previewGestureSurface"
+                        anchors.fill: parent
+
+                        PointHandler {
+                            id: previewTouchSwipe
+                            objectName: "previewTouchSwipe"
+                            target: null
+                            acceptedDevices: PointerDevice.TouchScreen
+                            acceptedButtons: Qt.NoButton
+                            property real horizontalTravel: 0
+                            property real verticalTravel: 0
+                            property point startPosition: Qt.point(0, 0)
+                            onPointChanged: {
+                                if (active) {
+                                    horizontalTravel = point.position.x - startPosition.x
+                                    verticalTravel = Math.abs(point.position.y - startPosition.y)
+                                }
+                            }
+                            onActiveChanged: {
+                                if (active) {
+                                    horizontalTravel = 0
+                                    verticalTravel = 0
+                                    startPosition = point.position
+                                } else {
+                                    page.finishPreviewSwipe(horizontalTravel, verticalTravel)
+                                    horizontalTravel = 0
+                                    verticalTravel = 0
+                                }
+                            }
+                        }
+                        WheelHandler {
+                            id: previewTouchpadSwipe
+                            objectName: "previewTouchpadSwipe"
+                            target: null
+                            orientation: Qt.Horizontal
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                            blocking: true
+                            property real travel: 0
+                            property bool gestureTriggered: false
+                            onWheel: function(event) {
+                                const rawX = event.pixelDelta.x !== 0
+                                             ? event.pixelDelta.x
+                                             : event.angleDelta.x / 2
+                                const rawY = event.pixelDelta.y !== 0
+                                             ? event.pixelDelta.y
+                                             : event.angleDelta.y / 2
+                                if (rawX === 0 || Math.abs(rawX) <= Math.abs(rawY)) {
+                                    event.accepted = false
+                                    return
+                                }
+
+                                event.accepted = true
+                                if (gestureTriggered)
+                                    return
+
+                                const fingerDistance = event.inverted ? rawX : -rawX
+                                travel += fingerDistance
+                                if (travel >= 70) {
+                                    gestureTriggered = true
+                                    page.movePreview(-1)
+                                } else if (travel <= -70) {
+                                    gestureTriggered = true
+                                    page.movePreview(1)
+                                }
+                            }
+                            onActiveChanged: {
+                                if (!active) {
+                                    travel = 0
+                                    gestureTriggered = false
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Item {
+                    objectName: "previewNextControls"
+                    Layout.preferredWidth: 46
+                    Layout.fillHeight: true
+
+                    ToolButton {
+                        objectName: "previewNextButton"
+                        anchors.centerIn: parent
+                        width: 42
+                        height: 42
+                        text: "→"
+                        font.pixelSize: 25
+                        visible: app && page.previewScreenshotIndex < app.screenshots.length - 1
+                        Accessible.name: "Next screenshot"
+                        onClicked: page.movePreview(1)
+                        palette.buttonText: window.textColor
+                        background: Rectangle {
+                            radius: width / 2
+                            color: parent.hovered ? window.hoverColor : window.raisedSurfaceColor
+                            border.color: window.borderColor
+                        }
+                    }
                 }
             }
-            ToolButton {
-                objectName: "previewNextButton"
-                anchors.right: parent.right
-                anchors.rightMargin: 8
-                anchors.verticalCenter: parent.verticalCenter
-                text: "→"
-                font.pixelSize: 28
-                visible: app && page.previewScreenshotIndex < app.screenshots.length - 1
-                Accessible.name: "Next screenshot"
-                onClicked: page.movePreview(1)
-                palette.buttonText: window.textColor
-                background: Rectangle {
-                    radius: width / 2
-                    color: parent.hovered ? window.hoverColor : window.raisedSurfaceColor
-                    border.color: window.borderColor
-                }
-            }
-            Label {
-                anchors.horizontalCenter: parent.horizontalCenter
-                anchors.bottom: parent.bottom
-                anchors.bottomMargin: 8
-                visible: app && app.screenshots.length > 1
-                text: (page.previewScreenshotIndex + 1) + " / " + app.screenshots.length
-                color: window.textColor
-                padding: 7
-                background: Rectangle {
-                    radius: 5
-                    color: window.raisedSurfaceColor
-                    border.color: window.borderColor
-                }
-            }
-            ToolButton {
-                objectName: "previewCloseButton"
-                anchors.top: parent.top
-                anchors.right: parent.right
-                anchors.margins: 8
-                text: "×"
-                font.pixelSize: 26
-                Accessible.name: "Close screenshot preview"
-                onClicked: screenshotPreview.close()
-                palette.buttonText: window.textColor
-                background: Rectangle {
-                    radius: width / 2
-                    color: parent.hovered ? window.hoverColor : window.raisedSurfaceColor
-                    border.color: window.borderColor
+
+            Item {
+                objectName: "previewBottomControls"
+                Layout.fillWidth: true
+                Layout.preferredHeight: 34
+
+                Label {
+                    objectName: "previewCounter"
+                    anchors.centerIn: parent
+                    visible: app && app.screenshots.length > 1
+                    text: (page.previewScreenshotIndex + 1) + " / " + app.screenshots.length
+                    color: window.textColor
+                    padding: 6
+                    background: Rectangle {
+                        radius: 5
+                        color: window.raisedSurfaceColor
+                        border.color: window.borderColor
+                    }
                 }
             }
         }

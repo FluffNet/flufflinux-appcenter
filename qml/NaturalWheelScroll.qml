@@ -6,9 +6,19 @@ WheelHandler {
 
     target: null
     orientation: Qt.Vertical
-    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+    // A physical wheel benefits from a predictable step. Touchpads stay with
+    // Flickable's native pixel-based path so their scrolling keeps its flow.
+    acceptedDevices: PointerDevice.Mouse
 
     onWheel: function(event) {
+        const isTouchpad = point.device
+                           && point.device.deviceType === PointerDevice.TouchPad
+        const hasPixelDelta = event.pixelDelta.x !== 0 || event.pixelDelta.y !== 0
+        if (isTouchpad || hasPixelDelta) {
+            event.accepted = false
+            return
+        }
+
         const rawX = event.pixelDelta.x !== 0
                      ? event.pixelDelta.x
                      : event.angleDelta.x / 120 * wheelStep

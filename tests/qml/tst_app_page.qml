@@ -40,7 +40,9 @@ TestCase {
                 homepage: "",
                 screenshots: [
                     "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23820101'/%3E%3C/svg%3E",
-                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23e05562'/%3E%3C/svg%3E"
+                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23e05562'/%3E%3C/svg%3E",
+                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%230066cc'/%3E%3C/svg%3E",
+                    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23009955'/%3E%3C/svg%3E"
                 ]
             })
         }
@@ -64,34 +66,39 @@ TestCase {
 
         const preview = appPage.screenshotPreviewDialog
         tryCompare(preview, "visible", true)
-        const sizeProbe = findChild(preview, "previewSizeProbe")
-        verify(sizeProbe !== null)
-        tryCompare(sizeProbe, "status", Image.Ready)
         compare(appPage.previewScreenshot, screenshotButton.modelData)
         compare(appPage.previewScreenshotIndex, 0)
         verify(preview.width <= window.width * 0.85)
         verify(preview.height <= window.height * 0.83)
         verify(preview.x >= window.width * 0.07)
         verify(preview.y >= window.height * 0.07)
-        const fittedAspect = (preview.width - preview.framePadding)
-                             / (preview.height - preview.framePadding)
-        verify(Math.abs(fittedAspect - 640 / 360) < 0.02)
+
+        const previewImage = findChild(preview, "previewImage")
+        verify(previewImage !== null)
+        compare(String(previewImage.source), String(appPage.app.screenshots[0]))
 
         const nextButton = findChild(preview, "previewNextButton")
         verify(nextButton !== null)
         verify(nextButton.visible)
-        compare(nextButton.anchors.rightMargin, 8)
+        compare(nextButton.parent.objectName, "previewNextControls")
         mouseClick(nextButton, nextButton.width / 2, nextButton.height / 2)
         compare(appPage.previewScreenshotIndex, 1)
+        compare(String(previewImage.source), String(appPage.app.screenshots[1]))
 
         const previousButton = findChild(preview, "previewPreviousButton")
         verify(previousButton !== null)
         verify(previousButton.visible)
+        compare(previousButton.parent.objectName, "previewPreviousControls")
         mouseClick(previousButton, previousButton.width / 2, previousButton.height / 2)
         compare(appPage.previewScreenshotIndex, 0)
+        compare(String(previewImage.source), String(appPage.app.screenshots[0]))
 
         const closeButton = findChild(preview, "previewCloseButton")
         verify(closeButton !== null)
+        compare(closeButton.parent.objectName, "previewTopControls")
+        const counter = findChild(preview, "previewCounter")
+        verify(counter !== null)
+        compare(counter.parent.objectName, "previewBottomControls")
         mouseClick(closeButton, closeButton.width / 2, closeButton.height / 2)
         tryCompare(preview, "visible", false)
     }
@@ -162,22 +169,42 @@ TestCase {
         const preview = appPage.screenshotPreviewDialog
         tryCompare(preview, "visible", true)
 
-        const swipeView = findChild(preview, "previewSwipe")
+        const gestureSurface = findChild(preview, "previewGestureSurface")
+        const touchGesture = findChild(preview, "previewTouchSwipe")
         const touchpadGesture = findChild(preview, "previewTouchpadSwipe")
-        verify(swipeView !== null)
-        verify(swipeView.interactive)
+        const previewImage = findChild(preview, "previewImage")
+        verify(gestureSurface !== null)
+        verify(touchGesture !== null)
         verify(touchpadGesture !== null)
+        verify(previewImage !== null)
+        verify((touchGesture.acceptedDevices & PointerDevice.TouchScreen) !== 0)
         verify((touchpadGesture.acceptedDevices & PointerDevice.TouchPad) !== 0)
         verify((touchpadGesture.acceptedDevices & PointerDevice.Mouse) !== 0)
         compare(touchpadGesture.blocking, true)
 
-        mouseWheel(swipeView,
-                   swipeView.width / 2,
-                   swipeView.height / 2,
+        mouseWheel(gestureSurface,
+                   gestureSurface.width / 2,
+                   gestureSurface.height / 2,
                    240,
                    0,
                    Qt.NoButton)
         compare(appPage.previewScreenshotIndex, 1)
+        compare(String(previewImage.source), String(appPage.app.screenshots[1]))
+
+        touchpadGesture.gestureTriggered = true
+        mouseWheel(gestureSurface,
+                   gestureSurface.width / 2,
+                   gestureSurface.height / 2,
+                   240,
+                   0,
+                   Qt.NoButton)
+        compare(appPage.previewScreenshotIndex, 1)
+
+        compare(appPage.finishPreviewSwipe(-100, 10), true)
+        compare(appPage.previewScreenshotIndex, 2)
+        compare(String(previewImage.source), String(appPage.app.screenshots[2]))
+        compare(appPage.finishPreviewSwipe(20, 10), false)
+        compare(appPage.previewScreenshotIndex, 2)
     }
 
     function test_preview_touchpad_swipe_previous() {
@@ -185,14 +212,17 @@ TestCase {
         const preview = appPage.screenshotPreviewDialog
         tryCompare(preview, "visible", true)
 
-        const swipeView = findChild(preview, "previewSwipe")
-        verify(swipeView !== null)
-        mouseWheel(swipeView,
-                   swipeView.width / 2,
-                   swipeView.height / 2,
+        const gestureSurface = findChild(preview, "previewGestureSurface")
+        const previewImage = findChild(preview, "previewImage")
+        verify(gestureSurface !== null)
+        verify(previewImage !== null)
+        mouseWheel(gestureSurface,
+                   gestureSurface.width / 2,
+                   gestureSurface.height / 2,
                    -240,
                    0,
                    Qt.NoButton)
         compare(appPage.previewScreenshotIndex, 0)
+        compare(String(previewImage.source), String(appPage.app.screenshots[0]))
     }
 }
