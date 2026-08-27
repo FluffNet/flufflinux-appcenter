@@ -6,7 +6,7 @@ Page {
     id: page
     background: null
     readonly property var categories: [
-        { name: "All Apps", icon: "applications-all" },
+        { name: "All Apps", label: "Home", icon: "go-home" },
         { name: "Audio & Video", icon: "applications-multimedia" },
         { name: "Development", icon: "applications-development" },
         { name: "Education", icon: "applications-education" },
@@ -180,9 +180,10 @@ Page {
                 DirectWheelScroll { scrollTarget: categoryList; stepSize: 92 }
                 delegate: ItemDelegate {
                     id: categoryButton
+                    objectName: "categoryButton-" + modelData.name
                     required property var modelData
                     width: ListView.view.width; height: 42
-                    text: modelData.name
+                    text: modelData.label || modelData.name
                     icon.name: modelData.icon
                     icon.width: 20; icon.height: 20
                     display: AbstractButton.TextBesideIcon

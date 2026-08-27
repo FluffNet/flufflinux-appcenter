@@ -14,7 +14,19 @@ Page {
         contentItem: RowLayout {
             anchors.leftMargin: 14; anchors.rightMargin: 24
             ToolButton {
-                text: "‹"; font.pixelSize: 30; palette.buttonText: window.textColor
+                objectName: "backButton"
+                text: "Back"
+                icon.name: "go-previous"
+                icon.width: 20
+                icon.height: 20
+                display: AbstractButton.TextBesideIcon
+                implicitWidth: 94
+                leftPadding: 12
+                rightPadding: 14
+                spacing: 7
+                font.pixelSize: 15
+                font.weight: Font.DemiBold
+                palette.buttonText: window.textColor
                 Accessible.name: "Back to app catalog"
                 background: Rectangle {
                     radius: 6

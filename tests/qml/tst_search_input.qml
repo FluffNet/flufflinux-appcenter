@@ -112,4 +112,14 @@ TestCase {
         compare(catalogPage.visibleApps.length, 1)
         compare(catalogPage.visibleApps[0].name, "Minecraft")
     }
+
+    function test_home_label_keeps_all_apps_destination() {
+        const homeButton = findChild(catalogPage, "categoryButton-All Apps")
+        verify(homeButton !== null)
+        compare(homeButton.text, "Home")
+        compare(homeButton.icon.name, "go-home")
+
+        catalogPage.openCategory("All Apps")
+        compare(window.selectedCategory, "All Apps")
+    }
 }

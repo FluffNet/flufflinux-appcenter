@@ -63,4 +63,12 @@ TestCase {
         mouseClick(closeButton, closeButton.width / 2, closeButton.height / 2)
         tryCompare(preview, "visible", false)
     }
+
+    function test_back_control_has_text_and_icon() {
+        const backButton = findChild(appPage, "backButton")
+        verify(backButton !== null)
+        compare(backButton.text, "Back")
+        compare(backButton.icon.name, "go-previous")
+        verify(backButton.width >= 94)
+    }
 }
