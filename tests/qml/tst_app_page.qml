@@ -333,6 +333,7 @@ TestCase {
 
         const frame = findChild(preview, "previewImageFrame")
         const gestureSurface = findChild(preview, "previewGestureSurface")
+        const wheelSurface = appPage.previewWindowWheelSurfaceItem
         const previewImage = findChild(preview, "previewImage")
         const zoomInButton = findChild(preview, "previewZoomInButton")
         const zoomOutButton = findChild(preview, "previewZoomOutButton")
@@ -340,6 +341,7 @@ TestCase {
         const zoomLabel = findChild(preview, "previewZoomLabel")
         verify(frame !== null)
         verify(gestureSurface !== null)
+        verify(wheelSurface !== null)
         verify(previewImage !== null)
         verify(zoomInButton !== null)
         verify(zoomOutButton !== null)
@@ -397,9 +399,11 @@ TestCase {
         compare(appPage.previewZoom, 1)
         compare(appPage.previewPanX, 0)
         compare(appPage.previewPanY, 0)
-        mouseWheel(gestureSurface,
-                   focusX,
-                   focusY,
+        const wheelFocus = gestureSurface.mapToItem(wheelSurface,
+                                                     focusX, focusY)
+        mouseWheel(wheelSurface,
+                   wheelFocus.x,
+                   wheelFocus.y,
                    0,
                    120,
                    Qt.NoButton)
@@ -420,9 +424,9 @@ TestCase {
                     appPage.previewZoom,
                     appPage.previewPanX,
                     appPage.previewPanY)
-        mouseWheel(gestureSurface,
-                   focusX,
-                   focusY,
+        mouseWheel(wheelSurface,
+                   wheelFocus.x,
+                   wheelFocus.y,
                    0,
                    120,
                    Qt.NoButton)
@@ -436,9 +440,9 @@ TestCase {
                         - imagePointBeforeSecondWheel.x) < 0.01)
         verify(Math.abs(imagePointAfterSecondWheel.y
                         - imagePointBeforeSecondWheel.y) < 0.1)
-        mouseWheel(gestureSurface,
-                   focusX,
-                   focusY,
+        mouseWheel(wheelSurface,
+                   wheelFocus.x,
+                   wheelFocus.y,
                    0,
                    -120,
                    Qt.NoButton)
@@ -461,27 +465,53 @@ TestCase {
         const preview = appPage.screenshotPreviewDialog
         tryCompare(preview, "visible", true)
         const gestureSurface = findChild(preview, "previewGestureSurface")
-        const verticalWheel = findChild(preview, "previewVerticalWheel")
+        const verticalWheel = appPage.previewVerticalWheelHandler
+        const wheelSurface = appPage.previewWindowWheelSurfaceItem
+        const closeButton = findChild(preview, "previewCloseButton")
         verify(gestureSurface !== null)
         verify(verticalWheel !== null)
+        verify(wheelSurface !== null)
+        verify(closeButton !== null)
 
-        mouseWheel(gestureSurface,
-                   0,
-                   0,
+        const frameCorner = gestureSurface.mapToItem(wheelSurface, 0, 0)
+        mouseWheel(wheelSurface,
+                   frameCorner.x,
+                   frameCorner.y,
                    0,
                    120,
                    Qt.NoButton)
         compare(appPage.previewScreenshotIndex, 0)
         compare(appPage.previewZoom, 1)
 
-        mouseWheel(gestureSurface,
-                   0,
-                   0,
+        mouseWheel(wheelSurface,
+                   frameCorner.x,
+                   frameCorner.y,
                    0,
                    -120,
                    Qt.NoButton)
         compare(appPage.previewScreenshotIndex, 1)
         compare(appPage.previewZoom, 1)
+
+        const closePoint = closeButton.mapToItem(wheelSurface,
+                                                  closeButton.width / 2,
+                                                  closeButton.height / 2)
+        mouseWheel(wheelSurface,
+                   closePoint.x,
+                   closePoint.y,
+                   0,
+                   120,
+                   Qt.NoButton)
+        compare(appPage.previewScreenshotIndex, 0)
+        compare(preview.visible, true)
+
+        mouseWheel(wheelSurface,
+                   2,
+                   2,
+                   0,
+                   -120,
+                   Qt.NoButton)
+        compare(appPage.previewScreenshotIndex, 1)
+        compare(preview.visible, true)
     }
 
     function test_preview_has_touch_pinch_and_pan_support() {

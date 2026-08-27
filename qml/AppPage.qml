@@ -13,6 +13,8 @@ Page {
     property bool previewPinching: false
     readonly property real maximumPreviewZoom: 5
     readonly property alias screenshotPreviewDialog: screenshotPreview
+    readonly property alias previewVerticalWheelHandler: previewVerticalWheel
+    readonly property alias previewWindowWheelSurfaceItem: previewWindowWheelSurface
 
     function setPreviewIndex(index) {
         const screenshots = app && app.screenshots ? app.screenshots : []
@@ -526,6 +528,66 @@ Page {
         }
     }
 
+    Item {
+        id: previewWindowWheelSurface
+        objectName: "previewWindowWheelSurface"
+        parent: Overlay.overlay
+        anchors.fill: parent
+        visible: screenshotPreview.visible
+        z: screenshotPreview.z + 1
+
+        WheelHandler {
+            id: previewVerticalWheel
+            objectName: "previewVerticalWheel"
+            target: null
+            orientation: Qt.Vertical
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            blocking: true
+            onWheel: function(event) {
+                const rawX = event.pixelDelta.x !== 0
+                             ? event.pixelDelta.x
+                             : event.angleDelta.x
+                const rawY = event.pixelDelta.y !== 0
+                             ? event.pixelDelta.y
+                             : event.angleDelta.y
+                if (rawY === 0 || Math.abs(rawY) <= Math.abs(rawX)) {
+                    event.accepted = false
+                    return
+                }
+
+                const framePoint = previewImageFrame.mapFromItem(
+                                     previewWindowWheelSurface,
+                                     event.x, event.y)
+                const overImage = page.previewPointIsInsideImage(
+                                    framePoint.x, framePoint.y)
+                event.accepted = true
+                const hasPixelDelta = event.pixelDelta.x !== 0
+                                      || event.pixelDelta.y !== 0
+                const isTouchpad = page.wheelEventIsTouchpad(
+                            point.device, hasPixelDelta,
+                            event.angleDelta.x,
+                            event.angleDelta.y)
+                if (isTouchpad) {
+                    if (overImage && page.previewZoom > 1.001) {
+                        const fingerDistance = event.inverted ? rawY : -rawY
+                        page.panPreviewBy(0, fingerDistance)
+                    }
+                    return
+                }
+
+                if (overImage) {
+                    const steps = event.angleDelta.y / 120
+                    page.zoomPreviewBy(Math.pow(1.2, steps),
+                                       framePoint.x, framePoint.y)
+                } else {
+                    // The entire window browses photos while the modal is
+                    // open; only visible photo pixels are reserved for zoom.
+                    page.movePreview(event.angleDelta.y > 0 ? -1 : 1)
+                }
+            }
+        }
+    }
+
     Dialog {
         id: screenshotPreview
         parent: Overlay.overlay
@@ -869,54 +931,6 @@ Page {
                                 if (!active) {
                                     travel = 0
                                     gestureTriggered = false
-                                }
-                            }
-                        }
-                        WheelHandler {
-                            id: previewVerticalWheel
-                            objectName: "previewVerticalWheel"
-                            target: null
-                            orientation: Qt.Vertical
-                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
-                            blocking: true
-                            onWheel: function(event) {
-                                const rawX = event.pixelDelta.x !== 0
-                                             ? event.pixelDelta.x
-                                             : event.angleDelta.x
-                                const rawY = event.pixelDelta.y !== 0
-                                             ? event.pixelDelta.y
-                                             : event.angleDelta.y
-                                if (rawY === 0 || Math.abs(rawY) <= Math.abs(rawX)) {
-                                    event.accepted = false
-                                    return
-                                }
-
-                                event.accepted = true
-                                const hasPixelDelta = event.pixelDelta.x !== 0
-                                                      || event.pixelDelta.y !== 0
-                                const device = point.device
-                                const isTouchpad = page.wheelEventIsTouchpad(
-                                            device, hasPixelDelta,
-                                            event.angleDelta.x,
-                                            event.angleDelta.y)
-                                if (isTouchpad) {
-                                    if (page.previewZoom > 1.001) {
-                                        const fingerDistance = event.inverted ? rawY : -rawY
-                                        page.panPreviewBy(0, fingerDistance)
-                                    }
-                                    return
-                                }
-
-                                if (page.previewPointIsInsideImage(event.x,
-                                                                   event.y)) {
-                                    const steps = event.angleDelta.y / 120
-                                    page.zoomPreviewBy(Math.pow(1.2, steps),
-                                                       event.x,
-                                                       event.y)
-                                } else {
-                                    // In the empty space around the photo, an
-                                    // ordinary mouse wheel browses screenshots.
-                                    page.movePreview(event.angleDelta.y > 0 ? -1 : 1)
                                 }
                             }
                         }
