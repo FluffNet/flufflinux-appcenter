@@ -70,8 +70,10 @@ Page {
                 Label { text: "License"; color: palette.placeholderText; visible: app && app.license }
                 Label { text: app ? app.license : ""; Layout.fillWidth: true; visible: text.length > 0 }
                 Label { text: "Website"; color: palette.placeholderText; visible: app && app.homepage }
-                LinkButton {
+                Button {
                     text: app ? app.homepage : ""; visible: text.length > 0; Layout.fillWidth: true
+                    flat: true
+                    palette.buttonText: palette.link
                     onClicked: Qt.openUrlExternally(text)
                 }
             }
