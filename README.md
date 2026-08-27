@@ -19,6 +19,15 @@ targets. The build fails immediately on a non-Linux host.
 - **System metadata:** uses AppStream catalogs already supplied by Arch Linux,
   Flathub, and other configured software sources.
 
+## Visual design and themes
+
+The interface follows the Fluff Linux design language established by
+`fluffsetup` and `fluffinstall`: spacious layouts, layered surfaces, strong
+headings, and the Fluff red accent. It still respects the active Breeze color
+scheme. Text, panels, borders, hover states, and focus contrast update from the
+Qt palette, and the bundled background artwork switches automatically between
+light and dark variants when the Plasma theme changes.
+
 The Rust package has no third-party crate dependencies.
 
 ## Requirements
