@@ -69,6 +69,23 @@ Page {
         setPreviewPan(previewPanX + x, previewPanY + y)
     }
 
+    function wheelDeviceIsMouse(device) {
+        return device
+                && device.deviceType === PointerDevice.Mouse
+                && device.pointerType !== PointerDevice.Finger
+                && device.maximumPoints <= 1
+    }
+
+    function wheelDeviceIsTouchpad(device, hasPixelDelta) {
+        if (wheelDeviceIsMouse(device))
+            return false
+        return hasPixelDelta
+                || (device
+                    && (device.deviceType === PointerDevice.TouchPad
+                        || device.pointerType === PointerDevice.Finger
+                        || device.maximumPoints > 1))
+    }
+
     function previewPointIsInsideImage(x, y) {
         if (!previewImageFrame || !previewImage
                 || previewImage.status !== Image.Ready)
@@ -91,6 +108,22 @@ Page {
         return Qt.point(x, y)
     }
 
+    function previewImagePointAt(viewX, viewY, zoom, panX, panY) {
+        const centerX = previewImageFrame.width / 2
+        const centerY = previewImageFrame.height / 2
+        return Qt.point(centerX + (viewX - centerX - panX) / zoom,
+                        centerY + (viewY - centerY - panY) / zoom)
+    }
+
+    function previewPanForImagePoint(imagePoint, viewX, viewY, zoom) {
+        const centerX = previewImageFrame.width / 2
+        const centerY = previewImageFrame.height / 2
+        return Qt.point(viewX - centerX
+                        - zoom * (imagePoint.x - centerX),
+                        viewY - centerY
+                        - zoom * (imagePoint.y - centerY))
+    }
+
     function setPreviewZoom(requestedZoom, focusX, focusY) {
         const oldZoom = previewZoom
         const newZoom = Math.max(1, Math.min(maximumPreviewZoom, requestedZoom))
@@ -103,13 +136,14 @@ Page {
         const centerY = previewImageFrame.height / 2
         const safeFocusX = Number.isFinite(focusX) ? focusX : centerX
         const safeFocusY = Number.isFinite(focusY) ? focusY : centerY
-        const ratio = newZoom / oldZoom
-        const nextPanX = safeFocusX - centerX
-                         - ratio * (safeFocusX - centerX - previewPanX)
-        const nextPanY = safeFocusY - centerY
-                         - ratio * (safeFocusY - centerY - previewPanY)
+        const imagePoint = previewImagePointAt(safeFocusX, safeFocusY,
+                                               oldZoom,
+                                               previewPanX, previewPanY)
+        const nextPan = previewPanForImagePoint(imagePoint,
+                                                safeFocusX, safeFocusY,
+                                                newZoom)
         previewZoom = newZoom
-        setPreviewPan(nextPanX, nextPanY)
+        setPreviewPan(nextPan.x, nextPan.y)
     }
 
     function zoomPreviewBy(factor, focusX, focusY) {
@@ -145,6 +179,26 @@ Page {
         if (shouldGoBack)
             window.showCatalog()
         return shouldGoBack
+    }
+
+    function pointIsInsideScreenshotStrip(x, y) {
+        if (!screenshotList || !screenshotList.visible)
+            return false
+        const topLeft = screenshotList.mapToItem(pageSwipeSurface, 0, 0)
+        return x >= topLeft.x && x <= topLeft.x + screenshotList.width
+                && y >= topLeft.y && y <= topLeft.y + screenshotList.height
+    }
+
+    function scrollScreenshotStripBy(fingerDistanceX, hasPixelDelta) {
+        const minimum = screenshotList.originX
+        const maximum = Math.max(minimum,
+                                 minimum + screenshotList.contentWidth
+                                 - screenshotList.width)
+        const scale = hasPixelDelta ? 2.15 : 42
+        screenshotList.contentX = Math.max(minimum,
+                                           Math.min(maximum,
+                                                    screenshotList.contentX
+                                                    - fingerDistanceX * scale))
     }
 
     background: null
@@ -246,6 +300,39 @@ Page {
                 spacing: 16
                 clip: true
                 model: app ? app.screenshots : []
+                WheelHandler {
+                    id: screenshotTouchpadScroll
+                    objectName: "screenshotTouchpadScroll"
+                    target: null
+                    orientation: Qt.Horizontal
+                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    blocking: true
+                    onWheel: function(event) {
+                        const hasPixelDelta = event.pixelDelta.x !== 0
+                                              || event.pixelDelta.y !== 0
+                        if (!page.wheelDeviceIsTouchpad(point.device,
+                                                        hasPixelDelta)) {
+                            event.accepted = false
+                            return
+                        }
+
+                        const rawX = event.pixelDelta.x !== 0
+                                     ? event.pixelDelta.x
+                                     : event.angleDelta.x / 120
+                        const rawY = event.pixelDelta.y !== 0
+                                     ? event.pixelDelta.y
+                                     : event.angleDelta.y / 120
+                        if (rawX === 0 || Math.abs(rawX) <= Math.abs(rawY)) {
+                            event.accepted = false
+                            return
+                        }
+
+                        const fingerDistance = event.inverted ? rawX : -rawX
+                        page.scrollScreenshotStripBy(fingerDistance,
+                                                     hasPixelDelta)
+                        event.accepted = true
+                    }
+                }
                 header: Item {
                     width: screenshotList.singleImage
                            ? Math.max(0, (screenshotList.width
@@ -359,8 +446,9 @@ Page {
             property real travel: 0
             property real verticalTravel: 0
             property point startPosition: Qt.point(0, 0)
+            property bool startedInsideScreenshotStrip: false
             onPointChanged: {
-                if (active) {
+                if (active && !startedInsideScreenshotStrip) {
                     travel = Math.max(travel, point.position.x - startPosition.x)
                     verticalTravel = Math.max(verticalTravel,
                                               Math.abs(point.position.y - startPosition.y))
@@ -371,10 +459,14 @@ Page {
                     travel = 0
                     verticalTravel = 0
                     startPosition = point.position
+                    startedInsideScreenshotStrip = page.pointIsInsideScreenshotStrip(
+                                startPosition.x, startPosition.y)
                 } else {
-                    page.finishPageSwipe(travel, verticalTravel)
+                    if (!startedInsideScreenshotStrip)
+                        page.finishPageSwipe(travel, verticalTravel)
                     travel = 0
                     verticalTravel = 0
+                    startedInsideScreenshotStrip = false
                 }
             }
         }
@@ -388,6 +480,12 @@ Page {
             blocking: false
             property real travel: 0
             onWheel: function(event) {
+                if (page.pointIsInsideScreenshotStrip(event.x, event.y)) {
+                    travel = 0
+                    event.accepted = false
+                    return
+                }
+
                 const rawX = event.pixelDelta.x !== 0
                              ? event.pixelDelta.x
                              : event.angleDelta.x / 2
@@ -780,13 +878,9 @@ Page {
                                 const hasPixelDelta = event.pixelDelta.x !== 0
                                                       || event.pixelDelta.y !== 0
                                 const device = point.device
-                                const isTouchpad = device
-                                                   && (device.deviceType
-                                                       === PointerDevice.TouchPad
-                                                       || device.pointerType
-                                                          === PointerDevice.Finger
-                                                       || device.maximumPoints > 1)
-                                if (isTouchpad || hasPixelDelta) {
+                                const isTouchpad = page.wheelDeviceIsTouchpad(
+                                            device, hasPixelDelta)
+                                if (isTouchpad) {
                                     if (page.previewZoom > 1.001) {
                                         const fingerDistance = event.inverted ? rawY : -rawY
                                         page.panPreviewBy(0, fingerDistance)
@@ -794,12 +888,12 @@ Page {
                                     return
                                 }
 
-                                if (page.previewPointIsInsideImage(point.position.x,
-                                                                   point.position.y)) {
+                                if (page.previewPointIsInsideImage(event.x,
+                                                                   event.y)) {
                                     const steps = event.angleDelta.y / 120
                                     page.zoomPreviewBy(Math.pow(1.2, steps),
-                                                       point.position.x,
-                                                       point.position.y)
+                                                       event.x,
+                                                       event.y)
                                 } else {
                                     // In the empty space around the photo, an
                                     // ordinary mouse wheel browses screenshots.

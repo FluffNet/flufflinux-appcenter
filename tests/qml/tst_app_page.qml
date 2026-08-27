@@ -184,7 +184,15 @@ TestCase {
         compare(touchpadGesture.blocking, false)
 
         const swipeSurface = findChild(appPage, "pageSwipeSurface")
+        const screenshotList = findChild(appPage, "screenshotList")
         verify(swipeSurface !== null)
+        verify(screenshotList !== null)
+        const stripCenter = screenshotList.mapToItem(
+                    swipeSurface,
+                    screenshotList.width / 2,
+                    screenshotList.height / 2)
+        compare(appPage.pointIsInsideScreenshotStrip(stripCenter.x,
+                                                      stripCenter.y), true)
         compare(appPage.finishPageSwipe(280, 10), true)
         compare(window.showCatalogCalled, true)
 
@@ -193,12 +201,42 @@ TestCase {
         compare(window.showCatalogCalled, false)
 
         mouseWheel(swipeSurface,
+                   stripCenter.x,
+                   stripCenter.y,
+                   -240,
+                   0,
+                   Qt.NoButton)
+        compare(window.showCatalogCalled, false)
+
+        mouseWheel(swipeSurface,
                    swipeSurface.width / 2,
-                   swipeSurface.height / 2,
+                   5,
                    -240,
                    0,
                    Qt.NoButton)
         compare(window.showCatalogCalled, true)
+    }
+
+    function test_screenshot_strip_owns_touch_swipes_and_uses_natural_direction() {
+        const screenshotList = findChild(appPage, "screenshotList")
+        verify(screenshotList !== null)
+        tryCompare(screenshotList, "count", 4)
+
+        screenshotList.contentX = 0
+        appPage.scrollScreenshotStripBy(-10, true)
+        compare(screenshotList.contentX, 21.5)
+
+        screenshotList.contentX = 300
+        window.showCatalogCalled = false
+        const y = screenshotList.height / 2
+        let swipe = touchEvent(screenshotList)
+        swipe.press(0, screenshotList, screenshotList.width * 0.3, y).commit()
+        swipe.move(0, screenshotList, screenshotList.width * 0.65, y).commit()
+        swipe.release(0, screenshotList, screenshotList.width * 0.65, y).commit()
+        compare(window.showCatalogCalled, false)
+        // Qt Quick Test does not run ListView's platform touch-flick
+        // recognizer, so the helper above covers direction while this real
+        // touch sequence covers ownership (it must never trigger page-back).
     }
 
     function test_vertical_wheel_scrolls_without_gesture_blocking() {
@@ -311,6 +349,16 @@ TestCase {
         compare(appPage.previewZoom, 1)
         compare(zoomLabel.text, "100%")
         compare(zoomInButton.parent.objectName, "previewBottomControlRow")
+        compare(appPage.wheelDeviceIsTouchpad({
+                    deviceType: PointerDevice.Mouse,
+                    pointerType: PointerDevice.Generic,
+                    maximumPoints: 1
+                }, true), false)
+        compare(appPage.wheelDeviceIsTouchpad({
+                    deviceType: PointerDevice.TouchPad,
+                    pointerType: PointerDevice.Finger,
+                    maximumPoints: 2
+                }, true), true)
 
         const outsideFocus = appPage.mousePreviewZoomFocus(0, 0)
         compare(outsideFocus.x, frame.width / 2)
@@ -356,6 +404,35 @@ TestCase {
                                     / appPage.previewZoom
         verify(Math.abs(sourceXAfterWheel - sourceXBefore) < 0.01)
         verify(Math.abs(sourceYAfterWheel - sourceYBefore) < 0.1)
+
+        const imagePointBeforeSecondWheel = appPage.previewImagePointAt(
+                    focusX, focusY,
+                    appPage.previewZoom,
+                    appPage.previewPanX,
+                    appPage.previewPanY)
+        mouseWheel(gestureSurface,
+                   focusX,
+                   focusY,
+                   0,
+                   120,
+                   Qt.NoButton)
+        compare(appPage.previewZoom, 1.44)
+        const imagePointAfterSecondWheel = appPage.previewImagePointAt(
+                    focusX, focusY,
+                    appPage.previewZoom,
+                    appPage.previewPanX,
+                    appPage.previewPanY)
+        verify(Math.abs(imagePointAfterSecondWheel.x
+                        - imagePointBeforeSecondWheel.x) < 0.01)
+        verify(Math.abs(imagePointAfterSecondWheel.y
+                        - imagePointBeforeSecondWheel.y) < 0.1)
+        mouseWheel(gestureSurface,
+                   focusX,
+                   focusY,
+                   0,
+                   -120,
+                   Qt.NoButton)
+        compare(appPage.previewZoom, 1.2)
         mouseClick(fitButton, fitButton.width / 2, fitButton.height / 2)
         const centeredFocus = appPage.mousePreviewZoomFocus(0, 0)
         appPage.zoomPreviewBy(1.2, centeredFocus.x, centeredFocus.y)
