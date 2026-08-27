@@ -134,7 +134,7 @@ Page {
                 anchors.verticalCenter: parent.verticalCenter
                 placeholderText: "Search applications…"
                 color: window.textColor; placeholderTextColor: window.mutedTextColor
-                leftPadding: 17; rightPadding: 17; implicitHeight: 44
+                leftPadding: 46; rightPadding: 17; implicitHeight: 44
                 activeFocusOnPress: true
                 Component.onCompleted: text = window.searchText
                 onTextEdited: {
@@ -149,6 +149,33 @@ Page {
                     searchTimer.stop()
                     window.searchText = ""
                     window.searchCategoryFilter = "All Apps"
+                }
+                Canvas {
+                    id: searchIcon
+                    objectName: "searchIcon"
+                    anchors.left: parent.left
+                    anchors.leftMargin: 15
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 20
+                    height: 20
+                    opacity: 0.78
+                    antialiasing: true
+                    onPaint: {
+                        const context = getContext("2d")
+                        context.clearRect(0, 0, width, height)
+                        context.strokeStyle = window.mutedTextColor
+                        context.lineWidth = 2
+                        context.lineCap = "round"
+                        context.beginPath()
+                        context.arc(8, 8, 5.25, 0, Math.PI * 2, false)
+                        context.moveTo(11.8, 11.8)
+                        context.lineTo(17, 17)
+                        context.stroke()
+                    }
+                    Connections {
+                        target: window
+                        function onMutedTextColorChanged() { searchIcon.requestPaint() }
+                    }
                 }
                 background: Rectangle {
                     radius: 7

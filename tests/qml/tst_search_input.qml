@@ -122,4 +122,13 @@ TestCase {
         catalogPage.openCategory("All Apps")
         compare(window.selectedCategory, "All Apps")
     }
+
+    function test_search_icon_is_on_the_left() {
+        const searchField = findChild(catalogPage, "searchField")
+        const searchIcon = findChild(searchField, "searchIcon")
+        verify(searchIcon !== null)
+        compare(searchIcon.width, 20)
+        compare(searchIcon.height, 20)
+        verify(searchIcon.x < searchField.leftPadding)
+    }
 }
