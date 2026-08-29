@@ -72,13 +72,30 @@ Page {
     }
 
     function wheelDeviceIsMouse(device) {
+        if (!device || device.pointerType === PointerDevice.Finger)
+            return false
+        const singlePoint = !Number.isFinite(device.maximumPoints)
+                            || device.maximumPoints <= 1
+        if (!singlePoint)
+            return false
+        return device.deviceType === PointerDevice.Mouse
+                || (device.deviceType === PointerDevice.Unknown
+                    && Number.isFinite(device.buttonCount)
+                    && device.buttonCount >= 3)
+    }
+
+    function wheelDeviceIsTouchpad(device) {
         return device
-                && device.deviceType === PointerDevice.Mouse
-                && device.pointerType !== PointerDevice.Finger
-                && device.maximumPoints <= 1
+                && (device.deviceType === PointerDevice.TouchPad
+                    || device.pointerType === PointerDevice.Finger
+                    || device.maximumPoints > 1)
     }
 
     function wheelEventIsMouse(device, angleX, angleY) {
+        // Device metadata wins when Qt/libinput can identify a touchpad. Its
+        // accumulated angle delta can occasionally land on exactly 120 too.
+        if (wheelDeviceIsTouchpad(device))
+            return false
         if (wheelDeviceIsMouse(device))
             return true
 
@@ -94,13 +111,11 @@ Page {
     }
 
     function wheelEventIsTouchpad(device, hasPixelDelta, angleX, angleY) {
+        if (wheelDeviceIsTouchpad(device))
+            return true
         if (wheelEventIsMouse(device, angleX, angleY))
             return false
         return hasPixelDelta
-                || (device
-                    && (device.deviceType === PointerDevice.TouchPad
-                        || device.pointerType === PointerDevice.Finger
-                        || device.maximumPoints > 1))
     }
 
     function previewPointIsInsideImage(x, y) {
@@ -543,6 +558,7 @@ Page {
             orientation: Qt.Vertical
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             blocking: true
+            property bool touchpadGestureActive: false
             onWheel: function(event) {
                 const rawX = event.pixelDelta.x !== 0
                              ? event.pixelDelta.x
@@ -563,11 +579,13 @@ Page {
                 event.accepted = true
                 const hasPixelDelta = event.pixelDelta.x !== 0
                                       || event.pixelDelta.y !== 0
-                const isTouchpad = page.wheelEventIsTouchpad(
+                const isTouchpad = touchpadGestureActive
+                        || page.wheelEventIsTouchpad(
                             point.device, hasPixelDelta,
                             event.angleDelta.x,
                             event.angleDelta.y)
                 if (isTouchpad) {
+                    touchpadGestureActive = true
                     if (overImage && page.previewZoom > 1.001) {
                         const fingerDistance = event.inverted ? rawY : -rawY
                         page.panPreviewBy(0, fingerDistance)
@@ -584,6 +602,10 @@ Page {
                     // open; only visible photo pixels are reserved for zoom.
                     page.movePreview(event.angleDelta.y > 0 ? -1 : 1)
                 }
+            }
+            onActiveChanged: {
+                if (!active)
+                    touchpadGestureActive = false
             }
         }
     }

@@ -358,8 +358,21 @@ TestCase {
         compare(appPage.wheelEventIsTouchpad({
                     deviceType: PointerDevice.TouchPad,
                     pointerType: PointerDevice.Finger,
-                    maximumPoints: 2
-                }, true, 0, 8), true)
+                    maximumPoints: 2,
+                    buttonCount: 1
+                }, true, 0, 120), true)
+        compare(appPage.wheelEventIsTouchpad({
+                    deviceType: PointerDevice.Mouse,
+                    pointerType: PointerDevice.Generic,
+                    maximumPoints: 1,
+                    buttonCount: 5
+                }, true, 0, 8), false)
+        compare(appPage.wheelEventIsTouchpad({
+                    deviceType: PointerDevice.Unknown,
+                    pointerType: PointerDevice.Generic,
+                    maximumPoints: 1,
+                    buttonCount: 3
+                }, true, 0, 8), false)
         compare(appPage.wheelEventIsMouse({
                     deviceType: PointerDevice.Unknown,
                     pointerType: PointerDevice.Unknown,
