@@ -570,7 +570,7 @@ Page {
             objectName: "previewVerticalWheel"
             target: null
             orientation: Qt.Vertical
-            acceptedDevices: PointerDevice.Mouse
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             blocking: true
             property real browseAccumulator: 0
             onWheel: function(event) {
@@ -616,47 +616,6 @@ Page {
             onActiveChanged: {
                 if (!active)
                     browseAccumulator = 0
-            }
-        }
-
-        WheelHandler {
-            id: previewTouchpadVerticalPan
-            objectName: "previewTouchpadVerticalPan"
-            target: null
-            orientation: Qt.Vertical
-            acceptedDevices: PointerDevice.TouchPad
-            blocking: true
-            onWheel: function(event) {
-                const rawX = event.pixelDelta.x !== 0
-                             ? event.pixelDelta.x
-                             : event.angleDelta.x
-                const rawY = event.pixelDelta.y !== 0
-                             ? event.pixelDelta.y
-                             : event.angleDelta.y
-                if (rawY === 0 || Math.abs(rawY) <= Math.abs(rawX)) {
-                    event.accepted = false
-                    return
-                }
-
-                const framePoint = previewImageFrame.mapFromItem(
-                                     previewWindowWheelSurface,
-                                     event.x, event.y)
-                const overImage = page.previewPointIsInsideImage(
-                                    framePoint.x, framePoint.y)
-                event.accepted = true
-                const controlZoom = (event.modifiers & Qt.ControlModifier) !== 0
-                if (controlZoom && overImage) {
-                    const zoomDelta = event.angleDelta.y !== 0
-                                      ? event.angleDelta.y
-                                      : event.pixelDelta.y * 3
-                    page.zoomPreviewBy(Math.pow(1.25, zoomDelta / 120),
-                                       framePoint.x, framePoint.y)
-                    return
-                }
-                if (overImage && page.previewZoom > 1.001) {
-                    const fingerDistance = event.inverted ? rawY : -rawY
-                    page.panPreviewBy(0, fingerDistance)
-                }
             }
         }
     }

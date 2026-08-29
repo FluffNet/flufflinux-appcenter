@@ -355,8 +355,6 @@ TestCase {
         const gestureSurface = findChild(preview, "previewGestureSurface")
         const wheelSurface = appPage.previewWindowWheelSurfaceItem
         const mouseWheelHandler = appPage.previewVerticalWheelHandler
-        const touchpadWheelHandler = findChild(appPage,
-                                                "previewTouchpadVerticalPan")
         const previewImage = findChild(preview, "previewImage")
         const zoomInButton = findChild(preview, "previewZoomInButton")
         const zoomOutButton = findChild(preview, "previewZoomOutButton")
@@ -365,9 +363,9 @@ TestCase {
         verify(gestureSurface !== null)
         verify(wheelSurface !== null)
         verify(mouseWheelHandler !== null)
-        verify(touchpadWheelHandler !== null)
-        compare(mouseWheelHandler.acceptedDevices, PointerDevice.Mouse)
-        compare(touchpadWheelHandler.acceptedDevices, PointerDevice.TouchPad)
+        verify((mouseWheelHandler.acceptedDevices & PointerDevice.Mouse) !== 0)
+        verify((mouseWheelHandler.acceptedDevices & PointerDevice.TouchPad) !== 0)
+        compare(findChild(appPage, "previewTouchpadVerticalPan"), null)
         verify(previewImage !== null)
         verify(zoomInButton !== null)
         verify(zoomOutButton !== null)
