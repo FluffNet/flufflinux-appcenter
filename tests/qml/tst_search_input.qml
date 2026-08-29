@@ -222,21 +222,25 @@ TestCase {
 
         catalogPage.openCategory("All Apps")
         compare(window.selectedCategory, "All Apps")
-        verify(homeButton.highlighted)
+        compare(homeButton.highlighted, false)
+        verify(homeButton.categorySelected)
 
         const searchField = findChild(catalogPage, "searchField")
         searchField.text = "minecraft"
         window.searchText = "minecraft"
-        compare(homeButton.highlighted, false)
+        compare(homeButton.categorySelected, false)
     }
 
     function test_selected_home_is_dark_in_light_theme() {
         const homeButton = findChild(catalogPage, "categoryButton-All Apps")
         verify(homeButton !== null)
         window.darkMode = false
-        window.textColor = "black"
+        // The selected icon must stay black even if a platform style exposes
+        // an unexpected windowText value while Breeze Light is active.
+        window.textColor = "white"
         window.selectedCategory = "All Apps"
-        verify(homeButton.highlighted)
+        compare(homeButton.highlighted, false)
+        verify(homeButton.categorySelected)
         compare(homeButton.foregroundColor, "#000000")
         compare(homeButton.palette.buttonText, "#000000")
         compare(homeButton.palette.highlightedText, "#000000")

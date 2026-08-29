@@ -292,29 +292,36 @@ Page {
                     icon.width: 24
                     icon.height: 24
                     display: AbstractButton.TextBesideIcon
-                    highlighted: searchField.text.trim().length === 0
-                                 && window.selectedCategory === modelData.name
+                    // Do not use the style's highlighted state here: Breeze
+                    // deliberately substitutes highlightedText (usually
+                    // white), which can override the explicit light-theme
+                    // icon color. Selection is drawn by our own background.
+                    highlighted: false
+                    readonly property bool categorySelected:
+                        searchField.text.trim().length === 0
+                        && window.selectedCategory === modelData.name
                     onClicked: page.openCategory(modelData.name)
                     leftPadding: 16
                     rightPadding: 16
                     spacing: 12
-                    readonly property color foregroundColor: highlighted
+                    readonly property color foregroundColor: categorySelected
                                                                ? (window.darkMode
                                                                   ? window.accentColor
-                                                                  : window.textColor)
+                                                                  : "#000000")
                                                                : window.textColor
                     palette.buttonText: foregroundColor
+                    palette.text: foregroundColor
                     palette.highlightedText: foregroundColor
-                    icon.color: highlighted ? foregroundColor : "transparent"
+                    icon.color: categorySelected ? foregroundColor : "transparent"
                     font.pixelSize: 16
-                    font.weight: highlighted ? Font.DemiBold : Font.Normal
+                    font.weight: categorySelected ? Font.DemiBold : Font.Normal
                     background: Rectangle {
                         radius: 6
-                        color: categoryButton.highlighted
+                        color: categoryButton.categorySelected
                                ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, window.darkMode ? 0.16 : 0.10)
                                : categoryButton.hovered ? window.hoverColor : "transparent"
-                        border.color: categoryButton.highlighted ? window.accentColor : "transparent"
-                        border.width: categoryButton.highlighted ? 1 : 0
+                        border.color: categoryButton.categorySelected ? window.accentColor : "transparent"
+                        border.width: categoryButton.categorySelected ? 1 : 0
                     }
                 }
             }

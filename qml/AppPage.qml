@@ -51,13 +51,15 @@ Page {
     function previewPanLimitX(zoom) {
         if (!previewImageFrame || !previewImage)
             return 0
-        return Math.max(0, previewImageFrame.width * (zoom - 1) / 2)
+        return Math.max(0, (previewImage.paintedWidth * zoom
+                            - previewImageFrame.width) / 2)
     }
 
     function previewPanLimitY(zoom) {
         if (!previewImageFrame || !previewImage)
             return 0
-        return Math.max(0, previewImageFrame.height * (zoom - 1) / 2)
+        return Math.max(0, (previewImage.paintedHeight * zoom
+                            - previewImageFrame.height) / 2)
     }
 
     function setPreviewPan(x, y) {
@@ -72,23 +74,27 @@ Page {
     }
 
     function wheelDeviceIsMouse(device) {
-        if (!device || device.pointerType === PointerDevice.Finger)
+        if (!device)
             return false
-        const singlePoint = !Number.isFinite(device.maximumPoints)
-                            || device.maximumPoints <= 1
-        if (!singlePoint)
+
+        // Some libinput/Wayland combinations report a surprising
+        // maximumPoints value for a physical mouse. Explicit mouse metadata
+        // and a multi-button device are stronger signals than that value.
+        if (device.deviceType === PointerDevice.Mouse)
+            return true
+        if (device.pointerType === PointerDevice.Finger
+                || device.deviceType === PointerDevice.TouchPad)
             return false
-        return device.deviceType === PointerDevice.Mouse
-                || (device.deviceType === PointerDevice.Unknown
-                    && Number.isFinite(device.buttonCount)
-                    && device.buttonCount >= 3)
+        return Number.isFinite(device.buttonCount) && device.buttonCount >= 3
     }
 
     function wheelDeviceIsTouchpad(device) {
-        return device
-                && (device.deviceType === PointerDevice.TouchPad
-                    || device.pointerType === PointerDevice.Finger
-                    || device.maximumPoints > 1)
+        if (!device || wheelDeviceIsMouse(device))
+            return false
+        return device.deviceType === PointerDevice.TouchPad
+                || device.pointerType === PointerDevice.Finger
+                || (Number.isFinite(device.maximumPoints)
+                    && device.maximumPoints > 1)
     }
 
     function wheelEventIsMouse(device, angleX, angleY) {
@@ -168,12 +174,17 @@ Page {
         const centerY = previewImageFrame.height / 2
         const safeFocusX = Number.isFinite(focusX) ? focusX : centerX
         const safeFocusY = Number.isFinite(focusY) ? focusY : centerY
-        const imagePoint = previewImagePointAt(safeFocusX, safeFocusY,
-                                               oldZoom,
-                                               previewPanX, previewPanY)
-        const nextPan = previewPanForImagePoint(imagePoint,
-                                                safeFocusX, safeFocusY,
-                                                newZoom)
+        // Gwenview keeps the image coordinate below the zoom focus fixed:
+        // newScroll = (newZoom / oldZoom) * (oldScroll + focus) - focus.
+        // previewPan is the inverse of scroll, expressed around the frame
+        // center, so this is the same equation in pan coordinates.
+        const ratio = newZoom / oldZoom
+        const nextPan = Qt.point(safeFocusX - centerX
+                                 - ratio * (safeFocusX - centerX
+                                            - previewPanX),
+                                 safeFocusY - centerY
+                                 - ratio * (safeFocusY - centerY
+                                            - previewPanY))
         previewZoom = newZoom
         setPreviewPan(nextPan.x, nextPan.y)
     }
@@ -226,7 +237,10 @@ Page {
         const maximum = Math.max(minimum,
                                  minimum + screenshotList.contentWidth
                                  - screenshotList.width)
-        const scale = hasPixelDelta ? 2.15 : 42
+        // Both pixel deltas and angle deltas are normalized to pixels by the
+        // caller. Keep the content directly under the fingers, as a browser
+        // does, instead of multiplying each update into a row-sized jump.
+        const scale = 1
         screenshotList.contentX = Math.max(minimum,
                                            Math.min(maximum,
                                                     screenshotList.contentX
@@ -332,6 +346,8 @@ Page {
                 spacing: 16
                 clip: true
                 model: app ? app.screenshots : []
+                boundsBehavior: Flickable.DragAndOvershootBounds
+                flickDeceleration: 2500
                 WheelHandler {
                     id: screenshotTouchpadScroll
                     objectName: "screenshotTouchpadScroll"
@@ -339,6 +355,16 @@ Page {
                     orientation: Qt.Horizontal
                     acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                     blocking: true
+                    property int lockedAxis: 0
+                    property real accumulatedX: 0
+                    property real accumulatedY: 0
+
+                    function resetGesture() {
+                        lockedAxis = 0
+                        accumulatedX = 0
+                        accumulatedY = 0
+                    }
+
                     onWheel: function(event) {
                         const hasPixelDelta = event.pixelDelta.x !== 0
                                               || event.pixelDelta.y !== 0
@@ -352,11 +378,26 @@ Page {
 
                         const rawX = event.pixelDelta.x !== 0
                                      ? event.pixelDelta.x
-                                     : event.angleDelta.x / 120
+                                     : event.angleDelta.x
                         const rawY = event.pixelDelta.y !== 0
                                      ? event.pixelDelta.y
-                                     : event.angleDelta.y / 120
-                        if (rawX === 0 || Math.abs(rawX) <= Math.abs(rawY)) {
+                                     : event.angleDelta.y
+                        if (rawX === 0 && rawY === 0) {
+                            event.accepted = false
+                            return
+                        }
+
+                        if (lockedAxis === 0) {
+                            accumulatedX += rawX
+                            accumulatedY += rawY
+                            if (Math.abs(accumulatedX) + Math.abs(accumulatedY) < 6) {
+                                event.accepted = true
+                                return
+                            }
+                            lockedAxis = Math.abs(accumulatedX) > Math.abs(accumulatedY)
+                                         ? 1 : 2
+                        }
+                        if (lockedAxis !== 1) {
                             event.accepted = false
                             return
                         }
@@ -365,6 +406,10 @@ Page {
                         page.scrollScreenshotStripBy(fingerDistance,
                                                      hasPixelDelta)
                         event.accepted = true
+                    }
+                    onActiveChanged: {
+                        if (!active)
+                            resetGesture()
                     }
                 }
                 header: Item {
@@ -558,7 +603,7 @@ Page {
             orientation: Qt.Vertical
             acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
             blocking: true
-            property bool touchpadGestureActive: false
+            property real browseAccumulator: 0
             onWheel: function(event) {
                 const rawX = event.pixelDelta.x !== 0
                              ? event.pixelDelta.x
@@ -579,13 +624,24 @@ Page {
                 event.accepted = true
                 const hasPixelDelta = event.pixelDelta.x !== 0
                                       || event.pixelDelta.y !== 0
-                const isTouchpad = touchpadGestureActive
-                        || page.wheelEventIsTouchpad(
-                            point.device, hasPixelDelta,
-                            event.angleDelta.x,
-                            event.angleDelta.y)
-                if (isTouchpad) {
-                    touchpadGestureActive = true
+                const isMouse = page.wheelEventIsMouse(
+                                  point.device,
+                                  event.angleDelta.x,
+                                  event.angleDelta.y)
+                const controlZoom = (event.modifiers & Qt.ControlModifier) !== 0
+                if (!isMouse) {
+                    // PinchHandler receives native touchpad pinch gestures.
+                    // A few platforms expose pinch as Ctrl+wheel instead, so
+                    // keep that path continuous and focused too.
+                    if (controlZoom && overImage) {
+                        const zoomDelta = event.angleDelta.y !== 0
+                                          ? event.angleDelta.y
+                                          : event.pixelDelta.y * 3
+                        page.zoomPreviewBy(
+                                    Math.pow(2, 0.5 * zoomDelta / 120),
+                                    framePoint.x, framePoint.y)
+                        return
+                    }
                     if (overImage && page.previewZoom > 1.001) {
                         const fingerDistance = event.inverted ? rawY : -rawY
                         page.panPreviewBy(0, fingerDistance)
@@ -594,18 +650,30 @@ Page {
                 }
 
                 if (overImage) {
-                    const steps = event.angleDelta.y / 120
-                    page.zoomPreviewBy(Math.pow(1.2, steps),
+                    const zoomDelta = event.angleDelta.y !== 0
+                                      ? event.angleDelta.y
+                                      : event.pixelDelta.y * 3
+                    page.zoomPreviewBy(Math.pow(2, 0.5 * zoomDelta / 120),
                                        framePoint.x, framePoint.y)
                 } else {
                     // The entire window browses photos while the modal is
                     // open; only visible photo pixels are reserved for zoom.
-                    page.movePreview(event.angleDelta.y > 0 ? -1 : 1)
+                    const browseDelta = event.angleDelta.y !== 0
+                                        ? event.angleDelta.y
+                                        : event.pixelDelta.y * 3
+                    browseAccumulator += browseDelta
+                    if (browseAccumulator >= 120) {
+                        page.movePreview(-1)
+                        browseAccumulator -= 120
+                    } else if (browseAccumulator <= -120) {
+                        page.movePreview(1)
+                        browseAccumulator += 120
+                    }
                 }
             }
             onActiveChanged: {
                 if (!active)
-                    touchpadGestureActive = false
+                    browseAccumulator = 0
             }
         }
     }
@@ -654,7 +722,16 @@ Page {
             border.width: 1
         }
         contentItem: ColumnLayout {
+            focus: true
             spacing: 8
+            Keys.onLeftPressed: function(event) {
+                page.movePreview(-1)
+                event.accepted = true
+            }
+            Keys.onRightPressed: function(event) {
+                page.movePreview(1)
+                event.accepted = true
+            }
 
             Item {
                 objectName: "previewTopControls"
@@ -922,10 +999,10 @@ Page {
                             onWheel: function(event) {
                                 const rawX = event.pixelDelta.x !== 0
                                              ? event.pixelDelta.x
-                                             : event.angleDelta.x / 2
+                                             : event.angleDelta.x
                                 const rawY = event.pixelDelta.y !== 0
                                              ? event.pixelDelta.y
-                                             : event.angleDelta.y / 2
+                                             : event.angleDelta.y
                                 if (rawX === 0 || Math.abs(rawX) <= Math.abs(rawY)) {
                                     event.accepted = false
                                     return
@@ -941,10 +1018,10 @@ Page {
                                     return
 
                                 travel += fingerDistance
-                                if (travel >= 70) {
+                                if (travel >= 48) {
                                     gestureTriggered = true
                                     page.movePreview(-1)
-                                } else if (travel <= -70) {
+                                } else if (travel <= -48) {
                                     gestureTriggered = true
                                     page.movePreview(1)
                                 }

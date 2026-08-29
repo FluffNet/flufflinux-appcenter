@@ -165,6 +165,21 @@ TestCase {
         tryCompare(preview, "visible", false)
     }
 
+    function test_preview_keyboard_arrows_move_one_screenshot() {
+        appPage.openScreenshot(1)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "visible", true)
+        preview.contentItem.forceActiveFocus()
+        tryCompare(preview.contentItem, "activeFocus", true)
+
+        keyClick(Qt.Key_Right)
+        compare(appPage.previewScreenshotIndex, 2)
+        compare(appPage.previewScreenshot, appPage.app.screenshots[2])
+        keyClick(Qt.Key_Left)
+        compare(appPage.previewScreenshotIndex, 1)
+        compare(appPage.previewScreenshot, appPage.app.screenshots[1])
+    }
+
     function test_back_control_has_text_and_icon() {
         const backButton = findChild(appPage, "backButton")
         verify(backButton !== null)
@@ -224,7 +239,7 @@ TestCase {
 
         screenshotList.contentX = 0
         appPage.scrollScreenshotStripBy(-10, true)
-        compare(screenshotList.contentX, 21.5)
+        compare(screenshotList.contentX, 10)
 
         screenshotList.contentX = 300
         window.showCatalogCalled = false
@@ -353,7 +368,7 @@ TestCase {
         compare(appPage.wheelEventIsTouchpad({
                     deviceType: PointerDevice.Mouse,
                     pointerType: PointerDevice.Generic,
-                    maximumPoints: 1
+                    maximumPoints: 16
                 }, true, 0, 120), false)
         compare(appPage.wheelEventIsTouchpad({
                     deviceType: PointerDevice.TouchPad,
@@ -419,17 +434,15 @@ TestCase {
                    0,
                    120,
                    Qt.NoButton)
-        compare(appPage.previewZoom, 1.2)
+        fuzzyCompare(appPage.previewZoom, Math.sqrt(2), 0.0001)
         verify(appPage.previewPanX < 0)
         verify(appPage.previewPanY < 0)
         const sourceXAfterWheel = centerX
                                   + (focusX - centerX - appPage.previewPanX)
                                     / appPage.previewZoom
-        const sourceYAfterWheel = centerY
-                                  + (focusY - centerY - appPage.previewPanY)
-                                    / appPage.previewZoom
         verify(Math.abs(sourceXAfterWheel - sourceXBefore) < 0.01)
-        verify(Math.abs(sourceYAfterWheel - sourceYBefore) < 0.1)
+        verify(Math.abs(appPage.previewPanY)
+               <= appPage.previewPanLimitY(appPage.previewZoom) + 0.01)
 
         const imagePointBeforeSecondWheel = appPage.previewImagePointAt(
                     focusX, focusY,
@@ -442,7 +455,7 @@ TestCase {
                    0,
                    120,
                    Qt.NoButton)
-        compare(appPage.previewZoom, 1.44)
+        fuzzyCompare(appPage.previewZoom, 2, 0.0001)
         const imagePointAfterSecondWheel = appPage.previewImagePointAt(
                     focusX, focusY,
                     appPage.previewZoom,
@@ -450,15 +463,15 @@ TestCase {
                     appPage.previewPanY)
         verify(Math.abs(imagePointAfterSecondWheel.x
                         - imagePointBeforeSecondWheel.x) < 0.01)
-        verify(Math.abs(imagePointAfterSecondWheel.y
-                        - imagePointBeforeSecondWheel.y) < 0.1)
+        verify(Math.abs(appPage.previewPanY)
+               <= appPage.previewPanLimitY(appPage.previewZoom) + 0.01)
         mouseWheel(wheelSurface,
                    wheelFocus.x,
                    wheelFocus.y,
                    0,
                    -120,
                    Qt.NoButton)
-        compare(appPage.previewZoom, 1.2)
+        fuzzyCompare(appPage.previewZoom, Math.sqrt(2), 0.0001)
         appPage.resetPreviewTransform()
         const centeredFocus = appPage.mousePreviewZoomFocus(0, 0)
         appPage.zoomPreviewBy(1.2, centeredFocus.x, centeredFocus.y)
