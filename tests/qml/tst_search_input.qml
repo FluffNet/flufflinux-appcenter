@@ -54,6 +54,45 @@ TestCase {
             searchDescription: "a developer utility",
             searchMetadata: "fluffnet org.fluff.minecrafttool development",
             searchHaystack: "minecraft tool edit minecraft resources a developer utility fluffnet org.fluff.minecrafttool development"
+        }, {
+            id: "net.supertuxkart.SuperTuxKart",
+            name: "SuperTuxKart",
+            summary: "A kart racing game",
+            description: "Race with Tux and friends",
+            icon: "",
+            category: "Games",
+            developer: "SuperTuxKart Team",
+            searchName: "supertuxkart",
+            searchSummary: "a kart racing game",
+            searchDescription: "race with tux and friends",
+            searchMetadata: "supertuxkart net.supertuxkart.supertuxkart games",
+            searchHaystack: "supertuxkart a kart racing game race with tux and friends supertuxkart team net.supertuxkart.supertuxkart games"
+        }, {
+            id: "io.github.freeciv21.Freeciv21",
+            name: "Freeciv21",
+            summary: "Build a civilization",
+            description: "A strategy game",
+            icon: "",
+            category: "Games",
+            developer: "Freeciv21",
+            searchName: "freeciv21",
+            searchSummary: "build a civilization",
+            searchDescription: "a strategy game",
+            searchMetadata: "freeciv21 io.github.freeciv21.freeciv21 games",
+            searchHaystack: "freeciv21 build a civilization a strategy game io.github.freeciv21.freeciv21 games"
+        }, {
+            id: "org.fluff.PenguinGuide",
+            name: "Penguin Racing Guide",
+            summary: "Track reference",
+            description: "Learn every SuperTuxKart track",
+            icon: "",
+            category: "Games",
+            developer: "FluffNet",
+            searchName: "penguin racing guide",
+            searchSummary: "track reference",
+            searchDescription: "learn every supertuxkart track",
+            searchMetadata: "fluffnet org.fluff.penguingguide games",
+            searchHaystack: "penguin racing guide track reference learn every supertuxkart track fluffnet org.fluff.penguingguide games"
         }]
 
         function openApp(app) { selectedApp = app }
@@ -68,6 +107,8 @@ TestCase {
         window.searchText = ""
         window.searchCategoryFilter = "All Apps"
         window.selectedCategory = "All Apps"
+        window.darkMode = true
+        window.textColor = "white"
         const searchField = findChild(catalogPage, "searchField")
         searchField.clear()
     }
@@ -109,8 +150,68 @@ TestCase {
         compare(window.searchText, "")
         compare(window.searchCategoryFilter, "All Apps")
         compare(window.selectedCategory, "Games")
-        compare(catalogPage.visibleApps.length, 1)
+        compare(catalogPage.visibleApps.length, 4)
         compare(catalogPage.visibleApps[0].name, "Minecraft")
+    }
+
+    function test_title_search_ignores_spaces() {
+        window.searchText = "tux kart"
+        compare(catalogPage.visibleApps.length, 2)
+        compare(catalogPage.visibleApps[0].name, "SuperTuxKart")
+        compare(catalogPage.visibleApps[1].name, "Penguin Racing Guide")
+
+        window.searchText = "free civ"
+        compare(catalogPage.visibleApps.length, 1)
+        compare(catalogPage.visibleApps[0].name, "Freeciv21")
+    }
+
+    function test_space_insensitive_match_uses_the_requested_rank() {
+        const query = "tux kart"
+        function result(name, summary, description) {
+            return {
+                searchName: name,
+                searchSummary: summary,
+                searchDescription: description,
+                searchMetadata: ""
+            }
+        }
+
+        const exactTitle = catalogPage.searchScore(
+                    result("tux kart", "", ""), query)
+        const includedTitle = catalogPage.searchScore(
+                    result("ultimate tux kart racer", "", ""), query)
+        const compactTitle = catalogPage.searchScore(
+                    result("supertuxkart", "", ""), query)
+        const normalDescription = catalogPage.searchScore(
+                    result("racing guide", "", "play tux kart"), query)
+        const compactDescription = catalogPage.searchScore(
+                    result("track guide", "", "supertuxkart tracks"), query)
+
+        verify(exactTitle < includedTitle)
+        verify(includedTitle < compactTitle)
+        verify(compactTitle < normalDescription)
+        verify(normalDescription < compactDescription)
+    }
+
+    function test_clear_button_returns_to_home() {
+        const searchField = findChild(catalogPage, "searchField")
+        const clearButton = findChild(catalogPage, "searchClearButton")
+        verify(searchField !== null)
+        verify(clearButton !== null)
+        compare(clearButton.visible, false)
+
+        window.selectedCategory = "Games"
+        window.searchCategoryFilter = "Games"
+        searchField.text = "free civ"
+        window.searchText = "free civ"
+        compare(clearButton.visible, true)
+        mouseClick(clearButton, clearButton.width / 2, clearButton.height / 2)
+
+        compare(searchField.text, "")
+        compare(window.searchText, "")
+        compare(window.searchCategoryFilter, "All Apps")
+        compare(window.selectedCategory, "All Apps")
+        compare(catalogPage.visibleApps.length, window.catalog.length)
     }
 
     function test_home_label_keeps_all_apps_destination() {
@@ -127,6 +228,19 @@ TestCase {
         searchField.text = "minecraft"
         window.searchText = "minecraft"
         compare(homeButton.highlighted, false)
+    }
+
+    function test_selected_home_is_dark_in_light_theme() {
+        const homeButton = findChild(catalogPage, "categoryButton-All Apps")
+        verify(homeButton !== null)
+        window.darkMode = false
+        window.textColor = "black"
+        window.selectedCategory = "All Apps"
+        verify(homeButton.highlighted)
+        compare(homeButton.foregroundColor, "#000000")
+        compare(homeButton.palette.buttonText, "#000000")
+        compare(homeButton.palette.highlightedText, "#000000")
+        compare(homeButton.icon.color, "#000000")
     }
 
     function test_search_icon_is_on_the_left() {

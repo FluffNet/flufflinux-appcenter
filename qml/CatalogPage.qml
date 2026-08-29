@@ -26,10 +26,18 @@ Page {
                                                                })))
     readonly property var visibleApps: {
         const query = window.searchText.trim().toLowerCase()
+        const compactQuery = page.compactSearchText(query)
         const activeCategory = query ? window.searchCategoryFilter : window.selectedCategory
         const matches = window.catalog.filter(function(app) {
             const categoryMatches = activeCategory === "All Apps" || app.category === activeCategory
-            return categoryMatches && (!query || app.searchHaystack.indexOf(query) >= 0)
+            const compactNameMatches = compactQuery.length > 0
+                    && page.compactSearchText(app.searchName).indexOf(compactQuery) >= 0
+            const compactDescriptionMatches = compactQuery.length > 0
+                    && (page.compactSearchText(app.searchSummary).indexOf(compactQuery) >= 0
+                        || page.compactSearchText(app.searchDescription).indexOf(compactQuery) >= 0)
+            return categoryMatches
+                    && (!query || app.searchHaystack.indexOf(query) >= 0
+                        || compactNameMatches || compactDescriptionMatches)
         })
         if (!query)
             return matches
@@ -91,20 +99,40 @@ Page {
         return false
     }
 
+    function compactSearchText(text) {
+        return String(text || "").toLowerCase().replace(/\s+/g, "")
+    }
+
     function searchScore(app, query) {
         const name = app.searchName
+        const compactName = compactSearchText(name)
+        const compactQuery = compactSearchText(query)
         const summary = app.searchSummary
+        const compactSummary = compactSearchText(summary)
         const description = app.searchDescription
+        const compactDescription = compactSearchText(description)
         const metadata = app.searchMetadata
         if (name === query) return 0
         if (name.startsWith(query)) return 10
         if (containsWholeWord(name, query)) return 20
         if (name.indexOf(query) >= 0) return 30
-        if (summary.startsWith(query)) return 40
+        if (compactName === compactQuery) return 34
+        if (compactName.startsWith(compactQuery)) return 35
+        if (compactName.indexOf(compactQuery) >= 0) return 36
+        if (summary === query) return 40
+        if (summary.startsWith(query)) return 41
         if (containsWholeWord(summary, query)) return 50
         if (summary.indexOf(query) >= 0) return 60
-        if (containsWholeWord(description, query)) return 70
+        if (compactSummary === compactQuery) return 61
+        if (compactSummary.startsWith(compactQuery)) return 62
+        if (compactSummary.indexOf(compactQuery) >= 0) return 63
+        if (description === query) return 70
+        if (description.startsWith(query)) return 71
+        if (containsWholeWord(description, query)) return 75
         if (description.indexOf(query) >= 0) return 80
+        if (compactDescription === compactQuery) return 81
+        if (compactDescription.startsWith(compactQuery)) return 82
+        if (compactDescription.indexOf(compactQuery) >= 0) return 83
         if (metadata.indexOf(query) >= 0) return 90
         return 120
     }
@@ -152,7 +180,7 @@ Page {
                 anchors.verticalCenter: parent.verticalCenter
                 placeholderText: "Search applications…"
                 color: window.textColor; placeholderTextColor: window.mutedTextColor
-                leftPadding: 46; rightPadding: 17; implicitHeight: 44
+                leftPadding: 46; rightPadding: 48; implicitHeight: 44
                 activeFocusOnPress: true
                 Component.onCompleted: text = window.searchText
                 onTextEdited: {
@@ -193,6 +221,30 @@ Page {
                     Connections {
                         target: window
                         function onMutedTextColorChanged() { searchIcon.requestPaint() }
+                    }
+                }
+                ToolButton {
+                    id: clearSearchButton
+                    objectName: "searchClearButton"
+                    anchors.right: parent.right
+                    anchors.rightMargin: 5
+                    anchors.verticalCenter: parent.verticalCenter
+                    width: 34
+                    height: 34
+                    visible: searchField.text.length > 0
+                    text: "×"
+                    font.pixelSize: 20
+                    focusPolicy: Qt.NoFocus
+                    palette.buttonText: window.mutedTextColor
+                    Accessible.name: qsTr("Clear search and return home")
+                    onClicked: {
+                        page.openCategory("All Apps")
+                        searchField.forceActiveFocus()
+                    }
+                    background: Rectangle {
+                        radius: width / 2
+                        color: clearSearchButton.hovered
+                               ? window.hoverColor : "transparent"
                     }
                 }
                 background: Rectangle {
@@ -246,7 +298,14 @@ Page {
                     leftPadding: 16
                     rightPadding: 16
                     spacing: 12
-                    palette.buttonText: highlighted ? window.accentColor : window.textColor
+                    readonly property color foregroundColor: highlighted
+                                                               ? (window.darkMode
+                                                                  ? window.accentColor
+                                                                  : window.textColor)
+                                                               : window.textColor
+                    palette.buttonText: foregroundColor
+                    palette.highlightedText: foregroundColor
+                    icon.color: highlighted ? foregroundColor : "transparent"
                     font.pixelSize: 16
                     font.weight: highlighted ? Font.DemiBold : Font.Normal
                     background: Rectangle {
