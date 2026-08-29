@@ -575,6 +575,7 @@ TestCase {
         compare(touchPan.maximumTouchPoints, 2)
         compare(touchPan.mouseEnabled, false)
         verify((mousePan.acceptedButtons & Qt.LeftButton) !== 0)
+        compare(mousePan.acceptedDevices, PointerDevice.Mouse)
         tryCompare(previewImage, "status", Image.Ready)
 
         const centerX = gestureSurface.width / 2
@@ -625,12 +626,8 @@ TestCase {
         appPage.setPreviewZoom(2, centerX, centerY)
         const panXBeforeMouse = appPage.previewPanX
         const panYBeforeMouse = appPage.previewPanY
-        mousePress(gestureSurface, centerX, centerY, Qt.LeftButton)
-        mouseMove(gestureSurface, centerX + 44, centerY + 28)
-        mouseRelease(gestureSurface,
-                     centerX + 44,
-                     centerY + 28,
-                     Qt.LeftButton)
+        mousePan.lastActiveTranslation = Qt.point(0, 0)
+        mousePan.applyMouseTranslation(Qt.point(44, 28))
         verify(appPage.previewPanX > panXBeforeMouse)
         verify(appPage.previewPanY > panYBeforeMouse)
 
@@ -652,6 +649,47 @@ TestCase {
         appPage.panPreviewBy(-10, -6)
         compare(appPage.previewPanX, 14)
         compare(appPage.previewPanY, 10)
+
+        appPage.resetPreviewTransform()
+        const firstFocus = Qt.point(centerX + 45, centerY + 30)
+        const firstTranslation = Qt.point(28, 18)
+        const firstImagePoint = appPage.previewImagePointAt(
+                    firstFocus.x, firstFocus.y,
+                    appPage.previewZoom,
+                    appPage.previewPanX,
+                    appPage.previewPanY)
+        appPage.applyPreviewPinchStep(1, 1.6,
+                                      firstFocus.x, firstFocus.y,
+                                      firstTranslation.x,
+                                      firstTranslation.y)
+        const firstPointAfter = appPage.previewImagePointAt(
+                    firstFocus.x + firstTranslation.x,
+                    firstFocus.y + firstTranslation.y,
+                    appPage.previewZoom,
+                    appPage.previewPanX,
+                    appPage.previewPanY)
+        verify(Math.abs(firstPointAfter.x - firstImagePoint.x) < 0.01)
+        verify(Math.abs(firstPointAfter.y - firstImagePoint.y) < 0.01)
+
+        const secondFocus = Qt.point(centerX - 35, centerY + 20)
+        const secondTranslation = Qt.point(-22, 14)
+        const secondImagePoint = appPage.previewImagePointAt(
+                    secondFocus.x, secondFocus.y,
+                    appPage.previewZoom,
+                    appPage.previewPanX,
+                    appPage.previewPanY)
+        appPage.applyPreviewPinchStep(1, 1.35,
+                                      secondFocus.x, secondFocus.y,
+                                      secondTranslation.x,
+                                      secondTranslation.y)
+        const secondPointAfter = appPage.previewImagePointAt(
+                    secondFocus.x + secondTranslation.x,
+                    secondFocus.y + secondTranslation.y,
+                    appPage.previewZoom,
+                    appPage.previewPanX,
+                    appPage.previewPanY)
+        verify(Math.abs(secondPointAfter.x - secondImagePoint.x) < 0.01)
+        verify(Math.abs(secondPointAfter.y - secondImagePoint.y) < 0.01)
 
         appPage.movePreview(1)
         compare(appPage.previewZoom, 1)

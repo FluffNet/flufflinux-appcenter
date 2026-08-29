@@ -822,8 +822,8 @@ Page {
                                         page.applyPreviewPinchStep(
                                                     pinchLastDistance,
                                                     distance,
-                                                    center.x,
-                                                    center.y,
+                                                    pinchLastCenter.x,
+                                                    pinchLastCenter.y,
                                                     center.x - pinchLastCenter.x,
                                                     center.y - pinchLastCenter.y)
                                         pinchLastDistance = distance
@@ -880,29 +880,36 @@ Page {
                                 gesture.grab()
                             }
                         }
-                        MouseArea {
+                        DragHandler {
                             id: previewMousePan
                             objectName: "previewMousePan"
-                            anchors.fill: parent
+                            target: null
                             enabled: page.previewZoom > 1.001
+                            acceptedDevices: PointerDevice.Mouse
                             acceptedButtons: Qt.LeftButton
-                            hoverEnabled: true
-                            cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
-                            property real lastX: 0
-                            property real lastY: 0
-                            onPressed: function(mouse) {
-                                lastX = mouse.x
-                                lastY = mouse.y
+                            cursorShape: active ? Qt.ClosedHandCursor
+                                                : Qt.OpenHandCursor
+                            property point lastActiveTranslation: Qt.point(0, 0)
+
+                            function applyMouseTranslation(currentTranslation) {
+                                page.panPreviewBy(
+                                            currentTranslation.x
+                                                - lastActiveTranslation.x,
+                                            currentTranslation.y
+                                                - lastActiveTranslation.y)
+                                lastActiveTranslation = currentTranslation
                             }
-                            onPositionChanged: function(mouse) {
-                                if (!pressed)
+
+                            onActiveTranslationChanged: {
+                                if (!active)
                                     return
-                                page.panPreviewBy(mouse.x - lastX, mouse.y - lastY)
-                                lastX = mouse.x
-                                lastY = mouse.y
+                                applyMouseTranslation(activeTranslation)
                             }
-                            onWheel: function(event) {
-                                event.accepted = false
+                            onActiveChanged: {
+                                if (active)
+                                    lastActiveTranslation = activeTranslation
+                                else
+                                    lastActiveTranslation = Qt.point(0, 0)
                             }
                         }
                         PinchHandler {
@@ -913,6 +920,7 @@ Page {
                             rotationAxis.enabled: false
                             property real lastActiveScale: 1
                             property point lastActiveTranslation: Qt.point(0, 0)
+                            property point lastCentroidPosition: Qt.point(0, 0)
 
                             function applyPinch() {
                                 if (!active)
@@ -921,14 +929,15 @@ Page {
                                 page.applyPreviewPinchStep(
                                             lastActiveScale,
                                             activeScale,
-                                            centroid.position.x,
-                                            centroid.position.y,
+                                            lastCentroidPosition.x,
+                                            lastCentroidPosition.y,
                                             currentTranslation.x
                                                 - lastActiveTranslation.x,
                                             currentTranslation.y
                                                 - lastActiveTranslation.y)
                                 lastActiveScale = activeScale
                                 lastActiveTranslation = currentTranslation
+                                lastCentroidPosition = centroid.position
                             }
 
                             onActiveChanged: {
@@ -936,9 +945,11 @@ Page {
                                 if (active) {
                                     lastActiveScale = activeScale
                                     lastActiveTranslation = activeTranslation
+                                    lastCentroidPosition = centroid.position
                                 } else {
                                     lastActiveScale = 1
                                     lastActiveTranslation = Qt.point(0, 0)
+                                    lastCentroidPosition = Qt.point(0, 0)
                                     page.setPreviewPan(page.previewPanX, page.previewPanY)
                                 }
                             }
