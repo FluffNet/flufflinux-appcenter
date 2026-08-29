@@ -239,7 +239,12 @@ TestCase {
 
         screenshotList.contentX = 0
         appPage.scrollScreenshotStripBy(-10, true)
-        compare(screenshotList.contentX, 10)
+        compare(screenshotList.contentX, 21.5)
+
+        const touchpadScroll = findChild(screenshotList,
+                                         "screenshotTouchpadScroll")
+        verify(touchpadScroll !== null)
+        compare(touchpadScroll.acceptedDevices, PointerDevice.TouchPad)
 
         screenshotList.contentX = 300
         window.showCatalogCalled = false
@@ -349,6 +354,9 @@ TestCase {
         const frame = findChild(preview, "previewImageFrame")
         const gestureSurface = findChild(preview, "previewGestureSurface")
         const wheelSurface = appPage.previewWindowWheelSurfaceItem
+        const mouseWheelHandler = appPage.previewVerticalWheelHandler
+        const touchpadWheelHandler = findChild(appPage,
+                                                "previewTouchpadVerticalPan")
         const previewImage = findChild(preview, "previewImage")
         const zoomInButton = findChild(preview, "previewZoomInButton")
         const zoomOutButton = findChild(preview, "previewZoomOutButton")
@@ -356,6 +364,10 @@ TestCase {
         verify(frame !== null)
         verify(gestureSurface !== null)
         verify(wheelSurface !== null)
+        verify(mouseWheelHandler !== null)
+        verify(touchpadWheelHandler !== null)
+        compare(mouseWheelHandler.acceptedDevices, PointerDevice.Mouse)
+        compare(touchpadWheelHandler.acceptedDevices, PointerDevice.TouchPad)
         verify(previewImage !== null)
         verify(zoomInButton !== null)
         verify(zoomOutButton !== null)
@@ -434,7 +446,7 @@ TestCase {
                    0,
                    120,
                    Qt.NoButton)
-        fuzzyCompare(appPage.previewZoom, Math.sqrt(2), 0.0001)
+        fuzzyCompare(appPage.previewZoom, 1.25, 0.0001)
         verify(appPage.previewPanX < 0)
         verify(appPage.previewPanY < 0)
         const sourceXAfterWheel = centerX
@@ -455,7 +467,7 @@ TestCase {
                    0,
                    120,
                    Qt.NoButton)
-        fuzzyCompare(appPage.previewZoom, 2, 0.0001)
+        fuzzyCompare(appPage.previewZoom, 1.5625, 0.0001)
         const imagePointAfterSecondWheel = appPage.previewImagePointAt(
                     focusX, focusY,
                     appPage.previewZoom,
@@ -471,7 +483,7 @@ TestCase {
                    0,
                    -120,
                    Qt.NoButton)
-        fuzzyCompare(appPage.previewZoom, Math.sqrt(2), 0.0001)
+        fuzzyCompare(appPage.previewZoom, 1.25, 0.0001)
         appPage.resetPreviewTransform()
         const centeredFocus = appPage.mousePreviewZoomFocus(0, 0)
         appPage.zoomPreviewBy(1.2, centeredFocus.x, centeredFocus.y)

@@ -237,10 +237,11 @@ Page {
         const maximum = Math.max(minimum,
                                  minimum + screenshotList.contentWidth
                                  - screenshotList.width)
-        // Both pixel deltas and angle deltas are normalized to pixels by the
-        // caller. Keep the content directly under the fingers, as a browser
-        // does, instead of multiplying each update into a row-sized jump.
-        const scale = 1
+        // Match the continuous touchpad response used by the page itself.
+        // Pixel deltas are delivered as a stream (including compositor
+        // momentum), so apply every update immediately instead of waiting for
+        // an axis lock or animating toward row-sized targets.
+        const scale = hasPixelDelta ? 2.15 : 1
         screenshotList.contentX = Math.max(minimum,
                                            Math.min(maximum,
                                                     screenshotList.contentX
@@ -353,51 +354,23 @@ Page {
                     objectName: "screenshotTouchpadScroll"
                     target: null
                     orientation: Qt.Horizontal
-                    acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+                    acceptedDevices: PointerDevice.TouchPad
                     blocking: true
-                    property int lockedAxis: 0
-                    property real accumulatedX: 0
-                    property real accumulatedY: 0
-
-                    function resetGesture() {
-                        lockedAxis = 0
-                        accumulatedX = 0
-                        accumulatedY = 0
-                    }
 
                     onWheel: function(event) {
                         const hasPixelDelta = event.pixelDelta.x !== 0
                                               || event.pixelDelta.y !== 0
-                        if (!page.wheelEventIsTouchpad(point.device,
-                                                       hasPixelDelta,
-                                                       event.angleDelta.x,
-                                                       event.angleDelta.y)) {
-                            event.accepted = false
-                            return
-                        }
-
                         const rawX = event.pixelDelta.x !== 0
                                      ? event.pixelDelta.x
-                                     : event.angleDelta.x
+                                     : event.angleDelta.x / 120 * 42
                         const rawY = event.pixelDelta.y !== 0
                                      ? event.pixelDelta.y
-                                     : event.angleDelta.y
-                        if (rawX === 0 && rawY === 0) {
-                            event.accepted = false
-                            return
-                        }
-
-                        if (lockedAxis === 0) {
-                            accumulatedX += rawX
-                            accumulatedY += rawY
-                            if (Math.abs(accumulatedX) + Math.abs(accumulatedY) < 6) {
-                                event.accepted = true
-                                return
-                            }
-                            lockedAxis = Math.abs(accumulatedX) > Math.abs(accumulatedY)
-                                         ? 1 : 2
-                        }
-                        if (lockedAxis !== 1) {
+                                     : event.angleDelta.y / 120 * 42
+                        // Let an ordinary vertical two-finger gesture keep
+                        // scrolling the app page. As soon as there is clear
+                        // horizontal intent, track every pixel directly.
+                        if (rawX === 0
+                                || Math.abs(rawX) < Math.abs(rawY) * 0.4) {
                             event.accepted = false
                             return
                         }
@@ -406,10 +379,6 @@ Page {
                         page.scrollScreenshotStripBy(fingerDistance,
                                                      hasPixelDelta)
                         event.accepted = true
-                    }
-                    onActiveChanged: {
-                        if (!active)
-                            resetGesture()
                     }
                 }
                 header: Item {
@@ -601,7 +570,7 @@ Page {
             objectName: "previewVerticalWheel"
             target: null
             orientation: Qt.Vertical
-            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            acceptedDevices: PointerDevice.Mouse
             blocking: true
             property real browseAccumulator: 0
             onWheel: function(event) {
@@ -622,38 +591,11 @@ Page {
                 const overImage = page.previewPointIsInsideImage(
                                     framePoint.x, framePoint.y)
                 event.accepted = true
-                const hasPixelDelta = event.pixelDelta.x !== 0
-                                      || event.pixelDelta.y !== 0
-                const isMouse = page.wheelEventIsMouse(
-                                  point.device,
-                                  event.angleDelta.x,
-                                  event.angleDelta.y)
-                const controlZoom = (event.modifiers & Qt.ControlModifier) !== 0
-                if (!isMouse) {
-                    // PinchHandler receives native touchpad pinch gestures.
-                    // A few platforms expose pinch as Ctrl+wheel instead, so
-                    // keep that path continuous and focused too.
-                    if (controlZoom && overImage) {
-                        const zoomDelta = event.angleDelta.y !== 0
-                                          ? event.angleDelta.y
-                                          : event.pixelDelta.y * 3
-                        page.zoomPreviewBy(
-                                    Math.pow(2, 0.5 * zoomDelta / 120),
-                                    framePoint.x, framePoint.y)
-                        return
-                    }
-                    if (overImage && page.previewZoom > 1.001) {
-                        const fingerDistance = event.inverted ? rawY : -rawY
-                        page.panPreviewBy(0, fingerDistance)
-                    }
-                    return
-                }
-
                 if (overImage) {
                     const zoomDelta = event.angleDelta.y !== 0
                                       ? event.angleDelta.y
                                       : event.pixelDelta.y * 3
-                    page.zoomPreviewBy(Math.pow(2, 0.5 * zoomDelta / 120),
+                    page.zoomPreviewBy(Math.pow(1.25, zoomDelta / 120),
                                        framePoint.x, framePoint.y)
                 } else {
                     // The entire window browses photos while the modal is
@@ -674,6 +616,47 @@ Page {
             onActiveChanged: {
                 if (!active)
                     browseAccumulator = 0
+            }
+        }
+
+        WheelHandler {
+            id: previewTouchpadVerticalPan
+            objectName: "previewTouchpadVerticalPan"
+            target: null
+            orientation: Qt.Vertical
+            acceptedDevices: PointerDevice.TouchPad
+            blocking: true
+            onWheel: function(event) {
+                const rawX = event.pixelDelta.x !== 0
+                             ? event.pixelDelta.x
+                             : event.angleDelta.x
+                const rawY = event.pixelDelta.y !== 0
+                             ? event.pixelDelta.y
+                             : event.angleDelta.y
+                if (rawY === 0 || Math.abs(rawY) <= Math.abs(rawX)) {
+                    event.accepted = false
+                    return
+                }
+
+                const framePoint = previewImageFrame.mapFromItem(
+                                     previewWindowWheelSurface,
+                                     event.x, event.y)
+                const overImage = page.previewPointIsInsideImage(
+                                    framePoint.x, framePoint.y)
+                event.accepted = true
+                const controlZoom = (event.modifiers & Qt.ControlModifier) !== 0
+                if (controlZoom && overImage) {
+                    const zoomDelta = event.angleDelta.y !== 0
+                                      ? event.angleDelta.y
+                                      : event.pixelDelta.y * 3
+                    page.zoomPreviewBy(Math.pow(1.25, zoomDelta / 120),
+                                       framePoint.x, framePoint.y)
+                    return
+                }
+                if (overImage && page.previewZoom > 1.001) {
+                    const fingerDistance = event.inverted ? rawY : -rawY
+                    page.panPreviewBy(0, fingerDistance)
+                }
             }
         }
     }
