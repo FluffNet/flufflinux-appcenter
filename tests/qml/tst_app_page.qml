@@ -239,7 +239,11 @@ TestCase {
 
         screenshotList.contentX = 0
         appPage.scrollScreenshotStripBy(-10, true)
-        compare(screenshotList.contentX, 21.5)
+        compare(screenshotList.contentX, 50)
+
+        screenshotList.contentX = 0
+        appPage.scrollScreenshotStripBy(-10, false)
+        compare(screenshotList.contentX, 30)
 
         const touchpadScroll = findChild(screenshotList,
                                          "screenshotTouchpadScroll")
@@ -589,6 +593,22 @@ TestCase {
         pinch.release(0, gestureSurface, centerX - 100, centerY)
              .release(1, gestureSurface, centerX + 100, centerY)
              .commit()
+        wait(20)
+
+        compare(touchPan.touchPinching, false)
+        compare(touchPan.pinchWasActive, false)
+        compare(touchPan.pinchLastDistance, 1)
+        const firstPinchZoom = appPage.previewZoom
+        appPage.applyPreviewPinchStep(100, 150,
+                                      centerX, centerY,
+                                      0, 0)
+        verify(appPage.previewZoom > firstPinchZoom)
+
+        const secondPinchZoom = appPage.previewZoom
+        appPage.applyPreviewPinchStep(160, 80,
+                                      centerX, centerY,
+                                      0, 0)
+        verify(appPage.previewZoom < secondPinchZoom)
 
         appPage.resetPreviewTransform()
         appPage.setPreviewZoom(2, centerX, centerY)
@@ -615,17 +635,17 @@ TestCase {
         verify(appPage.previewPanY > panYBeforeMouse)
 
         appPage.resetPreviewTransform()
-        appPage.applyPreviewPinch(1, 0, 0,
-                                  centerX + 60, centerY + 35,
-                                  2, 0, 0)
+        appPage.applyPreviewPinchStep(1, 2,
+                                      centerX + 60, centerY + 35,
+                                      0, 0)
         compare(appPage.previewZoom, 2)
         compare(appPage.previewPanX, -60)
         compare(appPage.previewPanY, -35)
 
         appPage.resetPreviewTransform()
-        appPage.applyPreviewPinch(1, 0, 0,
-                                  frame.width / 2, frame.height / 2,
-                                  2, 24, 16)
+        appPage.applyPreviewPinchStep(1, 2,
+                                      frame.width / 2, frame.height / 2,
+                                      24, 16)
         compare(appPage.previewZoom, 2)
         compare(appPage.previewPanX, 24)
         compare(appPage.previewPanY, 16)

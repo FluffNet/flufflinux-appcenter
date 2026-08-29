@@ -193,20 +193,25 @@ Page {
         setPreviewZoom(previewZoom * factor, focusX, focusY)
     }
 
-    function applyPreviewPinch(startZoom, startPanX, startPanY,
-                               focusX, focusY, activeScale,
-                               translationX, translationY) {
-        const newZoom = Math.max(1,
-                                 Math.min(maximumPreviewZoom,
-                                          startZoom * activeScale))
-        const centerX = previewImageFrame.width / 2
-        const centerY = previewImageFrame.height / 2
-        const ratio = newZoom / startZoom
-        previewZoom = newZoom
-        setPreviewPan(focusX + translationX - centerX
-                      - ratio * (focusX - centerX - startPanX),
-                      focusY + translationY - centerY
-                      - ratio * (focusY - centerY - startPanY))
+    function applyPreviewPinchStep(previousScale, currentScale,
+                                   focusX, focusY,
+                                   translationX, translationY) {
+        if (!Number.isFinite(previousScale) || previousScale <= 0
+                || !Number.isFinite(currentScale) || currentScale <= 0)
+            return
+
+        // Use the same focal zoom operation as the mouse wheel. Applying only
+        // the newest scale and translation deltas prevents a moving pinch
+        // centroid from accumulating a diagonal jump.
+        const focus = mousePreviewZoomFocus(focusX, focusY)
+        const scaleFactor = currentScale / previousScale
+        // Native gestures commonly emit an initial scale of exactly 1. Do not
+        // route that no-op through fit/reset, because it would terminate the
+        // gesture before the fingers actually change distance.
+        if (Math.abs(scaleFactor - 1) > 0.0001)
+            zoomPreviewBy(scaleFactor, focus.x, focus.y)
+        if (Number.isFinite(translationX) && Number.isFinite(translationY))
+            panPreviewBy(translationX, translationY)
     }
 
     function resetPreviewTransform() {
@@ -241,7 +246,7 @@ Page {
         // Pixel deltas are delivered as a stream (including compositor
         // momentum), so apply every update immediately instead of waiting for
         // an axis lock or animating toward row-sized targets.
-        const scale = hasPixelDelta ? 2.15 : 1
+        const scale = hasPixelDelta ? 5 : 3
         screenshotList.contentX = Math.max(minimum,
                                            Math.min(maximum,
                                                     screenshotList.contentX
@@ -777,19 +782,19 @@ Page {
                             property point startPosition: Qt.point(0, 0)
                             property point lastPosition: Qt.point(0, 0)
                             property bool singleTouchActive: false
+                            property bool touchPinching: false
                             property bool pinchWasActive: false
-                            property real pinchStartDistance: 1
-                            property point pinchStartCenter: Qt.point(0, 0)
-                            property real pinchStartZoom: 1
-                            property real pinchStartPanX: 0
-                            property real pinchStartPanY: 0
+                            property real pinchLastDistance: 1
+                            property point pinchLastCenter: Qt.point(0, 0)
 
                             function resetTouchGesture() {
                                 horizontalTravel = 0
                                 verticalTravel = 0
                                 singleTouchActive = false
+                                touchPinching = false
                                 pinchWasActive = false
-                                page.previewPinching = false
+                                pinchLastDistance = 1
+                                pinchLastCenter = Qt.point(0, 0)
                             }
 
                             function handleTouches(points) {
@@ -798,7 +803,6 @@ Page {
                                     if (points[index].pressed)
                                         activePoints.push(points[index])
                                 }
-
                                 if (activePoints.length >= 2) {
                                     const first = activePoints[0]
                                     const second = activePoints[1]
@@ -809,23 +813,21 @@ Page {
                                                                         + deltaY * deltaY))
                                     const center = Qt.point((first.x + second.x) / 2,
                                                             (first.y + second.y) / 2)
-                                    if (!page.previewPinching) {
-                                        page.previewPinching = true
+                                    if (!touchPinching) {
+                                        touchPinching = true
                                         pinchWasActive = true
-                                        pinchStartDistance = distance
-                                        pinchStartCenter = center
-                                        pinchStartZoom = page.previewZoom
-                                        pinchStartPanX = page.previewPanX
-                                        pinchStartPanY = page.previewPanY
+                                        pinchLastDistance = distance
+                                        pinchLastCenter = center
                                     } else {
-                                        page.applyPreviewPinch(pinchStartZoom,
-                                                               pinchStartPanX,
-                                                               pinchStartPanY,
-                                                               pinchStartCenter.x,
-                                                               pinchStartCenter.y,
-                                                               distance / pinchStartDistance,
-                                                               center.x - pinchStartCenter.x,
-                                                               center.y - pinchStartCenter.y)
+                                        page.applyPreviewPinchStep(
+                                                    pinchLastDistance,
+                                                    distance,
+                                                    center.x,
+                                                    center.y,
+                                                    center.x - pinchLastCenter.x,
+                                                    center.y - pinchLastCenter.y)
+                                        pinchLastDistance = distance
+                                        pinchLastCenter = center
                                     }
                                     lastPosition = center
                                     return
@@ -833,8 +835,8 @@ Page {
 
                                 if (activePoints.length === 1) {
                                     const point = activePoints[0]
-                                    if (page.previewPinching) {
-                                        page.previewPinching = false
+                                    if (touchPinching) {
+                                        touchPinching = false
                                         singleTouchActive = false
                                     }
                                     if (!singleTouchActive) {
@@ -861,6 +863,15 @@ Page {
 
                             onTouchUpdated: function(points) {
                                 handleTouches(points)
+                            }
+                            onReleased: function(points) {
+                                // released() is separate from touchUpdated();
+                                // clear every per-gesture value so the next
+                                // two fingers start from the current transform.
+                                if (singleTouchActive && !pinchWasActive)
+                                    page.finishPreviewSwipe(horizontalTravel,
+                                                            verticalTravel)
+                                resetTouchGesture()
                             }
                             onCanceled: function(points) {
                                 resetTouchGesture()
@@ -900,29 +911,34 @@ Page {
                             target: null
                             acceptedDevices: PointerDevice.TouchPad
                             rotationAxis.enabled: false
-                            property real startZoom: 1
-                            property real startPanX: 0
-                            property real startPanY: 0
-                            property point startFocus: Qt.point(0, 0)
+                            property real lastActiveScale: 1
+                            property point lastActiveTranslation: Qt.point(0, 0)
 
                             function applyPinch() {
                                 if (!active)
                                     return
-                                page.applyPreviewPinch(startZoom, startPanX, startPanY,
-                                                       startFocus.x, startFocus.y,
-                                                       activeScale,
-                                                       activeTranslation.x,
-                                                       activeTranslation.y)
+                                const currentTranslation = activeTranslation
+                                page.applyPreviewPinchStep(
+                                            lastActiveScale,
+                                            activeScale,
+                                            centroid.position.x,
+                                            centroid.position.y,
+                                            currentTranslation.x
+                                                - lastActiveTranslation.x,
+                                            currentTranslation.y
+                                                - lastActiveTranslation.y)
+                                lastActiveScale = activeScale
+                                lastActiveTranslation = currentTranslation
                             }
 
                             onActiveChanged: {
                                 page.previewPinching = active
                                 if (active) {
-                                    startZoom = page.previewZoom
-                                    startPanX = page.previewPanX
-                                    startPanY = page.previewPanY
-                                    startFocus = centroid.position
+                                    lastActiveScale = activeScale
+                                    lastActiveTranslation = activeTranslation
                                 } else {
+                                    lastActiveScale = 1
+                                    lastActiveTranslation = Qt.point(0, 0)
                                     page.setPreviewPan(page.previewPanX, page.previewPanY)
                                 }
                             }
