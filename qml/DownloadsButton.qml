@@ -14,7 +14,7 @@ ToolButton {
     readonly property bool unreadResult: window.downloadQueue.activeCount === 0
                                         && !window.downloadQueue.completionSeen
     visible: window.downloadQueue.buttonVisible
-    icon.name: "cloud-download"
+    icon.name: "download"
     icon.width: 24; icon.height: 24
     icon.color: window.textColor
     bottomPadding: 8
