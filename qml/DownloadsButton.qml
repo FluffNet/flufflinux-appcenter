@@ -14,9 +14,39 @@ ToolButton {
     readonly property bool unreadResult: window.downloadQueue.activeCount === 0
                                         && !window.downloadQueue.completionSeen
     visible: window.downloadQueue.buttonVisible
-    icon.source: "download-arrow.svg"
-    icon.width: 24; icon.height: 24
-    icon.color: window.textColor
+    contentItem: Row {
+        spacing: control.spacing
+        Canvas {
+            id: arrow
+            width: 24; height: 24
+            anchors.verticalCenter: parent.verticalCenter
+            onPaint: {
+                const ctx = getContext("2d")
+                ctx.clearRect(0, 0, width, height)
+                ctx.strokeStyle = window.textColor
+                ctx.lineWidth = 1.8
+                ctx.lineCap = "round"
+                ctx.lineJoin = "round"
+                ctx.beginPath()
+                ctx.moveTo(12, 4)
+                ctx.lineTo(12, 20)
+                ctx.moveTo(6, 14)
+                ctx.lineTo(12, 20)
+                ctx.lineTo(18, 14)
+                ctx.stroke()
+            }
+            Connections {
+                target: window
+                function onTextColorChanged() { arrow.requestPaint() }
+            }
+        }
+        Label {
+            anchors.verticalCenter: parent.verticalCenter
+            text: control.text
+            font: control.font
+            color: window.textColor
+        }
+    }
     bottomPadding: 8
     Accessible.name: window.downloadQueue.activeCount === 0
         ? (window.downloadQueue.hasError ? qsTr("Downloads finished with errors") : qsTr("Downloads complete"))
