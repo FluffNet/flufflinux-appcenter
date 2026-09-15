@@ -168,6 +168,7 @@ Page {
             }
 
             DownloadsButton {
+                id: downloadsControl
                 x: page.categorySidebarWidth + 12
                 anchors.verticalCenter: parent.verticalCenter
             }
@@ -175,7 +176,8 @@ Page {
             TextField {
                 id: searchField
                 objectName: "searchField"
-                width: Math.min(420, Math.max(100, page.width - page.categorySidebarWidth - 108))
+                width: Math.min(420, Math.max(100, page.width - page.categorySidebarWidth
+                                            - (downloadsControl.visible ? downloadsControl.width + 56 : 36)))
                 anchors.right: parent.right
                 anchors.rightMargin: 24
                 anchors.verticalCenter: parent.verticalCenter

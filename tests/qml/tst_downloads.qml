@@ -33,7 +33,10 @@ TestCase {
         tryCompare(stack, "busy", false)
         main.goBack()
         tryCompare(stack, "busy", false)
-        compare(button.visible, false)
+        compare(button.visible, true)
+        compare(button.unreadResult, false)
+        compare(queue.jobs.length, 3)
+        compare(button.text, "Downloads")
         queue.startDemo()
         queue.ticker.stop()
         queue.demoFailure = true

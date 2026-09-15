@@ -6,10 +6,9 @@ QtObject {
     property bool simulated: false
     property real elapsed: 0
     property bool completionSeen: false
-    property bool dismissed: false
     property bool demoFailure: false
     readonly property bool hasError: jobs.some(function(job) { return job.failed === true })
-    readonly property bool buttonVisible: jobs.length > 0 && !dismissed
+    readonly property bool buttonVisible: jobs.length > 0
     readonly property int activeCount: jobs.filter(function(job) { return job.progress < 1 }).length
     readonly property real progress: jobs.length ? jobs.reduce(function(total, job) {
         return total + job.progress
@@ -18,7 +17,6 @@ QtObject {
     function startDemo() {
         simulated = true
         completionSeen = false
-        dismissed = false
         demoFailure = false
         elapsed = 0
         updateDemo(0)
@@ -39,9 +37,6 @@ QtObject {
 
     function markViewed() {
         if (jobs.length && activeCount === 0) completionSeen = true
-    }
-    function leavePage() {
-        if (activeCount === 0 && completionSeen) dismissed = true
     }
 
     property Timer ticker: Timer {

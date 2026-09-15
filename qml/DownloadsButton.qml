@@ -4,12 +4,19 @@ import QtQuick.Controls
 ToolButton {
     id: control
     objectName: "downloadsButton"
-    width: 52; height: 48
+    width: Math.max(146, implicitWidth); height: 48
+    text: qsTr("Downloads")
+    display: AbstractButton.TextBesideIcon
+    spacing: 10
+    leftPadding: 14; rightPadding: 14
+    palette.buttonText: window.textColor
+    readonly property bool unreadResult: window.downloadQueue.activeCount === 0
+                                        && !window.downloadQueue.completionSeen
     visible: window.downloadQueue.buttonVisible
-    icon.name: window.downloadQueue.activeCount > 0 ? "download"
+    icon.name: !unreadResult ? "folder-download"
                : window.downloadQueue.hasError ? "dialog-error" : "dialog-ok-apply"
     icon.width: 24; icon.height: 24
-    icon.color: window.downloadQueue.activeCount > 0 ? window.textColor
+    icon.color: !unreadResult ? window.textColor
                 : window.downloadQueue.hasError ? window.accentColor : (window.darkMode ? "#70d996" : "#18763a")
     bottomPadding: 8
     Accessible.name: window.downloadQueue.activeCount === 0
@@ -24,6 +31,7 @@ ToolButton {
         color: control.hovered ? window.hoverColor : window.raisedSurfaceColor
         border.color: control.activeFocus ? window.accentColor : window.borderColor
         Rectangle {
+            visible: window.downloadQueue.activeCount > 0
             x: 6; y: parent.height - 7
             width: parent.width - 12; height: 3; radius: 1.5
             color: window.borderColor

@@ -6,7 +6,6 @@ Page {
     id: page
     objectName: "downloadsPage"
     StackView.onActivated: window.downloadQueue.markViewed()
-    StackView.onDeactivated: window.downloadQueue.leavePage()
     Connections {
         target: window.downloadQueue
         function onActiveCountChanged() {
