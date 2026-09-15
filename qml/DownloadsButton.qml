@@ -13,11 +13,9 @@ ToolButton {
     readonly property bool unreadResult: window.downloadQueue.activeCount === 0
                                         && !window.downloadQueue.completionSeen
     visible: window.downloadQueue.buttonVisible
-    icon.name: !unreadResult ? "folder-download"
-               : window.downloadQueue.hasError ? "dialog-error" : "dialog-ok-apply"
+    icon.name: "cloud-download"
     icon.width: 24; icon.height: 24
-    icon.color: !unreadResult ? window.textColor
-                : window.downloadQueue.hasError ? window.accentColor : (window.darkMode ? "#70d996" : "#18763a")
+    icon.color: window.textColor
     bottomPadding: 8
     Accessible.name: window.downloadQueue.activeCount === 0
         ? (window.downloadQueue.hasError ? qsTr("Downloads finished with errors") : qsTr("Downloads complete"))
@@ -43,15 +41,17 @@ ToolButton {
         }
     }
     Rectangle {
-        visible: window.downloadQueue.activeCount > 0
+        visible: window.downloadQueue.activeCount > 0 || control.unreadResult
         anchors.right: parent.right; anchors.rightMargin: -5
         anchors.top: parent.top; anchors.topMargin: -5
         width: Math.max(22, countLabel.implicitWidth + 10); height: 22; radius: 11
-        color: window.accentColor
+        color: control.unreadResult && !window.downloadQueue.hasError
+               ? "#18763a" : window.accentColor
         Label {
             id: countLabel
             anchors.centerIn: parent
-            text: window.downloadQueue.activeCount
+            text: control.unreadResult ? (window.downloadQueue.hasError ? "×" : "✓")
+                                      : window.downloadQueue.activeCount
             color: "white"; font.pixelSize: 12; font.bold: true
         }
     }
