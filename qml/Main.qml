@@ -28,6 +28,15 @@ ApplicationWindow {
     property string searchCategoryFilter: "All Apps"
     property string searchText: ""
     readonly property bool catalogLoaded: true
+    property bool downloadsDemo: typeof fluffDownloadsDemo !== "undefined" && fluffDownloadsDemo
+    DownloadQueue { id: downloads; objectName: "downloadQueue" }
+    readonly property alias downloadQueue: downloads
+    Component.onCompleted: if (downloadsDemo) downloads.startDemo()
+    function showDownloads() {
+        if (stack.currentItem.objectName !== "downloadsPage")
+            stack.push(downloadsPage)
+    }
+    function goBack() { if (stack.depth > 1) stack.pop() }
     function openApp(app) {
         selectedApp = app
         if (stack.depth === 1)
@@ -57,4 +66,5 @@ ApplicationWindow {
     }
     Component { id: catalogPage; CatalogPage {} }
     Component { id: appPage; AppPage { app: window.selectedApp } }
+    Component { id: downloadsPage; DownloadsPage {} }
 }

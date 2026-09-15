@@ -163,18 +163,19 @@ Page {
                         fillMode: Image.PreserveAspectFit
                         smooth: true
                     }
-                    ColumnLayout {
-                        spacing: 0
-                        Label { text: "Fluff Linux"; color: window.accentColor; font.pixelSize: 11; font.weight: Font.Bold; font.letterSpacing: 1.1 }
-                        Label { text: "App Center"; color: window.textColor; font.pixelSize: 21; font.weight: Font.DemiBold }
-                    }
+                    Label { text: qsTr("App Center"); color: window.textColor; font.pixelSize: 21; font.weight: Font.DemiBold; Layout.alignment: Qt.AlignVCenter }
                 }
+            }
+
+            DownloadsButton {
+                x: page.categorySidebarWidth + 12
+                anchors.verticalCenter: parent.verticalCenter
             }
 
             TextField {
                 id: searchField
                 objectName: "searchField"
-                width: Math.min(420, page.width * 0.38)
+                width: Math.min(420, Math.max(100, page.width - page.categorySidebarWidth - 108))
                 anchors.right: parent.right
                 anchors.rightMargin: 24
                 anchors.verticalCenter: parent.verticalCenter

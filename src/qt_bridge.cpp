@@ -60,6 +60,8 @@ extern "C" int fluff_run_qml(const char *qml_path,
     }
 
     QQmlApplicationEngine engine;
+    engine.rootContext()->setContextProperty(QStringLiteral("fluffDownloadsDemo"),
+        qEnvironmentVariableIntValue("FLUFF_APP_CENTER_DEMO_DOWNLOADS") == 1);
     engine.addImageProvider(QStringLiteral("icon"), new ThemeIconProvider);
     engine.rootContext()->setContextProperty(
         QStringLiteral("fluffAppIconUrl"),

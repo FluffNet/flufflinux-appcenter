@@ -65,3 +65,11 @@ The staged files will be placed under `fakeroot/usr/`.
 
 Installation and removal are deliberately outside this initial catalog-only
 milestone.
+# Downloads UI demo
+
+Run `FLUFF_APP_CENTER_DEMO_DOWNLOADS=1 cargo run` to simulate Firefox, VLC,
+and SuperTuxKart downloading and installing over two minutes. No downloads or
+installation commands are executed. Click the header's Downloads button to see
+the queue and restart the simulation. Its badge counts unfinished apps; its
+progress bar averages progress across this demo batch, including completed apps.
+The button disappears when all jobs finish. Ordinary launches have no demo queue.
