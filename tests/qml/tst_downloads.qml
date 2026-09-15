@@ -28,6 +28,17 @@ TestCase {
         queue.updateDemo(120)
         compare(queue.activeCount, 0)
         compare(queue.progress, 1)
+        compare(button.visible, true)
+        main.showDownloads()
+        tryCompare(stack, "busy", false)
+        main.goBack()
+        tryCompare(stack, "busy", false)
         compare(button.visible, false)
+        queue.startDemo()
+        queue.ticker.stop()
+        queue.demoFailure = true
+        queue.updateDemo(120)
+        compare(queue.hasError, true)
+        compare(button.visible, true)
     }
 }

@@ -3,7 +3,16 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 Page {
+    id: page
     objectName: "downloadsPage"
+    StackView.onActivated: window.downloadQueue.markViewed()
+    StackView.onDeactivated: window.downloadQueue.leavePage()
+    Connections {
+        target: window.downloadQueue
+        function onActiveCountChanged() {
+            if (page.StackView.status === StackView.Active) window.downloadQueue.markViewed()
+        }
+    }
     background: null
     header: ToolBar {
         height: 72
@@ -54,6 +63,13 @@ Page {
                 visible: window.downloadQueue.simulated
                 text: qsTr("Restart simulation")
                 onClicked: window.downloadQueue.startDemo()
+            }
+            CheckBox {
+                Layout.leftMargin: 24
+                visible: window.downloadQueue.simulated && window.downloadQueue.activeCount > 0
+                text: qsTr("Simulate a VLC download error")
+                checked: window.downloadQueue.demoFailure
+                onToggled: window.downloadQueue.demoFailure = checked
             }
         }
     }

@@ -72,4 +72,6 @@ and SuperTuxKart downloading and installing over two minutes. No downloads or
 installation commands are executed. Click the header's Downloads button to see
 the queue and restart the simulation. Its badge counts unfinished apps; its
 progress bar averages progress across this demo batch, including completed apps.
-The button disappears when all jobs finish. Ordinary launches have no demo queue.
+After completion the button shows a green checkmark, or an error icon if a job
+failed. It disappears after viewing Downloads and leaving the page. The demo
+page also offers a simulated VLC error. Ordinary launches have no demo queue.

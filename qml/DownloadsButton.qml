@@ -5,12 +5,16 @@ ToolButton {
     id: control
     objectName: "downloadsButton"
     width: 52; height: 48
-    visible: window.downloadQueue.activeCount > 0
-    icon.name: "download"
+    visible: window.downloadQueue.buttonVisible
+    icon.name: window.downloadQueue.activeCount > 0 ? "download"
+               : window.downloadQueue.hasError ? "dialog-error" : "dialog-ok-apply"
     icon.width: 24; icon.height: 24
-    icon.color: window.textColor
+    icon.color: window.downloadQueue.activeCount > 0 ? window.textColor
+                : window.downloadQueue.hasError ? window.accentColor : (window.darkMode ? "#70d996" : "#18763a")
     bottomPadding: 8
-    Accessible.name: qsTr("Downloads: %1 active, %2% complete")
+    Accessible.name: window.downloadQueue.activeCount === 0
+        ? (window.downloadQueue.hasError ? qsTr("Downloads finished with errors") : qsTr("Downloads complete"))
+        : qsTr("Downloads: %1 active, %2% complete")
         .arg(window.downloadQueue.activeCount).arg(Math.round(window.downloadQueue.progress * 100))
     ToolTip.visible: hovered
     ToolTip.text: qsTr("Downloads")
@@ -31,6 +35,7 @@ ToolButton {
         }
     }
     Rectangle {
+        visible: window.downloadQueue.activeCount > 0
         anchors.right: parent.right; anchors.rightMargin: -5
         anchors.top: parent.top; anchors.topMargin: -5
         width: Math.max(22, countLabel.implicitWidth + 10); height: 22; radius: 11
