@@ -14,7 +14,7 @@ ToolButton {
     readonly property bool unreadResult: window.downloadQueue.activeCount === 0
                                         && !window.downloadQueue.completionSeen
     visible: window.downloadQueue.buttonVisible
-    icon.name: "download"
+    icon.name: "go-down-skip"
     icon.width: 24; icon.height: 24
     icon.color: window.textColor
     bottomPadding: 8
