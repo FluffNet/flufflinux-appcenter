@@ -4,6 +4,7 @@ import QtQuick.Layouts
 
 Page {
     id: page
+    StackView.onActivated: searchField.forceActiveFocus()
     background: null
     readonly property var categories: [
         { name: "All Apps", label: qsTr("Home"), icon: "go-home" },
@@ -185,7 +186,10 @@ Page {
                 color: window.textColor; placeholderTextColor: window.mutedTextColor
                 leftPadding: 46; rightPadding: 48; implicitHeight: 44
                 activeFocusOnPress: true
-                Component.onCompleted: text = window.searchText
+                Component.onCompleted: {
+                    text = window.searchText
+                    forceActiveFocus()
+                }
                 onTextEdited: {
                     if (text.length > 0)
                         window.selectedCategory = "All Apps"

@@ -4,6 +4,7 @@ import QtQuick.Controls
 ToolButton {
     id: control
     objectName: "downloadsButton"
+    focusPolicy: Qt.NoFocus
     width: Math.max(146, implicitWidth); height: 48
     text: qsTr("Downloads")
     display: AbstractButton.TextBesideIcon
