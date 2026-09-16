@@ -1,5 +1,7 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Layouts
+import QtQuick.Dialogs as Dialogs
 
 ApplicationWindow {
     id: window
@@ -24,17 +26,58 @@ ApplicationWindow {
     property var catalog: typeof fluffInitialCatalog !== "undefined"
                           ? fluffInitialCatalog : []
     property var selectedApp: null
-    property var installedApps: typeof fluffInstalledApps !== "undefined" ? fluffInstalledApps : []
-    property bool installedLoading: typeof fluffInstalledLoading !== "undefined" && fluffInstalledLoading
-    property string installedError: typeof fluffInstalledError !== "undefined" ? fluffInstalledError : ""
+    property var backend: typeof fluffBackend !== "undefined" ? fluffBackend : null
+    property var installedApps: backend ? backend.installedApps : []
+    property bool installedLoading: backend ? backend.installedLoading : false
+    property string installedError: backend ? backend.installedError : ""
+    readonly property int iconRevision: backend ? backend.iconRevision : 0
     property string selectedCategory: "All Apps"
     property string searchCategoryFilter: "All Apps"
     property string searchText: ""
     readonly property bool catalogLoaded: true
-    property bool downloadsDemo: typeof fluffDownloadsDemo !== "undefined" && fluffDownloadsDemo
-    DownloadQueue { id: downloads; objectName: "downloadQueue" }
+    DownloadQueue { id: downloads; objectName: "downloadQueue"; jobs: window.backend ? window.backend.jobs : [] }
     readonly property alias downloadQueue: downloads
-    Component.onCompleted: if (downloadsDemo) downloads.startDemo()
+    function findInstalled(app) {
+        if (!app) return null
+        const id = String(app.id).replace(/\.desktop$/, "")
+        const matches = installedApps.filter(function(item) {
+            return String(item.id).replace(/\.desktop$/, "") === id
+        })
+        return matches.find(function(item) { return item.installation === app.installation
+            && item.installedBranch === app.installedBranch }) || matches[0] || null
+    }
+    function jobForApp(app) {
+        if (!app) return null
+        const id = String(app.id).replace(/\.desktop$/, "")
+        const matches = downloads.jobs.filter(function(job) { return job.id === id })
+        return matches.length ? matches[matches.length - 1] : null
+    }
+    function iconSource(icon) {
+        let source = icon || "application-x-executable"
+        if (source.indexOf("://") < 0)
+            source = source.indexOf("/") >= 0 ? "file://" + source : "image://icon/" + source
+        return source.startsWith("image://icon/") || source.startsWith("file://")
+            ? source + "?revision=" + iconRevision : source
+    }
+    function installApp(app) { if (backend) backend.installApp(app) }
+    function detailsFor(app) {
+        const installed = findInstalled(app)
+        if (installed) return installed
+        const clean = Object.assign({}, app)
+        for (const field of ["installedSize", "installedVersion", "installation", "installedBranch", "installedArch"])
+            delete clean[field]
+        return clean
+    }
+    function uninstallApp(app) { if (backend) backend.uninstallApp(app) }
+    function openFlatpak() { sourceDialog.open() }
+    Connections {
+        target: window.backend
+        function onAppOpened(app) { window.openApp(app) }
+        function onInputError(message) { inputError.text = message; errorDialog.open() }
+    }
+    onClosing: function(close) {
+        if (backend && backend.busy) { close.accepted = false; closeDialog.open() }
+    }
     function showDownloads() {
         if (stack.currentItem.objectName !== "downloadsPage")
             stack.push(downloadsPage)
@@ -51,7 +94,7 @@ ApplicationWindow {
         // Pop back to the existing CatalogPage instance. Keeping that item
         // alive preserves its exact GridView position, search, and category.
         if (stack.depth > 1)
-            stack.pop()
+            stack.pop(stack.get(0))
     }
     FluffBackground { anchors.fill: parent }
     StackView {
@@ -68,6 +111,53 @@ ApplicationWindow {
         replaceExit: Transition { NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 100 } }
     }
     Component { id: catalogPage; CatalogPage {} }
-    Component { id: appPage; AppPage { app: window.selectedApp } }
+    Component { id: appPage; AppPage { app: window.detailsFor(window.selectedApp) } }
     Component { id: downloadsPage; DownloadsPage {} }
+    TransactionReview { backend: window.backend }
+    Dialog {
+        id: sourceDialog
+        title: qsTr("Open a Flatpak")
+        anchors.centerIn: parent
+        width: Math.min(window.width - 48, 620)
+        modal: true
+        standardButtons: Dialog.Cancel | Dialog.Open
+        contentItem: ColumnLayout {
+            spacing: 16
+            Label { Layout.fillWidth: true; text: qsTr("Choose a local file or paste a Flatpak link. You will review the installation before it starts."); wrapMode: Text.WordWrap }
+            TextField { id: sourceLink; Layout.fillWidth: true; placeholderText: qsTr("flatpak+https://… or https://…") }
+            Button { text: qsTr("Choose file…"); icon.name: "document-open"; onClicked: flatpakFile.open() }
+        }
+        onAccepted: if (backend) backend.openSource(sourceLink.text)
+    }
+    Dialogs.FileDialog {
+        id: flatpakFile
+        title: qsTr("Open a Flatpak")
+        nameFilters: [qsTr("Flatpak files (*.flatpak *.flatpakref *.flatpakrepo)")]
+        onAccepted: { sourceDialog.close(); if (backend) backend.openSource(selectedFile.toString()) }
+    }
+    Dialog {
+        id: errorDialog
+        anchors.centerIn: parent; width: Math.min(window.width - 48, 600)
+        title: qsTr("Could not open Flatpak")
+        modal: true; standardButtons: Dialog.Ok
+        contentItem: Label { id: inputError; wrapMode: Text.Wrap; textFormat: Text.PlainText }
+    }
+    Dialog {
+        id: closeDialog
+        anchors.centerIn: parent; width: Math.min(window.width - 48, 520)
+        title: qsTr("An operation is still running")
+        modal: true; standardButtons: Dialog.Ok
+        contentItem: ColumnLayout {
+            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: qsTr("Please wait for completion, or cancel the operations before closing App Center. Completed downloads stay in this session’s history.") }
+            Button { text: qsTr("Cancel operations"); onClicked: { backend.cancelAll(); closeDialog.close() } }
+        }
+    }
+    DropArea {
+        anchors.fill: parent
+        onDropped: function(drop) {
+            if (!backend || !drop.hasUrls) return
+            for (let i = 0; i < Math.min(drop.urls.length, 16); ++i) backend.openSource(drop.urls[i].toString())
+            drop.acceptProposedAction()
+        }
+    }
 }

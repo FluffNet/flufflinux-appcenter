@@ -277,6 +277,12 @@ Page {
                 onClicked: window.showCatalog()
             }
             Item { Layout.fillWidth: true }
+            Loader {
+                Layout.rightMargin: 24
+                active: typeof window.downloadQueue !== "undefined"
+                visible: active && window.downloadQueue.buttonVisible
+                sourceComponent: DownloadsButton {}
+            }
         }
     }
     Flickable {
@@ -317,6 +323,7 @@ Page {
                             fillMode: Image.PreserveAspectFit
                             asynchronous: true
                             source: {
+                                if (typeof window.iconSource === "function") return window.iconSource(app && app.icon)
                                 if (!app || !app.icon) return "image://icon/application-x-executable"
                                 if (app.icon.indexOf("/") >= 0 || app.icon.indexOf("://") >= 0)
                                     return app.icon.indexOf("://") >= 0 ? app.icon : "file://" + app.icon
@@ -335,6 +342,7 @@ Page {
                         Label { Layout.fillWidth: true; text: app ? app.name : ""; color: window.textColor; font.pixelSize: 34; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
                         Label { Layout.fillWidth: true; text: app ? app.summary : ""; color: window.mutedTextColor; font.pixelSize: 17; wrapMode: Text.WordWrap }
                         Label { text: app && app.developer ? "By " + app.developer : ""; visible: text.length > 0; color: window.accentColor; font.weight: Font.DemiBold }
+                        AppActions { app: page.app }
                     }
                 }
             }

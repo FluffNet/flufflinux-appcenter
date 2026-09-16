@@ -28,6 +28,7 @@ TestCase {
         property string searchCategoryFilter: "All Apps"
         property bool catalogLoaded: true
         property var selectedApp: null
+        property var downloadQueue: ({activeCount: 0, buttonVisible: false, progress: 0, completionSeen: true, hasError: false})
         property var catalog: [{
             id: "com.mojang.Minecraft",
             name: "Minecraft",

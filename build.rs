@@ -2,7 +2,14 @@ use std::env;
 use std::path::PathBuf;
 use std::process::Command;
 
-const QT_PACKAGES: &[&str] = &["Qt6Core", "Qt6Gui", "Qt6Qml", "Qt6Quick"];
+const QT_PACKAGES: &[&str] = &[
+    "Qt6Core",
+    "Qt6Gui",
+    "Qt6Qml",
+    "Qt6Quick",
+    "Qt6Network",
+    "flatpak",
+];
 
 fn command_output(program: &str, arguments: &[&str]) -> String {
     let output = Command::new(program)
@@ -24,29 +31,57 @@ fn main() {
     }
 
     let output_dir = PathBuf::from(env::var_os("OUT_DIR").expect("OUT_DIR is missing"));
-    let object = output_dir.join("qt_bridge.o");
     let archive = output_dir.join("libfluff_qt_bridge.a");
 
     let mut cflags_arguments = vec!["--cflags"];
     cflags_arguments.extend(QT_PACKAGES);
     let cflags = command_output("pkg-config", &cflags_arguments);
 
-    let mut compiler = Command::new("c++");
-    compiler
-        .arg("-std=c++17")
-        .arg("-fPIC")
-        .arg("-c")
-        .arg("src/qt_bridge.cpp")
+    let moc =
+        PathBuf::from(command_output("pkg-config", &["--variable=libexecdir", "Qt6Core"]).trim())
+            .join("moc");
+    let generated = output_dir.join("moc_flatpak_manager.cpp");
+    let status = Command::new(moc)
+        .arg("src/flatpak_manager.h")
         .arg("-o")
-        .arg(&object)
-        .args(cflags.split_whitespace());
-    let status = compiler.status().expect("failed to start the C++ compiler");
-    assert!(status.success(), "failed to compile the Qt bridge");
+        .arg(&generated)
+        .args(
+            cflags
+                .split_whitespace()
+                .filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")),
+        )
+        .status()
+        .expect("failed to run Qt moc");
+    assert!(
+        status.success(),
+        "failed to generate Flatpak manager bindings"
+    );
+    let mut objects = Vec::new();
+    for source in [
+        PathBuf::from("src/qt_bridge.cpp"),
+        PathBuf::from("src/flatpak_manager.cpp"),
+        PathBuf::from("src/flatpak_worker.cpp"),
+        generated,
+    ] {
+        let object = output_dir
+            .join(source.file_stem().unwrap())
+            .with_extension("o");
+        let status = Command::new("c++")
+            .args(["-std=c++17", "-fPIC", "-pthread", "-Wall", "-Wextra", "-c"])
+            .arg(&source)
+            .arg("-o")
+            .arg(&object)
+            .args(cflags.split_whitespace())
+            .status()
+            .expect("failed to start the C++ compiler");
+        assert!(status.success(), "failed to compile {}", source.display());
+        objects.push(object);
+    }
 
     let status = Command::new("ar")
         .args(["crs"])
         .arg(&archive)
-        .arg(&object)
+        .args(&objects)
         .status()
         .expect("failed to start ar");
     assert!(status.success(), "failed to archive the Qt bridge");
@@ -68,4 +103,7 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=src/qt_bridge.cpp");
+    println!("cargo:rerun-if-changed=src/flatpak_manager.h");
+    println!("cargo:rerun-if-changed=src/flatpak_manager.cpp");
+    println!("cargo:rerun-if-changed=src/flatpak_worker.cpp");
 }

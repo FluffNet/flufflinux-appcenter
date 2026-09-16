@@ -15,6 +15,8 @@ pub struct App {
     pub license: String,
     pub homepage: String,
     pub screenshots: Vec<String>,
+    pub flatpak_ref: String,
+    pub remote: String,
 }
 
 pub fn load_catalog() -> Vec<App> {
@@ -89,6 +91,15 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
     let summary = base_text(xml, "summary").unwrap_or_default();
     let description = base_description(xml);
     let icon = preferred_icon(xml, catalog_path);
+    let flatpak_ref = tagged_text(xml, "bundle", "flatpak").unwrap_or_default();
+    let remote = catalog_path
+        .components()
+        .map(|part| part.as_os_str().to_string_lossy().into_owned())
+        .collect::<Vec<_>>()
+        .windows(2)
+        .find(|pair| pair[0] == "appstream")
+        .map(|pair| pair[1].clone())
+        .unwrap_or_default();
     let categories: Vec<_> = blocks(xml, "category")
         .into_iter()
         .map(clean_markup)
@@ -119,6 +130,8 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         license,
         homepage,
         screenshots,
+        flatpak_ref,
+        remote,
     })
 }
 
@@ -151,6 +164,8 @@ fn merge(current: &mut App, incoming: &App) {
     fill!(developer);
     fill!(license);
     fill!(homepage);
+    fill!(flatpak_ref);
+    fill!(remote);
     if current.screenshots.is_empty() {
         current.screenshots = incoming.screenshots.clone();
     }
@@ -333,13 +348,13 @@ pub fn to_json(apps: &[App]) -> String {
         let search_haystack =
             format!("{search_name} {search_summary} {search_description} {search_metadata}");
         output.push_str(&format!(
-            "{{\"id\":{},\"name\":{},\"summary\":{},\"description\":{},\"icon\":{},\"category\":{},\"developer\":{},\"license\":{},\"homepage\":{},\"screenshots\":[{}],\"searchName\":{},\"searchSummary\":{},\"searchDescription\":{},\"searchMetadata\":{},\"searchHaystack\":{}}}",
+            "{{\"id\":{},\"name\":{},\"summary\":{},\"description\":{},\"icon\":{},\"category\":{},\"developer\":{},\"license\":{},\"homepage\":{},\"screenshots\":[{}],\"searchName\":{},\"searchSummary\":{},\"searchDescription\":{},\"searchMetadata\":{},\"searchHaystack\":{},\"flatpakRef\":{},\"remote\":{}}}",
             escape_json(&app.id), escape_json(&app.name), escape_json(&app.summary),
             escape_json(&app.description), escape_json(&app.icon), escape_json(&app.category),
             escape_json(&app.developer), escape_json(&app.license), escape_json(&app.homepage), screenshots,
             escape_json(&search_name), escape_json(&search_summary),
             escape_json(&search_description), escape_json(&search_metadata),
-            escape_json(&search_haystack)
+            escape_json(&search_haystack), escape_json(&app.flatpak_ref), escape_json(&app.remote)
         ));
     }
     output.push(']');
@@ -355,6 +370,19 @@ mod tests {
         let app = parse_component(xml, Path::new("/tmp/appstream.xml")).unwrap();
         assert_eq!(app.name, "Test & App");
         assert_eq!(app.category, "Utilities");
+    }
+
+    #[test]
+    fn keeps_flatpak_source_and_branch_for_installation() {
+        let xml = r#"<component type="desktop-application"><id>org.example.Test.desktop</id><name>Test</name><bundle type="flatpak">app/org.example.Test/x86_64/beta</bundle></component>"#;
+        let app = parse_component(
+            xml,
+            Path::new("/var/lib/flatpak/appstream/testing/x86_64/active/appstream.xml"),
+        )
+        .unwrap();
+        assert_eq!(app.remote, "testing");
+        assert_eq!(app.flatpak_ref, "app/org.example.Test/x86_64/beta");
+        assert!(to_json(&[app]).contains("\"remote\":\"testing\""));
     }
     #[test]
     fn prefers_base_language_metadata() {

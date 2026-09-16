@@ -21,7 +21,8 @@ AbstractButton {
             sourceSize: Qt.size(64, 64)
             fillMode: Image.PreserveAspectFit
             asynchronous: true
-            source: !app.icon ? "image://icon/application-x-executable"
+            source: typeof window.iconSource === "function" ? window.iconSource(app.icon)
+                    : !app.icon ? "image://icon/application-x-executable"
                     : app.icon.indexOf("://") >= 0 ? app.icon
                     : app.icon.indexOf("/") >= 0 ? "file://" + app.icon
                     : "image://icon/" + app.icon
@@ -60,10 +61,11 @@ AbstractButton {
         }
         ToolButton {
             objectName: "uninstallButton"
-            enabled: false
+            enabled: !!window.backend && !(window.jobForApp(app) && window.jobForApp(app).active)
             Layout.preferredWidth: 44; Layout.preferredHeight: 44
-            Accessible.name: qsTr("Uninstall %1 (unavailable)").arg(app.name)
-            // Explicit image tint keeps the disabled trash visibly red in Breeze.
+            Accessible.name: qsTr("Uninstall %1").arg(app.name)
+            onClicked: window.uninstallApp(app)
+            // Explicit image keeps the trash red in both Breeze palettes.
             contentItem: Image {
                 source: "trash-red.svg"
                 sourceSize: Qt.size(24, 24)

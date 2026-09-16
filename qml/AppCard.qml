@@ -28,6 +28,7 @@ AbstractButton {
                 fillMode: Image.PreserveAspectFit
                 asynchronous: true
                 source: {
+                    if (typeof window.iconSource === "function") return window.iconSource(app.icon)
                     if (!app.icon) return "image://icon/application-x-executable"
                     if (app.icon.indexOf("/") >= 0 || app.icon.indexOf("://") >= 0)
                         return app.icon.indexOf("://") >= 0 ? app.icon : "file://" + app.icon

@@ -10,7 +10,14 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 unsafe extern "C" {
-    fn fluff_run_qml(qml_path: *const i8, catalog_path: *const i8, icon_path: *const i8) -> i32;
+    fn fluff_run_qml(
+        qml_path: *const i8,
+        catalog_path: *const i8,
+        icon_path: *const i8,
+        input_count: i32,
+        inputs: *const *const i8,
+    ) -> i32;
+    fn fluff_transaction_worker(request: *const i8) -> i32;
 }
 
 fn find_main_qml() -> Option<PathBuf> {
@@ -49,6 +56,18 @@ fn c_path(path: &Path) -> Result<CString, String> {
 }
 
 fn run() -> Result<i32, String> {
+    let args: Vec<String> = env::args().skip(1).collect();
+    // The unprivileged worker doesn't parse the catalog or initialize a GUI.
+    if args.first().map(String::as_str) == Some("--transaction-worker") {
+        if args.len() != 2 {
+            return Err("Missing transaction request".into());
+        }
+        let request = CString::new(args[1].as_str()).map_err(|e| e.to_string())?;
+        return Ok(unsafe { fluff_transaction_worker(request.as_ptr()) });
+    }
+    if args.iter().any(|arg| arg.starts_with('-')) {
+        return Err("Usage: flufflinux-appcenter [FILE.flatpak|FILE.flatpakref|FILE.flatpakrepo|flatpak+https://URL …]".into());
+    }
     let main_qml = find_main_qml().ok_or("The App Center QML files could not be found.")?;
     let icon = find_icon().ok_or("The App Center icon could not be found.")?;
     let catalog = appstream::load_catalog();
@@ -63,7 +82,21 @@ fn run() -> Result<i32, String> {
     let icon_path = c_path(&icon)?;
     // The bridge owns the Qt event loop and keeps all borrowed C strings alive
     // for the duration of the call.
-    Ok(unsafe { fluff_run_qml(qml_path.as_ptr(), catalog_path.as_ptr(), icon_path.as_ptr()) })
+    let inputs: Vec<CString> = args
+        .iter()
+        .map(|s| CString::new(s.as_str()))
+        .collect::<Result<_, _>>()
+        .map_err(|e| e.to_string())?;
+    let pointers: Vec<*const i8> = inputs.iter().map(|s| s.as_ptr()).collect();
+    Ok(unsafe {
+        fluff_run_qml(
+            qml_path.as_ptr(),
+            catalog_path.as_ptr(),
+            icon_path.as_ptr(),
+            pointers.len() as i32,
+            pointers.as_ptr(),
+        )
+    })
 }
 
 fn main() -> ExitCode {

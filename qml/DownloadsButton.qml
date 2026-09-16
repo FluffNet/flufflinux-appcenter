@@ -49,7 +49,8 @@ ToolButton {
     }
     bottomPadding: 8
     Accessible.name: window.downloadQueue.activeCount === 0
-        ? (window.downloadQueue.hasError ? qsTr("Downloads finished with errors") : qsTr("Downloads complete"))
+        ? (window.downloadQueue.hasError ? qsTr("Downloads finished with errors")
+           : window.downloadQueue.hasCancelled ? qsTr("Downloads finished with cancellations") : qsTr("Downloads complete"))
         : qsTr("Downloads: %1 active, %2% complete")
         .arg(window.downloadQueue.activeCount).arg(Math.round(window.downloadQueue.progress * 100))
     ToolTip.visible: hovered
@@ -77,11 +78,11 @@ ToolButton {
         anchors.top: parent.top; anchors.topMargin: -5
         width: Math.max(22, countLabel.implicitWidth + 10); height: 22; radius: 11
         color: control.unreadResult && !window.downloadQueue.hasError
-               ? "#18763a" : window.accentColor
+               ? (window.downloadQueue.hasCancelled ? "#60666b" : "#18763a") : window.accentColor
         Label {
             id: countLabel
             anchors.centerIn: parent
-            text: control.unreadResult ? (window.downloadQueue.hasError ? "×" : "✓")
+            text: control.unreadResult ? (window.downloadQueue.hasError ? "×" : window.downloadQueue.hasCancelled ? "−" : "✓")
                                       : window.downloadQueue.activeCount
             color: "white"; font.pixelSize: 12; font.bold: true
         }

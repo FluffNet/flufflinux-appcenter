@@ -1,88 +1,127 @@
 # App Center
 
-A focused, native application catalog for Fluff Linux, built with Rust and
-Qt 6/QML. It provides the window, searchable catalog, category layout, and app
-details view—without update services, notifications, settings, or tray code.
+A native Flatpak software center for Fluff Linux, built with Rust (standard
+library only), QML, and the system Qt 6 and libflatpak libraries. There are no
+background update services, notifications, settings, or tray components.
 
-## Installed apps
+## Install and remove apps
 
-Installed lists application deployments reported by `flatpak list --app` for
-the current user and system installations (not runtimes). Sizes are Flatpak's
-reported installed sizes, not download sizes or estimates of reclaimable space.
-The list is read at startup without blocking the UI. Click a row for details;
-uninstall controls are intentionally disabled. Apps absent from the catalog
-still appear using installed metadata. Installed stays inside the main sidebar
-layout and shares the catalog's mouse, touchpad, and touch scrolling.
+- Install from an app's information page. New apps, dependencies and software
+  sources are installed **for the current user**, without administrator prompts.
+  App Center's system-wide default-handler registration is separate from where
+  Flatpaks are installed. The catalog's source and branch are preserved.
+- On first use, an account without Flathub is offered the official signed
+  Flathub source for that user. Other missing sources require their `.flatpakrepo`
+  file; the app never silently falls back to a system installation.
+- Before deployment, review Flatpak's resolved app/dependency list and estimated
+  download sizes. Existing shared runtimes are reused. New sources require a
+  separate trust confirmation; source additions can remain after cancelling the
+  later app installation.
+- Downloads keeps this session's jobs, per-dependency status, progress, errors,
+  and cancellations. App pages show the same live progress. Operations are
+  serialized; additional requests wait in the queue.
+- Installed lists user and system applications, with version and installed size.
+  Open an app, view its information, or uninstall it from its row or app page.
+- Uninstall confirms removal and deletes **the current user's sandbox directory**
+  at `~/.var/app/APP_ID`, then resets that app's portal permissions. This deletion
+  is irreversible. Other users' data, documents saved elsewhere, and shared
+  runtimes are not deleted. If cleanup fails, the job reports an error instead
+  of claiming a fresh uninstall. Close the app before uninstalling.
+- Flatpak refreshes the installation's exported desktop/icon caches. App
+  Center additionally rebuilds Plasma's application cache, invalidates its
+  cached icons, and reloads installed metadata after every transaction.
+- Run the app as your **regular desktop user**, never root. Existing system apps
+  remain visible. Uninstalling one explicitly warns that it affects all users
+  and may require normal desktop authorization; new installations never do.
+- Closing while work is active asks you to wait or cancel. Cancellation does not
+  roll back dependency operations that already completed.
 
-## Supported platform
+## Local files and browser links
 
-App Center is intentionally built only for **Fluff Linux**, based
-on Arch Linux, running **KDE Plasma 6 on Wayland**. macOS, Windows, X11-only
-desktops, other Linux distributions, and cross-compilation are not supported
-targets. The build fails immediately on a non-Linux host.
+Use **Open Flatpak…**, drop files onto the window, or pass them on the command
+line. Supported inputs:
 
-## Design
+- Local `.flatpak` bundles, `.flatpakref` references and `.flatpakrepo` sources.
+- HTTPS references, including `flatpak+https://…` browser links.
+- `flatpak:org.example.App` and `flatpak://org.example.App` IDs.
 
-- **Rust (standard library only):** reads Flatpak AppStream metadata and
-  creates a small normalized catalog for the UI.
-- **Qt 6/QML:** renders the responsive Plasma-native interface through a tiny
-  native bridge compiled directly against the system Qt libraries.
-- **Flatpak metadata:** uses the AppStream catalogs downloaded from configured
-  Flatpak remotes such as Flathub.
+Local bundles and references still require confirmation. Remote references are
+limited to 2 MiB, with a bounded timeout and HTTPS-only redirects. Insecure HTTP
+and URLs with embedded credentials are rejected. Signed Flatpak repositories
+and bundle verification use libflatpak; private sources requiring additional
+web/token login are not yet implemented.
 
-## Visual design and themes
+The desktop entry accepts URLs with `%U`. A per-user socket forwards new files
+and links to the existing App Center window, keeping one session's queue.
 
-The interface follows the Fluff Linux design language established by
-`fluffsetup` and `fluffinstall`: spacious layouts, layered surfaces, strong
-headings, and the Fluff red accent. It still respects the active Breeze color
-scheme. Text, panels, borders, hover states, focus contrast, and the flat
-background update automatically from the Qt palette when the Plasma theme
-changes.
+## Supported platform and dependencies
 
-The Rust package has no third-party crate dependencies.
-
-## Requirements
+Fluff Linux (Arch-based), KDE Plasma 6, Wayland. No macOS or Windows builds.
 
 ```sh
-sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak gzip make
-```
-
-AppStream metadata is read from Flatpak's system and per-user catalog
-directories. The native Qt bridge sets the correct Plasma application identity
-and injects the catalog directly into QML.
-
-## Run from the source tree
-
-```sh
+sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak gzip make desktop-file-utils gtk-update-icon-cache kservice xdg-utils
 cargo run
 ```
 
-## Build and stage for packaging
+AppStream metadata comes from configured Flatpak catalog caches. Apps absent
+from those caches still appear in Installed and can be removed. Adding a new
+source may require refreshing its AppStream metadata and restarting App Center
+before its full catalog appears.
+
+## Install and register as the default handler
 
 ```sh
 make
+sudo make install
+make set-default-handler
+```
+
+Run the last command **without sudo**, as the desktop user. It changes defaults
+only for Flatpak files and supported Flatpak link schemes.
+
+`make install` also merges those five associations into
+`/etc/xdg/mimeapps.list` as system-wide defaults, preserving unrelated entries
+and existing alternatives. Explicit per-user choices take precedence. The last
+command above selects App Center for the current user as well.
+
+For distro packaging:
+
+```sh
 DESTDIR="$PWD/fakeroot" make install
 ```
 
-The staged files will be placed under `fakeroot/usr/`.
+Staging writes the default associations only under `DESTDIR`; it does not change
+the host's icon caches or MIME defaults. Override `SYSCONFDIR` for another
+configuration prefix.
 
-## Scope of the first release
+## Architecture
 
-- Browse all applications
-- Search by name, summary, description, or category
-- Filter using a compact category sidebar
-- Open a complete app details page with metadata and screenshots
+Rust reads/normalizes AppStream metadata. QML renders the Breeze light/dark
+interface. The C++ Qt bridge exposes an asynchronous manager; an unprivileged
+child process runs libflatpak transactions and emits structured progress. It
+pauses at the actual transaction plan until the GUI replies to the review.
+The worker never interpolates file names, app IDs or URLs into shell commands.
 
-Installation and removal are deliberately outside this initial catalog-only
-milestone.
-# Downloads UI demo
+Mouse, touchpad, touch-screen scrolling and screenshot zoom remain independent
+of the installation backend.
 
-Run `FLUFF_APP_CENTER_DEMO_DOWNLOADS=1 cargo run` to simulate Firefox, VLC,
-and SuperTuxKart downloading and installing over two minutes. No downloads or
-installation commands are executed. Click the header's Downloads button to see
-the queue and restart the simulation. Its badge counts unfinished apps; its
-progress bar averages progress across this demo batch, including completed apps.
-After completion the button shows a green checkmark, or an error icon if a job
-failed. Viewing Downloads clears that indicator; the button and history remain
-available until App Center closes. The demo
-page also offers a simulated VLC error. Ordinary launches have no demo queue.
+## Tests
+
+On Fluff Linux:
+
+```sh
+cargo test
+/usr/lib/qt6/bin/qmltestrunner -input tests/qml -import qml -platform offscreen
+```
+
+The integration suite really installs and removes GNOME Calculator, including
+a data-deletion/fresh-install check. It refuses pre-existing Calculator
+installations or data. Run **only on the testing VM**, as its desktop user:
+
+```sh
+APPCENTER_MUTATING_TESTS=1 python3 tests/integration/test_transactions.py
+```
+
+It leaves shared runtimes available for subsequent tests and removes its test
+application and temporary repository. A failed test reports its exact failure;
+inspect installed state before retrying rather than deleting unrelated apps.

@@ -18,58 +18,87 @@ Page {
         background: Rectangle { color: window.surfaceColor; border.color: window.borderColor }
         RowLayout {
             anchors.fill: parent; anchors.margins: 12
-            ToolButton {
-                text: qsTr("Back"); icon.name: "go-previous"
-                onClicked: window.goBack()
-            }
+            ToolButton { text: qsTr("Back"); icon.name: "go-previous"; onClicked: window.goBack() }
             Label { text: qsTr("Downloads"); color: window.textColor; font.pixelSize: 24; font.bold: true }
             Item { Layout.fillWidth: true }
         }
     }
-    ScrollView {
+    Flickable {
+        id: scroll
         anchors.fill: parent
-        contentWidth: availableWidth
+        contentWidth: width
+        contentHeight: content.implicitHeight + 48
+        clip: true
+        boundsBehavior: Flickable.StopAtBounds
+        ScrollBar.vertical: ScrollBar {}
+        NaturalWheelScroll { scrollTarget: scroll }
         ColumnLayout {
-            width: parent.width
-            spacing: 16
+            id: content
+            x: 24; y: 24; width: parent.width - 48; spacing: 16
             Label {
-                Layout.fillWidth: true; Layout.margins: 24
-                text: qsTr("Simulation — no apps are downloaded or installed.")
+                Layout.fillWidth: true
+                text: qsTr("This session’s installations and removals. Dependencies appear under each app.")
                 wrapMode: Text.WordWrap; color: window.mutedTextColor
-                visible: window.downloadQueue.simulated
             }
             Repeater {
                 model: window.downloadQueue.jobs
                 delegate: Pane {
                     required property var modelData
-                    Layout.fillWidth: true; Layout.leftMargin: 24; Layout.rightMargin: 24
+                    Layout.fillWidth: true
                     padding: 20
                     background: Rectangle { radius: 10; color: window.surfaceColor; border.color: window.borderColor }
-                    ColumnLayout {
-                        anchors.fill: parent
+                    contentItem: ColumnLayout {
+                        spacing: 10
                         RowLayout {
                             Layout.fillWidth: true
-                            Label { text: modelData.name; font.pixelSize: 20; color: window.textColor; Layout.fillWidth: true }
-                            Label { text: modelData.status; color: window.mutedTextColor }
+                            Label { text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 20; font.bold: true; color: window.textColor; Layout.fillWidth: true }
+                            Button {
+                                visible: modelData.active
+                                text: qsTr("Cancel")
+                                onClicked: if (window.backend) window.backend.cancelJob(modelData.index)
+                            }
                         }
-                        ProgressBar { Layout.fillWidth: true; value: modelData.progress; palette.highlight: window.accentColor }
-                        Label { text: Math.round(modelData.progress * 100) + "%"; color: window.mutedTextColor }
+                        Label {
+                            Layout.fillWidth: true
+                            text: (modelData.action === "uninstall" ? qsTr("Uninstall") : qsTr("Install / add source")) + " · " + modelData.status
+                            textFormat: Text.PlainText; wrapMode: Text.Wrap
+                            color: modelData.failed ? window.accentColor : window.mutedTextColor
+                        }
+                        FluffProgressBar {
+                            Layout.fillWidth: true
+                            visible: modelData.active
+                            value: modelData.progress
+                            indeterminate: modelData.active && !(modelData.operations || []).length
+                            palette.highlight: window.accentColor
+                        }
+                        Label {
+                            Layout.fillWidth: true; visible: !!modelData.error
+                            text: modelData.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap
+                            color: window.accentColor
+                        }
+                        Repeater {
+                            model: modelData.operations || []
+                            delegate: ColumnLayout {
+                                required property var modelData
+                                Layout.fillWidth: true; spacing: 4
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Label {
+                                        Layout.fillWidth: true; wrapMode: Text.WrapAnywhere
+                                        text: (modelData.dependency ? qsTr("Dependency: ") : "") + modelData.name
+                                        textFormat: Text.PlainText; color: window.textColor
+                                    }
+                                    Label { text: modelData.downloadSize; color: window.mutedTextColor }
+                                }
+                                Label { Layout.fillWidth: true; text: modelData.status; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.mutedTextColor }
+                                FluffProgressBar { Layout.fillWidth: true; visible: modelData.progress > 0 && modelData.progress < 1; value: modelData.progress }
+                                Rectangle { Layout.fillWidth: true; height: 1; color: window.borderColor }
+                            }
+                        }
                     }
                 }
             }
-            Button {
-                Layout.leftMargin: 24
-                visible: window.downloadQueue.simulated
-                text: qsTr("Restart simulation")
-                onClicked: window.downloadQueue.startDemo()
-            }
-            CheckBox {
-                Layout.leftMargin: 24
-                visible: window.downloadQueue.simulated && window.downloadQueue.activeCount > 0
-                text: qsTr("Simulate a VLC download error")
-                checked: window.downloadQueue.demoFailure
-                onToggled: window.downloadQueue.demoFailure = checked
-            }
+            Label { visible: !window.downloadQueue.jobs.length; text: qsTr("No operations yet."); color: window.textColor }
         }
     }
 }
