@@ -13,6 +13,7 @@ AppCenter.Main {
     property bool sawDependency: false
     property bool sawProgressUi: false
     property string testId: "org.gnome.Calculator"
+    property bool keepOpen: false
 
     function find(item, name) {
         if (item.objectName === name) return item
@@ -36,6 +37,7 @@ AppCenter.Main {
             if (!main.testApp) return
             const job = main.jobForApp(main.testApp)
             if (!job || !job.active) return
+            if (!main.check(job.icon === main.testApp.icon, "Active download lost its catalog icon")) return
             for (const op of (job.operations || [])) {
                 const prefix = op.dependency ? "Dependency: " + op.name : "App: " + main.testApp.name
                 if (job.status === prefix + "\n" + op.status) {
@@ -115,17 +117,25 @@ AppCenter.Main {
                 if (!main.check(main.find(stack.currentItem, "downloadJobs").count === 1
                                 && main.downloadQueue.jobs[0].status === "Complete",
                                 "Successful installation disappeared from Downloads")) return
+                const icon = main.find(stack.currentItem, "downloadAppIcon")
+                if (!main.check(!!icon && !icon.loadFailed && icon.status !== Image.Error,
+                                "Downloads artwork failed to load")) return
+                if (icon.status !== Image.Ready) return
+                if (!main.check(icon.source.toString() === main.iconSource(main.testApp.icon)
+                                && main.downloadQueue.jobs[0].icon === main.testApp.icon,
+                                "Completed download did not retain the app's actual icon")) return
                 main.phase = "capture"
                 stack.currentItem.grabToImage(function(result) {
                     result.saveToFile(Qt.resolvedUrl("../../target/install-history-proof.png").toString().replace("file://", ""))
-                    console.info("INSTALL_PROGRESS_ALL_PASS: real component progress, no app-page completion text, recorded installation date in both views, Downloads history retained")
-                    Qt.quit()
+                    console.info("INSTALL_PROGRESS_ALL_PASS: real component progress, no app-page completion text, recorded installation date in both views, Downloads history and loaded app icon retained")
+                    main.phase = "done"
+                    if (!main.keepOpen) Qt.quit()
                 })
             }
         }
     }
     Timer {
-        interval: 600000; running: true
+        interval: 600000; running: main.phase !== "done"
         onTriggered: main.check(false, "Timeout at " + main.phase)
     }
 }

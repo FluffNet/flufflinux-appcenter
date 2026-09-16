@@ -52,7 +52,22 @@ Page {
                         spacing: 10
                         RowLayout {
                             Layout.fillWidth: true
-                            Label { text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 20; font.bold: true; color: window.textColor; Layout.fillWidth: true }
+                            spacing: 14
+                            Image {
+                                objectName: "downloadAppIcon"
+                                Layout.preferredWidth: 56; Layout.preferredHeight: 56
+                                Layout.alignment: Qt.AlignVCenter
+                                sourceSize: Qt.size(64, 64)
+                                fillMode: Image.PreserveAspectFit
+                                asynchronous: true
+                                Accessible.ignored: true
+                                readonly property url requestedSource: window.iconSource(modelData.icon)
+                                property bool loadFailed: false
+                                onRequestedSourceChanged: loadFailed = false
+                                source: loadFailed ? window.iconSource("application-x-executable") : requestedSource
+                                onStatusChanged: if (status === Image.Error && !loadFailed) loadFailed = true
+                            }
+                            Label { objectName: "downloadAppName"; text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 20; font.bold: true; color: window.textColor; Layout.fillWidth: true }
                             Button {
                                 visible: modelData.active
                                 text: qsTr("Cancel")

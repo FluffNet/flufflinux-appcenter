@@ -134,8 +134,12 @@ QVariantList FlatpakManager::jobs() const {
     // Keep internal indices stable for the worker/queue, but cancellations
     // are not session history and must not reach any of the UI consumers.
     for (const auto &entry : m_jobs) {
-        const auto job = entry.toMap();
-        if (!job.value("hidden").toBool() && !job.value("cancelled").toBool()) visible.append(entry);
+        auto job = entry.toMap();
+        if (job.value("hidden").toBool() || job.value("cancelled").toBool()) continue;
+        // Use catalog artwork before installation too, and retain it in the
+        // session history. Unknown external apps fall back to their theme ID.
+        job["icon"] = metadata(normalizedId(job.value("id").toString())).value("icon");
+        visible.append(job);
     }
     return visible;
 }

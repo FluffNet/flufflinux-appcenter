@@ -32,7 +32,8 @@ background update services, notifications, settings, or tray components.
   resolves the current plan normally, so actual transfers can differ from the
   repository's published estimates.
 - Downloads keeps this session's jobs, per-dependency status, progress, and
-  errors. Cancelled jobs disappear from both Downloads and the app page once
+  errors, with each app's icon beside its name (and a themed fallback when
+  artwork is unavailable). Cancelled jobs disappear from both Downloads and the app page once
   cancellation finishes. Cancelling the only job also hides the Downloads
   button; other completed/failed jobs stay. Operations are serialized;
   additional requests wait in the queue.
