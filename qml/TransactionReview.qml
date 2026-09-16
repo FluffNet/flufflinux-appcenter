@@ -8,8 +8,8 @@ Dialog {
     property var backend: null
     property var plan: ({})
     anchors.centerIn: parent
-    width: Math.min(window.width - 48, 740)
-    height: Math.min(window.height - 64, body.implicitHeight + header.height + footer.height + 48)
+    width: Math.min(window.width - 48, plan.removing ? 480 : 740)
+    height: Math.min(window.height - 64, (plan.removing ? 12 : body.implicitHeight + 48) + header.implicitHeight + footer.implicitHeight)
     modal: true
     padding: 20
     background: Rectangle {
@@ -19,13 +19,43 @@ Dialog {
         border.color: window.borderColor
     }
     title: plan.title || qsTr("Confirm action")
-    standardButtons: Dialog.Cancel | Dialog.Ok
+    standardButtons: Dialog.NoButton
     closePolicy: Popup.CloseOnEscape
     onAccepted: if (backend) backend.answerReview(plan.token, true)
     onRejected: if (backend) backend.answerReview(plan.token, false)
-    onOpened: standardButton(Dialog.Ok).text = plan.removing ? qsTr("Uninstall and delete data")
-                : plan.kind === "remote" ? qsTr("Trust and add source")
-                : qsTr("Continue")
+    onOpened: rejectButton.forceActiveFocus()
+    header: Label {
+        text: dialog.title; textFormat: Text.PlainText
+        wrapMode: Text.Wrap
+        font.pixelSize: 22; color: window.textColor
+        leftPadding: 20; rightPadding: 20; topPadding: 20; bottomPadding: 12
+    }
+    footer: Item {
+        implicitHeight: reviewButtons.implicitHeight + 24
+        RowLayout {
+            id: reviewButtons
+            anchors.right: parent.right; anchors.rightMargin: 16
+            anchors.top: parent.top; anchors.topMargin: 8
+            spacing: 8
+            Button {
+                objectName: "confirmReviewButton"
+                Layout.minimumHeight: 40
+                text: dialog.plan.removing ? qsTr("Yes") : dialog.plan.kind === "remote" ? qsTr("Trust and add source") : qsTr("Continue")
+                icon.name: dialog.plan.removing ? "" : "dialog-ok-apply"
+                icon.source: dialog.plan.removing ? Qt.resolvedUrl("trash-red.svg") : ""
+                icon.color: dialog.plan.removing ? "transparent" : palette.buttonText
+                onClicked: dialog.accept()
+            }
+            Button {
+                id: rejectButton
+                objectName: "rejectReviewButton"
+                Layout.minimumHeight: 40
+                text: dialog.plan.removing ? qsTr("No") : qsTr("Cancel")
+                icon.name: "dialog-cancel"
+                onClicked: dialog.reject()
+            }
+        }
+    }
     Connections {
         target: dialog.backend
         function onReviewChanged() {
@@ -36,6 +66,7 @@ Dialog {
         }
     }
     contentItem: ScrollView {
+        visible: !dialog.plan.removing
         contentWidth: availableWidth
         clip: true
         ColumnLayout {
@@ -44,7 +75,8 @@ Dialog {
             spacing: 14
             Label { Layout.fillWidth: true; text: dialog.plan.message || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap }
             Repeater {
-                model: dialog.plan.operations || []
+                objectName: "reviewOperations"
+                model: dialog.plan.removing ? [] : dialog.plan.operations || []
                 delegate: ColumnLayout {
                     required property var modelData
                     Layout.fillWidth: true

@@ -43,11 +43,14 @@ background update services, notifications, settings, or tray components.
   lingering completion text on the app page.
 - Installed lists user and system applications, with version and installed size.
   Open an app, view its information, or uninstall it from its row or app page.
-- Uninstall confirms removal and deletes **the current user's sandbox directory**
+- Uninstall asks a compact **Yes / No** question naming the app and data deletion.
+  Yes force-stops all of that app's running sandboxes for the current user,
+  verifies they have exited, and deletes **the current user's sandbox directory**
   at `~/.var/app/APP_ID`, then resets that app's portal permissions. This deletion
   is irreversible. Other users' data, documents saved elsewhere, and shared
   runtimes are not deleted. If cleanup fails, the job reports an error instead
-  of claiming a fresh uninstall. Close the app before uninstalling.
+  of claiming a fresh uninstall. No or Escape leaves the app and its data alone.
+  Unrelated apps are never stopped.
 - Flatpak refreshes the installation's exported desktop/icon caches. App
   Center additionally rebuilds Plasma's application cache, invalidates its
   cached icons, and reloads installed metadata after every transaction.
@@ -196,7 +199,12 @@ installations or data. Run **only on the testing VM**, as its desktop user:
 
 ```sh
 APPCENTER_MUTATING_TESTS=1 python3 tests/integration/test_transactions.py
+APPCENTER_MUTATING_TESTS=1 python3 tests/integration/test_uninstall_running.py
 ```
+
+The running-app test uses the desktop user's real `XDG_RUNTIME_DIR`. It checks
+that declining leaves two SIGTERM-resistant test sandboxes running, and accepting
+force-stops both before deleting their app/data while unrelated apps keep running.
 
 It leaves shared runtimes available for subsequent tests and removes its test
 application and temporary repository. A failed test reports its exact failure;

@@ -4,6 +4,7 @@
 #include <flatpak.h>
 #include <QCoreApplication>
 #include <QDir>
+#include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
 #include <QJsonArray>
@@ -47,6 +48,7 @@ struct Worker {
     int answer = -1;
     QJsonArray operations;
     QString appId;
+    QString appName;
     QString problem;
     bool removing = false;
     bool systemRemoval = false;
@@ -87,6 +89,42 @@ struct Worker {
         send({{"type", "operation"}, {"ref", ref}, {"status", status}, {"progress", progress}});
     }
 };
+
+bool appIsRunning(const QString &id) {
+    g_autoptr(GPtrArray) instances = flatpak_instance_get_all();
+    for (guint i = 0; i < instances->len; ++i) {
+        auto instance = FLATPAK_INSTANCE(g_ptr_array_index(instances, i));
+        if (str(flatpak_instance_get_app(instance)) == id && flatpak_instance_is_running(instance))
+            return true;
+    }
+    return false;
+}
+
+bool forceStopApp(Worker &w) {
+    if (!validId(w.appId)) { w.problem = "Invalid app ID for closing the app."; return false; }
+    if (!appIsRunning(w.appId)) return true;
+    send({{"type", "status"}, {"status", QCoreApplication::translate("Flatpak", "Closing %1…").arg(w.appName)}});
+    QElapsedTimer timeout;
+    timeout.start();
+    do {
+        if (g_cancellable_is_cancelled(w.cancel)) return false;
+        // Flatpak targets all of this user's matching sandbox instances and
+        // sends SIGKILL to their sandbox child. Never match host process names
+        // or kill unrelated apps/other users' sessions.
+        QProcess stop;
+        stop.start("flatpak", {"kill", w.appId});
+        if (!stop.waitForFinished(1500)) { stop.kill(); stop.waitForFinished(1000); }
+        // A successful command only means the signal was sent. Verify exit
+        // before removing files, including instances still starting at click.
+        for (int i = 0; i < 5; ++i) {
+            if (!appIsRunning(w.appId)) return true;
+            if (g_cancellable_is_cancelled(w.cancel)) return false;
+            g_usleep(50 * 1000);
+        }
+    } while (timeout.elapsed() < 5000);
+    w.problem = QCoreApplication::translate("Flatpak", "Could not close %1. Nothing has been removed.").arg(w.appName);
+    return false;
+}
 
 QJsonObject operationInfo(FlatpakTransactionOperation *op) {
     const auto ref = str(flatpak_transaction_operation_get_ref(op));
@@ -129,11 +167,12 @@ gboolean ready(FlatpakTransaction *tx, gpointer data) {
     // newly opened file/link. Opening a source is not consent to install it.
     if (w.estimateOnly || w.prepareOnly) return false;
     if (!w.removing) return !g_cancellable_is_cancelled(w.cancel);
-    return w.ask({{"kind", "transaction"}, {"operations", w.operations},
+    if (!w.ask({{"kind", "transaction"}, {"operations", w.operations},
         {"appId", w.appId}, {"removing", w.removing}, {"downloadSize", bytes(total)},
-        {"title", QCoreApplication::translate("Flatpak", "Uninstall and delete app data?")},
-        {"message", (w.systemRemoval ? QCoreApplication::translate("Flatpak", "This app was installed system-wide. Removing it affects all users and may require administrator authorization.\n\n") : QString())
-                + QCoreApplication::translate("Flatpak", "This removes the app and its saved settings, cache and data in ~/.var/app/%1 for your user, and resets its Flatpak permissions. Files saved elsewhere and other users’ data are not deleted. Close the app first. This cannot be undone.").arg(w.appId)}});
+        {"title", (w.systemRemoval
+            ? QCoreApplication::translate("Flatpak", "Uninstall %1 for all users and delete your app data?")
+            : QCoreApplication::translate("Flatpak", "Uninstall %1 and delete its data?")).arg(w.appName)}})) return false;
+    return forceStopApp(w);
 }
 
 gboolean addRemote(FlatpakTransaction *, FlatpakTransactionRemoteReason, const char *,
@@ -314,6 +353,8 @@ bool execute(const QJsonObject &request, Worker &w) {
         w.problem = "Passive estimates only support catalog applications."; return false;
     }
     w.appId = request["id"].toString();
+    w.appName = request["name"].toString().trimmed();
+    if (w.appName.isEmpty()) w.appName = w.appId;
     if (!w.appId.isEmpty() && !validId(w.appId)) { w.problem = "Invalid Flatpak app ID."; return false; }
     w.systemRemoval = w.removing && scope != "user";
     // New apps, bundles, references and repositories ALWAYS belong to the
@@ -423,6 +464,12 @@ bool execute(const QJsonObject &request, Worker &w) {
         return false;
     }
     if (w.removing) {
+        // Recheck after deployment removal in case the app was relaunched
+        // during authorization/removal. Do not let it rewrite deleted data.
+        if (!forceStopApp(w)) {
+            w.problem = QCoreApplication::translate("Flatpak", "App removed, but it could not be closed to delete its data.");
+            return false;
+        }
         send({{"type", "status"}, {"status", "Deleting sandbox data and resetting permissions…"}});
         return clearAppData(w.appId, w);
     }

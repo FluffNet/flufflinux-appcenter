@@ -28,6 +28,65 @@ TestCase {
         function cancelJob(index) { requested = "cancel:" + index }
     }
     AppCenter.Main { id: main; backend: backend; visible: true }
+    function initTestCase() {
+        main.requestActivate()
+        waitForRendering(main.contentItem)
+        wait(250) // Let startup search focus and the first layout settle.
+    }
+    function init() {
+        main.requestActivate()
+        waitForRendering(main.contentItem)
+    }
+    function test_simple_uninstall_confirmation() {
+        const dialog = findChild(main, "transactionReview")
+        const plan = {token: 41, title: "Uninstall Calculator and delete its data?", kind: "transaction", removing: true,
+                      message: "Technical details must not appear", operations: [{name: "org.example.Test", ref: "app/org.example.Test/x86_64/stable", action: "uninstall"}]}
+        backend.review = plan
+        tryCompare(dialog, "opened", true)
+        waitForRendering(dialog.footer)
+        compare(dialog.title, plan.title)
+        const yes = findChild(dialog.footer, "confirmReviewButton")
+        const no = findChild(dialog.footer, "rejectReviewButton")
+        compare(yes.text, "Yes")
+        verify(yes.icon.source.toString().endsWith("trash-red.svg"))
+        compare(yes.icon.color, Qt.rgba(0, 0, 0, 0))
+        compare(no.text, "No")
+        compare(no.icon.name, "dialog-cancel")
+        verify(no.activeFocus)
+        verify(!dialog.contentItem.visible)
+        compare(findChild(dialog.contentItem, "reviewOperations").count, 0)
+        verify(dialog.width <= 480 && dialog.height < 260, "Removal prompt must stay compact")
+        const point = no.mapToItem(dialog.footer, 0, 0)
+        verify(point.x >= 0 && point.x + no.width <= dialog.footer.width)
+        verify(point.y >= 0 && point.y + no.height <= dialog.footer.height)
+        mousePress(no)
+        verify(no.down, "No button must receive pointer input")
+        mouseRelease(no)
+        compare(backend.acceptedToken, -41)
+        tryCompare(dialog, "visible", false)
+        backend.review = Object.assign({}, plan, {token: 42})
+        tryCompare(dialog, "opened", true)
+        waitForRendering(dialog.footer)
+        keyClick(Qt.Key_Escape)
+        compare(backend.acceptedToken, -42)
+        tryCompare(dialog, "visible", false)
+        backend.review = Object.assign({}, plan, {token: 43})
+        tryCompare(dialog, "opened", true)
+        waitForRendering(dialog.footer)
+        mouseClick(yes)
+        compare(backend.acceptedToken, 43)
+        tryCompare(dialog, "visible", false)
+        // Source trust is a different confirmation: keep its information.
+        backend.review = {token: 44, title: "Add source?", kind: "remote", message: "Source URL and trust details"}
+        tryCompare(dialog, "opened", true)
+        waitForRendering(dialog.footer)
+        verify(dialog.contentItem.visible)
+        compare(yes.text, "Trust and add source")
+        compare(no.text, "Cancel")
+        mouseClick(no)
+        compare(backend.acceptedToken, -44)
+        tryCompare(dialog, "visible", false)
+    }
     function test_inline_sizes_and_website_alignment() {
         const app = {id: "org.example.Size", name: "Size test", summary: "", description: "", icon: "", screenshots: [], category: "Games", license: "MIT", homepage: "https://example.org/", developer: ""}
         main.openApp(app)
@@ -197,7 +256,9 @@ TestCase {
                           operations: [], downloadSize: "10 MB"}
         const dialog = findChild(main, "transactionReview")
         tryCompare(dialog, "visible", true)
-        mouseClick(dialog.standardButton(Dialog.Ok))
+        tryCompare(dialog, "opened", true)
+        waitForRendering(dialog.footer)
+        mouseClick(findChild(dialog.footer, "confirmReviewButton"))
         compare(backend.acceptedToken, 7)
         tryCompare(dialog, "visible", false)
         wait(250) // Allow the modal dimmer's close transition to finish.
