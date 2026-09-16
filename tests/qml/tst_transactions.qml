@@ -25,6 +25,31 @@ TestCase {
         function cancelJob(index) { requested = "cancel:" + index }
     }
     AppCenter.Main { id: main; backend: backend; visible: true }
+    function hasDownloadsText(item) {
+        if (item.text === "Downloads") return true
+        const children = item.children || []
+        for (let i = 0; i < children.length; ++i)
+            if (hasDownloadsText(children[i])) return true
+        return false
+    }
+    function test_downloads_stays_in_catalog_not_app_view() {
+        const app = {id: "org.example.Download", name: "Download test", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
+        backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, progress: 0.5,
+                         status: "Downloading", operations: [{name: "org.example.Runtime", progress: 0.5}]}]
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        verify(!findChild(page, "downloadsButton"))
+        verify(!hasDownloadsText(page))
+        verify(findChild(page, "appInstallProgress").visible)
+        backend.jobs = [{id: app.id, name: app.name, index: 0, active: false, progress: 1, status: "Complete", operations: []}]
+        verify(!hasDownloadsText(page))
+        main.showCatalog()
+        tryCompare(stack, "busy", false)
+        verify(findChild(stack.currentItem, "downloadsButton").visible)
+        backend.jobs = []
+    }
     function test_external_flatpak_opens_app_view_without_catalog_picker() {
         const app = {id: "org.example.External", name: "External app", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
         backend.appOpened(app)

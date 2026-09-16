@@ -43,7 +43,6 @@ ColumnLayout {
             text: qsTr("Cancel")
             onClicked: window.backend.cancelJob(actions.job.index)
         }
-        Button { visible: !!actions.job; text: qsTr("Downloads"); onClicked: window.showDownloads() }
         Item { Layout.fillWidth: true }
     }
     FluffProgressBar {

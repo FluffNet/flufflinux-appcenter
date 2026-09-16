@@ -277,12 +277,6 @@ Page {
                 onClicked: window.showCatalog()
             }
             Item { Layout.fillWidth: true }
-            Loader {
-                Layout.rightMargin: 24
-                active: typeof window.downloadQueue !== "undefined"
-                visible: active && window.downloadQueue.buttonVisible
-                sourceComponent: DownloadsButton {}
-            }
         }
     }
     Flickable {
