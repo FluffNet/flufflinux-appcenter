@@ -44,16 +44,16 @@ AbstractButton {
                 Label {
                     Layout.fillWidth: true
                     text: app.installedVersion || qsTr("Unavailable")
-                    color: window.accentColor
-                    font.weight: Font.Medium
+                    color: window.textColor
+                    font.weight: Font.Bold
                     wrapMode: Text.WrapAnywhere
                 }
                 Label { text: qsTr("Size:"); color: window.mutedTextColor }
                 Label {
                     Layout.fillWidth: true
                     text: app.installedSize || qsTr("Unavailable")
-                    color: window.accentColor
-                    font.weight: Font.Medium
+                    color: window.textColor
+                    font.weight: Font.Bold
                     wrapMode: Text.WrapAnywhere
                 }
             }
