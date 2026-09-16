@@ -60,6 +60,19 @@ AbstractButton {
                     font.weight: Font.Bold
                     wrapMode: Text.WrapAnywhere
                 }
+                Label {
+                    objectName: "installedDateCaption"
+                    visible: !!app.installedDate
+                    text: qsTr("Installed on:"); color: window.mutedTextColor
+                }
+                Label {
+                    objectName: "installedDateValue"
+                    visible: !!app.installedDate
+                    Layout.fillWidth: true
+                    text: app.installedDate || ""
+                    color: window.textColor; font.weight: Font.Bold
+                    wrapMode: Text.Wrap
+                }
             }
             Label {
                 objectName: "installedRemovalStatus"

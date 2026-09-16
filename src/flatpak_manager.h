@@ -5,6 +5,7 @@
 #include <QTimer>
 #include <QHash>
 #include <QJsonObject>
+#include "install_history.h"
 
 class FlatpakManager final : public QObject {
     Q_OBJECT
@@ -55,6 +56,7 @@ private:
     QVariantList m_jobs, m_requests, m_installed;
     QVariantMap m_review;
     QVariantMap m_installSizes, m_sizeApp;
+    InstallHistory m_installHistory;
     QHash<QString, QVariantMap> m_sources;
     QHash<QString, QVariantMap> m_metadata;
     QProcess m_worker, m_installedProcess, m_cache;

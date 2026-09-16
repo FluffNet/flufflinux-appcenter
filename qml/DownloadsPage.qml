@@ -65,6 +65,12 @@ Page {
                             textFormat: Text.PlainText; wrapMode: Text.Wrap
                             color: modelData.failed ? window.accentColor : window.mutedTextColor
                         }
+                        Label {
+                            Layout.fillWidth: true
+                            visible: modelData.active && (modelData.operations || []).length > 0
+                            text: qsTr("Overall installation progress: %1%").arg(Math.round(modelData.progress * 100))
+                            color: window.mutedTextColor; wrapMode: Text.Wrap
+                        }
                         FluffProgressBar {
                             Layout.fillWidth: true
                             visible: modelData.active

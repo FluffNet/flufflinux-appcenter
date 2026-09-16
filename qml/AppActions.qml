@@ -77,6 +77,14 @@ ColumnLayout {
         }
         Item { Layout.fillWidth: true }
     }
+    Label {
+        objectName: "appOverallProgress"
+        Layout.fillWidth: true
+        visible: actions.running && actions.job.action !== "uninstall"
+                 && (actions.job.operations || []).length > 0
+        text: qsTr("Overall installation progress: %1%").arg(Math.round((actions.job ? actions.job.progress : 0) * 100))
+        color: window.mutedTextColor; wrapMode: Text.Wrap
+    }
     FluffProgressBar {
         objectName: "appInstallProgress"
         Layout.fillWidth: true
@@ -88,7 +96,7 @@ ColumnLayout {
     Label {
         objectName: "appJobStatus"
         Layout.fillWidth: true
-        visible: !!actions.job && (actions.job.action !== "uninstall" || actions.running || actions.job.failed === true)
+        visible: !!actions.job && (actions.running || actions.job.failed === true)
         text: actions.job ? actions.job.status + (actions.job.error ? "\n" + actions.job.error : "") : ""
         textFormat: Text.PlainText; wrapMode: Text.Wrap
         color: actions.job && actions.job.failed ? window.accentColor : window.mutedTextColor

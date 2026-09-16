@@ -7,6 +7,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QLocale>
 #include <QPixmapCache>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -73,6 +74,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                     .arg(QString::fromUtf8(m_installedProcess.readAllStandardError()));
             } else {
                 QVariantList apps;
+                m_installHistory.reload();
                 for (const auto &line : QString::fromUtf8(m_installedProcess.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts)) {
                     const auto c = line.split('\t');
                     if (c.size() != 9) { m_installedError = tr("Flatpak returned an unexpected installed-app list."); break; }
@@ -83,6 +85,12 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                     app["installedSize"] = c[2].trimmed(); app["installedOrigin"] = c[3].trimmed();
                     app["installation"] = c[4].trimmed(); app["installedBranch"] = c[5].trimmed();
                     app["installedArch"] = c[6].trimmed(); app["installedVersion"] = c[8].trimmed();
+                    const auto ref = "app/" + c[0].trimmed() + "/" + c[6].trimmed() + "/" + c[5].trimmed();
+                    const auto date = m_installHistory.date(c[4].trimmed(), ref);
+                    if (!date.isEmpty()) {
+                        app["installedAt"] = date;
+                        app["installedDate"] = QLocale().toString(QDateTime::fromString(date, Qt::ISODateWithMs).toLocalTime().date(), QLocale::LongFormat);
+                    }
                     apps.append(app);
                 }
                 if (m_installedError.isEmpty()) m_installed = apps;
@@ -278,23 +286,47 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
     } else if (type == "operation") {
         auto job = m_jobs[m_current].toMap();
         auto operations = job.value("operations").toList();
+        auto status = message["status"].toString();
         double weighted = 0, weight = 0;
         for (auto &entry : operations) {
             auto op = entry.toMap();
             if (op.value("ref").toString() == message["ref"].toString()) {
                 op["status"] = message["status"].toString(); op["progress"] = message["progress"].toDouble(); entry = op;
+                // libflatpak's byte counts and phase describe this component,
+                // not the whole transaction represented by the progress bar.
+                // Keep its native status intact instead of guessing a phase
+                // from percentages or parsing a translated status string.
+                if (job.value("action") != "uninstall") {
+                    const auto name = op.value("dependency").toBool()
+                        ? op.value("name").toString()
+                        : metadata(op.value("name").toString()).value("name").toString();
+                    status = (op.value("dependency").toBool() ? tr("Dependency: %1\n%2") : tr("App: %1\n%2"))
+                        .arg(name, status);
+                }
             }
             const double size = qMax(1.0, op.value("downloadBytes").toDouble());
             weighted += size * op.value("progress").toDouble(); weight += size;
         }
         patchJob(m_current, {{"operations", operations}, {"progress", weight > 0 ? qMin(0.99, weighted / weight) : 0},
-            {"status", message["status"].toString()}});
+            {"status", status}});
     } else if (type == "status") {
         patchJob(m_current, {{"status", message["status"].toString()}});
     } else if (type == "result") {
         m_resultReceived = true; m_worker.closeWriteChannel();
         const bool ok = message["success"].toBool(), cancelled = message["cancelled"].toBool();
         const bool preparation = m_requests[m_current].toMap().value("prepareOnly").toBool();
+        if (ok && !cancelled && !preparation) {
+            const auto job = m_jobs[m_current].toMap();
+            for (const auto &entry : job.value("operations").toList()) {
+                const auto op = entry.toMap();
+                const auto ref = op.value("ref").toString();
+                if (!ref.startsWith("app/")) continue;
+                if (job.value("action") == "uninstall")
+                    m_installHistory.removed(job.value("installation").toString(), ref);
+                else if (op.value("action") == "install" || op.value("action") == "install-bundle")
+                    m_installHistory.installed("user", ref);
+            }
+        }
         // A prepared app is not an installed download. Repository additions
         // and failed source imports still get an honest session-history row.
         if (preparation && !cancelled && (!ok || m_jobs[m_current].toMap().value("id").toString().isEmpty()))

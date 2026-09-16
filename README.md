@@ -32,6 +32,12 @@ background update services, notifications, settings, or tray components.
   cancellation finishes. Cancelling the only job also hides the Downloads
   button; other completed/failed jobs stay. Operations are serialized;
   additional requests wait in the queue.
+  The overall bar includes every planned component; the status below identifies
+  the current app/dependency and preserves Flatpak's download/install phase.
+  Its live byte count is for that component, not the whole transaction. Published
+  estimates can exceed actual transfers, notably for locale subsets and reused
+  content. Successful installs leave Open/Uninstall actions, not completion text,
+  on the app page; their completed Downloads history remains available.
 - Removals never appear in Downloads or its badge. Their progress/errors are
   shown in the Installed row and app view only; successful removal leaves no
   lingering completion text on the app page.
@@ -166,6 +172,23 @@ and retry without corrupting queue indices. It immediately cancels requests for
 Calculator and Picker and refuses to run if either is already installed. Run on
 the testing VM only; it never removes existing apps. Screenshots are saved in
 `target/cancel-*-proof.png`.
+
+Installation dates are saved locally after successful App Center installations,
+separately from Downloads history. Installed and app details show the date in the
+user's locale; existing apps without a record have no date row. App Center removes
+the record on successful uninstall, so reinstalling records a new date.
+
+`FLUFF_APP_CENTER_QML="$PWD/tests/integration/InstallProgressSmoke.qml" target/release/flufflinux-appcenter`
+is a VM-only, real-worker UI test: it installs the absent Calculator app, checks
+component progress and completion cleanup, checks dates in both views, and captures
+`target/install-*-proof.png`. It leaves that test app installed for restart/date
+verification; remove only that test installation afterward. Native persistence
+tests run independently with:
+
+```sh
+c++ -std=c++17 -fPIC tests/native/test_install_history.cpp -o target/test-install-history $(pkg-config --cflags --libs Qt6Core)
+target/test-install-history
+```
 
 The integration suite really installs and removes GNOME Calculator, including
 a data-deletion/fresh-install check. It refuses pre-existing Calculator

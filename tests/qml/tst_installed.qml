@@ -6,6 +6,36 @@ TestCase {
     name: "Installed"
     when: main.visible
     AppCenter.Main { id: main; visible: true }
+    function test_installation_date_only_when_recorded() {
+        const app = {id: "org.example.Dated", name: "Dated app", icon: "", summary: "", description: "",
+            category: "", license: "", homepage: "", developer: "", screenshots: [],
+            installedSize: "10 MB", installedVersion: "1.0", installation: "user",
+            installedBranch: "stable", installedArch: "x86_64"}
+        const stack = findChild(main, "navigationStack")
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        main.selectedCategory = "Installed"
+        main.installedApps = [app]
+        const list = findChild(stack.currentItem, "installedList")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        verify(!findChild(list.itemAtIndex(0), "installedDateCaption").visible)
+        verify(!findChild(list.itemAtIndex(0), "installedDateValue").visible)
+        main.openApp(app); tryCompare(stack, "busy", false)
+        verify(!findChild(stack.currentItem, "appInstalledDateCaption").visible)
+        verify(!findChild(stack.currentItem, "appInstalledDateValue").visible)
+        main.installedApps = [Object.assign({}, app, {installedDate: "16 September 2026"})]
+        compare(findChild(stack.currentItem, "appInstalledDateValue").text, "16 September 2026")
+        verify(findChild(stack.currentItem, "appInstalledDateCaption").visible)
+        verify(findChild(stack.currentItem, "appInstalledDateValue").visible)
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const date = findChild(list.itemAtIndex(0), "installedDateValue")
+        verify(date.visible && date.font.bold)
+        compare(date.text, "16 September 2026")
+        const formerlyInstalled = main.installedApps[0]
+        main.installedApps = []
+        compare(main.detailsFor(formerlyInstalled).installedDate, undefined)
+        main.selectedCategory = "All Apps"
+    }
     function test_installed_navigation_and_information() {
         main.installedApps = [{id: "org.example.Offline", name: "Offline app", icon: "",
             summary: "An installed app without catalog metadata", description: "Installed locally",

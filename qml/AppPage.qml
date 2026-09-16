@@ -472,6 +472,16 @@ Page {
                 Label { text: app && app.installedVersion || qsTr("Unavailable"); color: window.textColor; visible: !!(app && app.installedSize); Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
                 Label { text: qsTr("Installed size"); color: window.mutedTextColor; visible: !!(app && app.installedSize) }
                 Label { text: app && app.installedSize || ""; color: window.textColor; visible: text.length > 0 }
+                Label {
+                    objectName: "appInstalledDateCaption"
+                    text: qsTr("Installed on"); color: window.mutedTextColor
+                    visible: !!(app && app.installedDate)
+                }
+                Label {
+                    objectName: "appInstalledDateValue"
+                    text: app && app.installedDate || ""; color: window.textColor
+                    visible: text.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap
+                }
                 Label { text: qsTr("Installation"); color: window.mutedTextColor; visible: !!(app && app.installation) }
                 Label { text: app && app.installation ? app.installation + " · " + app.installedBranch + " · " + app.installedArch : ""; color: window.textColor; visible: text.length > 0 }
                 Label { text: "Category"; color: window.mutedTextColor }

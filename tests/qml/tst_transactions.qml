@@ -86,6 +86,7 @@ TestCase {
         verify(findChild(page, "appInstallProgress").visible)
         backend.jobs = [{id: app.id, name: app.name, index: 0, active: false, progress: 1, status: "Complete", operations: []}]
         verify(!hasDownloadsText(page))
+        verify(!findChild(page, "appJobStatus").visible)
         main.showCatalog()
         tryCompare(stack, "busy", false)
         verify(findChild(stack.currentItem, "downloadsButton").visible)
@@ -184,7 +185,14 @@ TestCase {
                          status: "Downloading", operations: [{name: "org.example.Runtime", progress: 0.35}]}]
         verify(findChild(page, "appInstallProgress").visible)
         compare(findChild(page, "appInstallProgress").value, 0.35)
+        verify(findChild(page, "appOverallProgress").visible)
+        compare(findChild(page, "appOverallProgress").text, "Overall installation progress: 35%")
+        verify(findChild(page, "appJobStatus").visible)
         verify(!install.visible)
+        backend.jobs = [{id: app.id, name: app.name, index: 0, active: false, failed: true,
+                         progress: 0.35, status: "Failed", error: "Connection lost", operations: []}]
+        verify(findChild(page, "appJobStatus").visible)
+        verify(findChild(page, "appJobStatus").text.indexOf("Connection lost") !== -1)
         backend.review = {token: 7, title: "Uninstall", kind: "transaction", removing: true, message: "Remove app and data",
                           operations: [], downloadSize: "10 MB"}
         const dialog = findChild(main, "transactionReview")
@@ -196,6 +204,11 @@ TestCase {
         backend.installedApps = [Object.assign({}, app, {installation: "user", installedSize: "20 MB", installedVersion: "1.2", installedBranch: "stable", installedArch: "x86_64"})]
         backend.jobs = [{id: app.id, index: 0, name: app.name, active: false, progress: 1, status: "Complete", operations: []}]
         verify(!install.visible)
+        verify(!findChild(page, "appJobStatus").visible)
+        verify(!findChild(page, "appInstallProgress").visible)
+        compare(main.downloadQueue.jobs.length, 1)
+        verify(!findChild(page, "appOverallProgress").visible)
+        compare(main.downloadQueue.jobs[0].status, "Complete")
         const uninstall = findChild(page, "uninstallAppButton")
         verify(uninstall.visible)
         waitForRendering(page)
