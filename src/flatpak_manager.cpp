@@ -118,7 +118,12 @@ FlatpakManager::~FlatpakManager() {
 }
 QVariantList FlatpakManager::jobs() const {
     QVariantList visible;
-    for (const auto &job : m_jobs) if (!job.toMap().value("hidden").toBool()) visible.append(job);
+    // Keep internal indices stable for the worker/queue, but cancellations
+    // are not session history and must not reach any of the UI consumers.
+    for (const auto &entry : m_jobs) {
+        const auto job = entry.toMap();
+        if (!job.value("hidden").toBool() && !job.value("cancelled").toBool()) visible.append(entry);
+    }
     return visible;
 }
 QVariantMap FlatpakManager::installRequest(const QVariantMap &app) const {
@@ -292,7 +297,7 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
         const bool preparation = m_requests[m_current].toMap().value("prepareOnly").toBool();
         // A prepared app is not an installed download. Repository additions
         // and failed source imports still get an honest session-history row.
-        if (preparation && (!ok || m_jobs[m_current].toMap().value("id").toString().isEmpty()))
+        if (preparation && !cancelled && (!ok || m_jobs[m_current].toMap().value("id").toString().isEmpty()))
             patchJob(m_current, {{"hidden", false}});
         if (preparation && !ok && !cancelled) emit inputError(message["error"].toString());
         patchJob(m_current, {{"active", false}, {"failed", !ok && !cancelled}, {"cancelled", cancelled},

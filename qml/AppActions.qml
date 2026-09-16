@@ -70,6 +70,7 @@ ColumnLayout {
             }
         }
         Button {
+            objectName: "cancelAppButton"
             visible: actions.running
             text: qsTr("Cancel")
             onClicked: window.backend.cancelJob(actions.job.index)
@@ -85,6 +86,7 @@ ColumnLayout {
         palette.highlight: window.accentColor
     }
     Label {
+        objectName: "appJobStatus"
         Layout.fillWidth: true
         visible: !!actions.job
         text: actions.job ? actions.job.status + (actions.job.error ? "\n" + actions.job.error : "") : ""

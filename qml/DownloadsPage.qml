@@ -41,6 +41,7 @@ Page {
                 wrapMode: Text.WordWrap; color: window.mutedTextColor
             }
             Repeater {
+                objectName: "downloadJobs"
                 model: window.downloadQueue.jobs
                 delegate: Pane {
                     required property var modelData

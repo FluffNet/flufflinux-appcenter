@@ -27,9 +27,11 @@ background update services, notifications, settings, or tray components.
   local metadata shows unavailable sizes, never a fake zero. Installation still
   resolves the current plan normally, so actual transfers can differ from the
   repository's published estimates.
-- Downloads keeps this session's jobs, per-dependency status, progress, errors,
-  and cancellations. App pages show the same live progress. Operations are
-  serialized; additional requests wait in the queue.
+- Downloads keeps this session's jobs, per-dependency status, progress, and
+  errors. Cancelled jobs disappear from both Downloads and the app page once
+  cancellation finishes. Cancelling the only job also hides the Downloads
+  button; other completed/failed jobs stay. Operations are serialized;
+  additional requests wait in the queue.
 - Installed lists user and system applications, with version and installed size.
   Open an app, view its information, or uninstall it from its row or app page.
 - Uninstall confirms removal and deletes **the current user's sandbox directory**
@@ -154,6 +156,13 @@ also verifies hiding the redundant total when its dependencies are present.
 The installed executable loads QML from its installation prefix, never from a
 leftover build checkout. Install the executable and QML together with
 `make install`; replacing QML alone does not update native features.
+
+`FLUFF_APP_CENTER_QML="$PWD/tests/integration/CancelSmoke.qml" target/release/flufflinux-appcenter`
+checks active and queued cancellation with the real worker, hidden status/history,
+and retry without corrupting queue indices. It immediately cancels requests for
+Calculator and Picker and refuses to run if either is already installed. Run on
+the testing VM only; it never removes existing apps. Screenshots are saved in
+`target/cancel-*-proof.png`.
 
 The integration suite really installs and removes GNOME Calculator, including
 a data-deletion/fresh-install check. It refuses pre-existing Calculator

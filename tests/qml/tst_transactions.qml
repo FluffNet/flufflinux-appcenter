@@ -91,6 +91,30 @@ TestCase {
         verify(findChild(stack.currentItem, "downloadsButton").visible)
         backend.jobs = []
     }
+    function test_cancelled_job_removed_from_app_and_downloads() {
+        const app = {id: "org.example.Cancel", name: "Cancel test", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
+        backend.jobs = [{id: app.id, index: 5, name: app.name, active: true, progress: 0.4, status: "Downloading", operations: []}]
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        mouseClick(findChild(page, "cancelAppButton"))
+        compare(backend.requested, "cancel:5")
+        // The backend removes a completed cancellation from its public list.
+        backend.jobs = []
+        verify(findChild(page, "installAppButton").visible)
+        verify(!findChild(page, "appJobStatus").visible)
+        verify(!findChild(page, "appInstallProgress").visible)
+        verify(!main.downloadQueue.buttonVisible)
+        main.showDownloads(); tryCompare(stack, "busy", false)
+        compare(findChild(stack.currentItem, "downloadJobs").count, 0)
+        // Other completed/failed operations still remain in session history.
+        backend.jobs = [{id: "org.example.Keep", index: 8, name: "Keep", active: false, failed: false, progress: 1, status: "Complete", operations: []}]
+        compare(findChild(stack.currentItem, "downloadJobs").count, 1)
+        verify(main.downloadQueue.buttonVisible)
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.jobs = []
+    }
     function test_external_flatpak_opens_app_view_without_catalog_picker() {
         const app = {id: "org.example.External", name: "External app", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
         backend.appOpened(app)

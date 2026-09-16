@@ -5,7 +5,6 @@ QtObject {
     property var jobs: []
     property bool completionSeen: false
     readonly property bool hasError: jobs.some(function(job) { return job.failed === true })
-    readonly property bool hasCancelled: jobs.some(function(job) { return job.cancelled === true })
     readonly property bool buttonVisible: jobs.length > 0
     readonly property int activeCount: jobs.filter(function(job) { return job.active === true }).length
     readonly property var currentJobs: jobs.filter(function(job) { return job.active === true })
