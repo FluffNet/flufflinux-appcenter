@@ -1,9 +1,11 @@
+#include <flatpak.h>
 #include "flatpak_manager.h"
 #include "flatpak_sizes.h"
 #include <QCoreApplication>
+#include <QDBusConnection>
+#include <QDBusMessage>
 #include <QDir>
 #include <QFileInfo>
-#include <QIcon>
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QJsonObject>
@@ -12,6 +14,7 @@
 #include <QRegularExpression>
 #include <QStandardPaths>
 #include <QUrl>
+#include <unistd.h>
 
 namespace {
 QString normalizedId(QString id) {
@@ -99,17 +102,19 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
         });
     m_cacheTimeout.setSingleShot(true);
     connect(&m_cacheTimeout, &QTimer::timeout, &m_cache, [this] { m_cache.kill(); });
-    auto cacheDone = [this] {
-        m_cacheTimeout.stop();
-        ++m_iconRevision;
-        QPixmapCache::clear();
-        const auto theme = QIcon::themeName();
-        QIcon::setThemeName(QString()); QIcon::setThemeName(theme);
-        refreshInstalled();
-        QTimer::singleShot(0, this, &FlatpakManager::startNext);
-    };
-    connect(&m_cache, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [cacheDone](int, QProcess::ExitStatus) { cacheDone(); });
-    connect(&m_cache, &QProcess::errorOccurred, this, [cacheDone](QProcess::ProcessError e) { if (e == QProcess::FailedToStart) cacheDone(); });
+    connect(&m_cache, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this](int code, QProcess::ExitStatus status) {
+        if (code || status != QProcess::NormalExit)
+            qWarning().noquote() << "Desktop cache refresh failed:" << m_cache.program() << m_cache.readAllStandardError().left(2048);
+        refreshNextCache();
+    });
+    connect(&m_cache, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
+        if (e == QProcess::FailedToStart) {
+            qWarning().noquote() << "Desktop cache refresh could not start:" << m_cache.program() << m_cache.errorString();
+            refreshNextCache();
+        }
+    });
+    QDBusConnection::sessionBus().connect(QString(), QStringLiteral("/KIconLoader"),
+        QStringLiteral("org.kde.KIconLoader"), QStringLiteral("iconChanged"), this, SLOT(refreshThemeIcons(int)));
     QTimer::singleShot(0, this, &FlatpakManager::refreshInstalled);
 }
 FlatpakManager::~FlatpakManager() {
@@ -159,7 +164,7 @@ void FlatpakManager::requestInstallInfo(QVariantMap app) {
 }
 bool FlatpakManager::busy() const {
     for (const auto &job : m_jobs) if (active(job.toMap())) return true;
-    return m_worker.state() != QProcess::NotRunning || m_cache.state() != QProcess::NotRunning;
+    return m_worker.state() != QProcess::NotRunning || m_refreshingCaches;
 }
 QVariantMap FlatpakManager::metadata(const QString &id) const {
     auto app = m_metadata.value(id);
@@ -231,7 +236,7 @@ void FlatpakManager::openSource(QString source) {
         {"installation", "user"}, {"prepareOnly", true}, {"hidden", true}});
 }
 void FlatpakManager::startNext() {
-    if (m_stopping || m_current >= 0 || m_worker.state() != QProcess::NotRunning || m_cache.state() != QProcess::NotRunning) return;
+    if (m_stopping || m_current >= 0 || m_worker.state() != QProcess::NotRunning || m_refreshingCaches) return;
     for (int i = 0; i < m_jobs.size(); ++i) {
         if (!active(m_jobs[i].toMap())) continue;
         m_current = i; m_buffer.clear(); m_diagnostics.clear(); m_resultReceived = false;
@@ -361,11 +366,55 @@ void FlatpakManager::refreshInstalled() {
         "--columns=application:f,name:f,size,origin:f,installation:f,branch:f,arch:f,description:f,version:f"});
 }
 void FlatpakManager::refreshCaches() {
-    // Flatpak itself updates the installation's export desktop/icon caches.
-    // Rebuild Plasma's per-user application cache as well, without running the
-    // GUI as root or trying to rewrite a root-owned icon directory.
+    if (m_stopping || m_refreshingCaches) return;
+    m_refreshingCaches = true;
+    // Finish the user export's icon cache before refreshing the application
+    // database. Never rebuild root-owned system icon trees or restart Plasma.
+    g_autoptr(FlatpakInstallation) user = flatpak_installation_new_user(nullptr, nullptr);
+    if (user) {
+        g_autofree char *path = g_file_get_path(flatpak_installation_get_path(user));
+        const auto icons = QDir(QString::fromUtf8(path)).filePath("exports/share/icons/hicolor");
+        const QFileInfo directory(icons);
+        if (path && directory.isDir() && directory.ownerId() == geteuid() && directory.isWritable())
+            m_cacheCommands.append(QStringList{"gtk-update-icon-cache", "--force", "--ignore-theme-index", icons});
+    }
+    m_cacheCommands.append(QStringList{"kbuildsycoca6", "--noincremental"});
+    refreshNextCache();
+}
+void FlatpakManager::refreshNextCache() {
+    m_cacheTimeout.stop();
+    if (m_stopping) return;
+    if (m_cacheCommands.isEmpty()) {
+        // Same session-bus notification as KIconLoader::emitChange(Desktop).
+        // Sycoca only refreshes application entries, not the running shell's
+        // cached missing icons. All KDE icon loaders must invalidate those.
+        auto message = QDBusMessage::createSignal(QStringLiteral("/KIconLoader"),
+            QStringLiteral("org.kde.KIconLoader"), QStringLiteral("iconChanged"));
+        message << 0; // KIconLoader::Desktop
+        if (!QDBusConnection::sessionBus().send(message)) {
+            qWarning("Could not notify Plasma to refresh application icons");
+            refreshThemeIcons(0);
+        }
+        m_refreshingCaches = false;
+        refreshInstalled();
+        QTimer::singleShot(0, this, &FlatpakManager::startNext);
+        return;
+    }
+    auto command = m_cacheCommands.takeFirst();
+    const auto program = command.takeFirst();
     m_cacheTimeout.start(15000);
-    m_cache.start("kbuildsycoca6", {"--noincremental"});
+    m_cache.start(program, command);
+}
+void FlatpakManager::refreshThemeIcons(int) {
+    // Let KDE's own icon loaders handle this signal before asking QML to load
+    // its images again. Changing QIcon::themeName would bypass Plasma's icon
+    // engine and can break theme-aware coloring; keep the selected theme.
+    QTimer::singleShot(0, this, [this] {
+        if (m_stopping) return;
+        QPixmapCache::clear();
+        ++m_iconRevision;
+        emit installedChanged();
+    });
 }
 void FlatpakManager::launchApp(QVariantMap app) {
     for (const auto &entry : m_installed) {

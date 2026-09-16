@@ -10,9 +10,10 @@ ColumnLayout {
     readonly property bool running: !!job && job.active === true
     readonly property var sizeInfo: window.backend && window.backend.installSizes
                                    ? window.backend.installSizes[String(app.id).replace(/\.desktop$/, "")] || ({}) : ({})
-    readonly property bool showDependencyTotal: !(typeof sizeInfo.appBytes === "number"
-                                                  && typeof sizeInfo.totalBytes === "number"
-                                                  && sizeInfo.appBytes === sizeInfo.totalBytes)
+    // Hide redundant displayed sizes, including differences lost to rounding.
+    // Missing estimates are not equal sizes: keep their unavailable row.
+    readonly property bool showDependencyTotal: !(sizeInfo.appSize && sizeInfo.totalSize
+                                                  && sizeInfo.appSize === sizeInfo.totalSize)
     function sizeText(field) {
         return sizeInfo[field] || qsTr("Unavailable")
     }

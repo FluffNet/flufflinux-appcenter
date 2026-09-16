@@ -14,7 +14,8 @@ background update services, notifications, settings, or tray components.
   Flathub source for that user. Other missing sources require their `.flatpakrepo`
   file; the app never silently falls back to a system installation.
 - App pages show **App size** and **Total size with dependencies** before
-  installation (only **App size** when their exact byte counts match). These
+  installation (only **App size** when their displayed size text matches, even
+  if the underlying byte counts differ slightly). These
   are download estimates from Flatpak's existing local
   repository metadata, not installed disk usage. Dependencies already available
   in the user or system installation are excluded. Opening an app reads this
@@ -51,9 +52,11 @@ background update services, notifications, settings, or tray components.
   runtimes are not deleted. If cleanup fails, the job reports an error instead
   of claiming a fresh uninstall. No or Escape leaves the app and its data alone.
   Unrelated apps are never stopped.
-- Flatpak refreshes the installation's exported desktop/icon caches. App
-  Center additionally rebuilds Plasma's application cache, invalidates its
-  cached icons, and reloads installed metadata after every transaction.
+- After each transaction, App Center rebuilds the current user's exported icon
+  cache, then Plasma's application database, then broadcasts KDE's icon-reload
+  notification. This also clears cached missing icons in the running launcher,
+  not just App Center. It does not restart Plasma, change the selected icon theme,
+  or rewrite root-owned icon directories. Installed metadata is then refreshed.
 - Run the app as your **regular desktop user**, never root. Existing system apps
   remain visible. Uninstalling one explicitly warns that it affects all users
   and may require normal desktop authorization; new installations never do.
@@ -205,6 +208,19 @@ APPCENTER_MUTATING_TESTS=1 python3 tests/integration/test_uninstall_running.py
 The running-app test uses the desktop user's real `XDG_RUNTIME_DIR`. It checks
 that declining leaves two SIGTERM-resistant test sandboxes running, and accepting
 force-stops both before deleting their app/data while unrelated apps keep running.
+
+To verify launcher icon invalidation on the VM, build the read-only KDE probe:
+
+```sh
+c++ -std=c++17 -fPIC tests/native/icon_reload_probe.cpp -o target/icon-reload-probe -I/usr/include/KF6/KIconThemes $(pkg-config --cflags --libs Qt6Gui) -lKF6IconThemes
+target/icon-reload-probe org.gnome.Calculator
+```
+
+Start it while that test app is absent, then install the app through App Center
+in the same desktop session. The probe primes a missing-icon lookup and verifies
+that its already-running KDE/Qt loader receives the reload notification and can
+render the newly installed icon. It refuses an already-present icon and times
+out without a notification. The test probe additionally needs `kiconthemes` headers.
 
 It leaves shared runtimes available for subsequent tests and removes its test
 application and temporary repository. A failed test reports its exact failure;

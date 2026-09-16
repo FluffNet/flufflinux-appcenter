@@ -104,8 +104,12 @@ TestCase {
         backend.installSizes = {"org.example.Size": {state: "ready", appBytes: 2097152, totalBytes: 2097152, appSize: "2 MiB", totalSize: "2 MiB"}}
         verify(appSize.visible)
         verify(!totalSize.visible && !totalCaption.visible)
-        // Equal rounded strings must not hide a real, small dependency.
+        // Compare the displayed text, not byte-level differences hidden by rounding.
         backend.installSizes = {"org.example.Size": {state: "ready", appBytes: 2097152, totalBytes: 2097153, appSize: "2 MiB", totalSize: "2 MiB"}}
+        verify(!totalSize.visible && !totalCaption.visible)
+        backend.installSizes = {"org.example.Size": {state: "ready", appBytes: 1900000000, totalBytes: 1900010000, appSize: "1.77 GiB", totalSize: "1.77 GiB"}}
+        verify(!totalSize.visible && !totalCaption.visible)
+        backend.installSizes = {"org.example.Size": {state: "ready", appSize: "1.77 GiB", totalSize: "1.78 GiB"}}
         verify(totalSize.visible && totalCaption.visible)
         backend.installSizes = {"org.example.Size": {state: "ready", appBytes: 0, totalBytes: 0, appSize: "0 bytes", totalSize: "0 bytes"}}
         verify(!totalSize.visible && !totalCaption.visible)

@@ -44,6 +44,8 @@ signals:
     void appOpened(QVariantMap app);
     void inputError(QString message);
     void installSizesChanged();
+private slots:
+    void refreshThemeIcons(int group);
 private:
     void enqueue(QVariantMap request);
     void startNext();
@@ -51,6 +53,7 @@ private:
     void handleMessage(const QJsonObject &message);
     void patchJob(int index, const QVariantMap &values);
     void refreshCaches();
+    void refreshNextCache();
     QVariantMap installRequest(const QVariantMap &app) const;
     QVariantMap metadata(const QString &id) const;
     QVariantList m_jobs, m_requests, m_installed;
@@ -62,7 +65,9 @@ private:
     QProcess m_worker, m_installedProcess, m_cache;
     QTimer m_installedTimeout, m_cacheTimeout;
     QByteArray m_buffer, m_diagnostics;
+    QList<QStringList> m_cacheCommands;
     int m_current = -1, m_iconRevision = 0;
     bool m_resultReceived = false, m_loading = true, m_stopping = false;
+    bool m_refreshingCaches = false;
     QString m_installedError;
 };

@@ -8,6 +8,7 @@ const QT_PACKAGES: &[&str] = &[
     "Qt6Qml",
     "Qt6Quick",
     "Qt6Network",
+    "Qt6DBus",
     "flatpak",
 ];
 

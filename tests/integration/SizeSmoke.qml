@@ -56,7 +56,7 @@ AppCenter.Main {
                 const sizes = main.backend.installSizes[main.ids[main.testIndex]] || ({})
                 const elapsed = Date.now() - main.started
                 if (!main.check(sizes.state === "ready" && appLabel && totalLabel
-                                && appLabel.visible && totalLabel.visible === (sizes.appBytes !== sizes.totalBytes)
+                                && appLabel.visible && totalLabel.visible === (sizes.appSize !== sizes.totalSize)
                                 && appLabel.text === sizes.appSize && totalLabel.text === sizes.totalSize,
                                 "The actual page did not display both real sizes: " + JSON.stringify(sizes))) return
                 if (!main.check(elapsed < 500, "Click-to-visible took " + elapsed + " ms")) return
