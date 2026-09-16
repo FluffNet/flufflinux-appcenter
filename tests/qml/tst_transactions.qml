@@ -17,7 +17,8 @@ TestCase {
         property bool busy: false
         property var installSizes: ({})
         property string sizeRequested: ""
-        function requestInstallInfo(app) { sizeRequested = app.id }
+        property int sizeRequestCount: 0
+        function requestInstallInfo(app) { sizeRequested = app.id; ++sizeRequestCount }
         property string requested: ""
         property int acceptedToken: 0
         signal appOpened(var app)
@@ -126,6 +127,44 @@ TestCase {
         backend.installSizes = {"org.example.Size": {state: "partial", appSize: "2 MiB"}}
         compare(appSize.text, "2 MiB")
         compare(totalSize.text, "Unavailable")
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.installSizes = ({})
+    }
+    function test_installed_app_tracks_size_target_data() {
+        return [{tag: "fresh-session", priorApp: false}, {tag: "different-app-viewed-first", priorApp: true}]
+    }
+    function test_installed_app_tracks_size_target(data) {
+        const app = {id: "org.example.Installed", name: "Installed test", summary: "", description: "", icon: "", screenshots: [], category: "Games", license: "", homepage: "", developer: "",
+                     installation: "user", installedBranch: "stable", installedArch: "x86_64", installedSize: "10 MB", installedVersion: "1.0"}
+        const stack = findChild(main, "navigationStack")
+        backend.installSizes = ({})
+        backend.sizeRequested = ""
+        backend.installedApps = [app]
+        if (data.priorApp) {
+            main.openApp(Object.assign({}, app, {id: "org.example.Prior"}))
+            tryCompare(stack, "busy", false)
+            compare(backend.sizeRequested, "org.example.Prior")
+        }
+        const before = backend.sizeRequestCount
+        main.openApp(app)
+        tryCompare(stack, "busy", false)
+        compare(backend.sizeRequested, app.id)
+        compare(backend.sizeRequestCount, before + 1)
+        const page = stack.currentItem
+        verify(!findChild(page, "installSizeDetails").visible)
+        // The manager refreshes the tracked app's sizes before it publishes
+        // the new installed list. The same page must reveal those fresh values.
+        backend.installSizes = {"org.example.Installed": {state: "ready", appSize: "2 MiB", totalSize: "2 MiB"}}
+        backend.installedApps = []
+        compare(stack.currentItem, page)
+        verify(findChild(page, "appDownloadSize").visible)
+        compare(findChild(page, "appDownloadSize").text, "2 MiB")
+        verify(!findChild(page, "totalDownloadSize").visible)
+        verify(findChild(page, "installAppButton").visible)
+        // Icon/list notifications must not introduce additional size reads.
+        ++backend.iconRevision
+        backend.installedApps = []
+        compare(backend.sizeRequestCount, before + 1)
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.installSizes = ({})
     }

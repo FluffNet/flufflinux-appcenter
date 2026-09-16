@@ -93,7 +93,10 @@ ApplicationWindow {
     function goBack() { if (stack.depth > 1) stack.pop() }
     function openApp(app) {
         selectedApp = app
-        if (backend && typeof backend.requestInstallInfo === "function" && !findInstalled(app))
+        // Track the displayed app even while installed. The backend refreshes
+        // these local estimates after transactions, before revealing Install
+        // again; otherwise an uninstall refreshes nothing (or the prior app).
+        if (backend && typeof backend.requestInstallInfo === "function")
             backend.requestInstallInfo(app)
         if (stack.depth === 1)
             stack.push(appPage)

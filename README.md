@@ -22,6 +22,9 @@ background update services, notifications, settings, or tray components.
   metadata directly before showing the page: no network transaction, waiting
   state, extra size cache, or saved size results. Automatic runtime/locale/driver
   extensions are included; build SDKs and optional debug extensions are not.
+  Installed app pages also register their current estimates, so uninstalling
+  refreshes the correct app's sizes before the Install action reappears, without
+  needing to leave and reopen the page.
 - **Install starts immediately**, without an installation-confirmation dialog.
   New software sources still require an explicit trust confirmation; source
   additions can remain after cancelling the later app installation. Missing
@@ -195,6 +198,17 @@ tests run independently with:
 c++ -std=c++17 -fPIC tests/native/test_install_history.cpp -o target/test-install-history $(pkg-config --cflags --libs Qt6Core)
 target/test-install-history
 ```
+
+After `InstallProgressSmoke.qml` exits, run
+`FLUFF_APP_CENTER_QML="$PWD/tests/integration/UninstallSizesSmoke.qml" target/release/flufflinux-appcenter`
+in a **new process** on the VM. It opens that test-created Calculator from its
+installed metadata, declines removal once, then confirms removal and verifies
+the real sizes are ready on the same page when Install reappears. It also checks
+the installed page opens within 500 ms, hidden duplicate totals, and no removal
+history/status. It saves `target/uninstall-sizes-proof.png`. Set `priorAppId` in
+a wrapper to test that viewing another app first cannot redirect the refresh.
+Only use this fixture for the disposable app created by the install test; it
+removes that app and its data, not shared runtimes.
 
 The integration suite really installs and removes GNOME Calculator, including
 a data-deletion/fresh-install check. It refuses pre-existing Calculator
