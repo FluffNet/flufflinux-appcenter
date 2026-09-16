@@ -5,7 +5,7 @@ import QtQuick.Layouts
 AbstractButton {
     id: row
     required property var app
-    height: 108
+    height: Math.max(108, contentItem.implicitHeight + topPadding + bottomPadding)
     padding: 16
     hoverEnabled: true
     Accessible.name: app.name + ", " + app.installedSize
@@ -35,17 +35,27 @@ AbstractButton {
                 font.pixelSize: 18; font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
-            Label {
+            GridLayout {
                 Layout.fillWidth: true
-                text: app.installedOrigin + " · " + app.installation + " · " + app.installedBranch
-                color: window.mutedTextColor; elide: Text.ElideRight
-            }
-            Label {
-                Layout.fillWidth: true
-                text: (app.installedVersion ? qsTr("Version %1").arg(app.installedVersion)
-                                            : qsTr("Version unavailable")) + " · " + app.installedSize
-                color: window.mutedTextColor
-                elide: Text.ElideRight
+                columns: 2
+                columnSpacing: 8
+                rowSpacing: 3
+                Label { text: qsTr("Version:"); color: window.mutedTextColor }
+                Label {
+                    Layout.fillWidth: true
+                    text: app.installedVersion || qsTr("Unavailable")
+                    color: window.accentColor
+                    font.weight: Font.Medium
+                    wrapMode: Text.WrapAnywhere
+                }
+                Label { text: qsTr("Size:"); color: window.mutedTextColor }
+                Label {
+                    Layout.fillWidth: true
+                    text: app.installedSize || qsTr("Unavailable")
+                    color: window.accentColor
+                    font.weight: Font.Medium
+                    wrapMode: Text.WrapAnywhere
+                }
             }
         }
         ToolButton {
