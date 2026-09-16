@@ -4,6 +4,16 @@ A focused, native application catalog for Fluff Linux, built with Rust and
 Qt 6/QML. It provides the window, searchable catalog, category layout, and app
 details view—without update services, notifications, settings, or tray code.
 
+## Installed apps
+
+Installed lists application deployments reported by `flatpak list --app` for
+the current user and system installations (not runtimes). Sizes are Flatpak's
+reported installed sizes, not download sizes or estimates of reclaimable space.
+The list is read at startup without blocking the UI. Click a row for details;
+uninstall controls are intentionally disabled. Apps absent from the catalog
+still appear using installed metadata. Installed stays inside the main sidebar
+layout and shares the catalog's mouse, touchpad, and touch scrolling.
+
 ## Supported platform
 
 App Center is intentionally built only for **Fluff Linux**, based

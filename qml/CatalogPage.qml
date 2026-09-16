@@ -6,6 +6,13 @@ Page {
     id: page
     StackView.onActivated: searchField.forceActiveFocus()
     background: null
+    readonly property bool installedView: window.selectedCategory === "Installed"
+    readonly property var installedMatches: {
+        const query = window.searchText.trim().toLowerCase()
+        return (window.installedApps || []).filter(function(app) {
+            return !query || (app.name + " " + app.id).toLowerCase().indexOf(query) >= 0
+        }).sort(function(a, b) { return a.name.localeCompare(b.name) })
+    }
     readonly property var categories: [
         { name: "All Apps", label: qsTr("Home"), icon: "go-home" },
         { name: "Audio & Video", label: qsTr("Audio & Video"), icon: "applications-multimedia" },
@@ -21,10 +28,10 @@ Page {
         { name: "Other", label: qsTr("Other"), icon: "applications-other" }
     ]
     readonly property real categorySidebarWidth: Math.min(page.width * 0.46,
-                                                           categoryWidthForLabels(categories.map(
+                                                           categoryWidthForLabels([qsTr("Installed")].concat(categories.map(
                                                                function(category) {
                                                                    return category.label
-                                                               })))
+                                                               }))))
     readonly property var visibleApps: {
         const query = window.searchText.trim().toLowerCase()
         const compactQuery = page.compactSearchText(query)
@@ -191,7 +198,7 @@ Page {
                     forceActiveFocus()
                 }
                 onTextEdited: {
-                    if (text.length > 0)
+                    if (text.length > 0 && !page.installedView)
                         window.selectedCategory = "All Apps"
                     else
                         window.searchCategoryFilter = "All Apps"
@@ -281,9 +288,71 @@ Page {
                 border.color: window.borderColor
                 border.width: 1
             }
+                Column {
+                    id: installedNavigation
+                    width: parent.width
+                    y: 12
+                    spacing: 12
+                    ItemDelegate {
+                        id: installedButton
+                        objectName: "installedButton"
+                        width: parent.width
+                        height: Math.max(52, categoryFontMetrics.height + 24)
+                        text: qsTr("Installed")
+                        icon.name: "view-list-details"
+                        icon.width: 24; icon.height: 24
+                        icon.color: window.textColor
+                        palette.buttonText: window.textColor
+                        font.pixelSize: 16
+                        font.weight: page.installedView ? Font.DemiBold : Font.Normal
+                        leftPadding: 16; rightPadding: 16; spacing: 12
+                        contentItem: RowLayout {
+                            spacing: 12
+                            Canvas {
+                                id: installedIcon
+                                Layout.preferredWidth: 24; Layout.preferredHeight: 24
+                                onPaint: {
+                                    const ctx = getContext("2d")
+                                    ctx.clearRect(0, 0, width, height)
+                                    ctx.strokeStyle = window.textColor
+                                    ctx.lineWidth = 1.6
+                                    ctx.lineJoin = "round"
+                                    ctx.strokeRect(3, 3, 18, 18)
+                                    ctx.beginPath()
+                                    ctx.moveTo(7, 12); ctx.lineTo(10.5, 15.5); ctx.lineTo(17, 8.5)
+                                    ctx.stroke()
+                                }
+                                Connections {
+                                    target: window
+                                    function onTextColorChanged() { installedIcon.requestPaint() }
+                                }
+                            }
+                            Label {
+                                Layout.fillWidth: true
+                                text: installedButton.text
+                                font: installedButton.font
+                                color: window.textColor
+                                elide: Text.ElideRight
+                            }
+                        }
+                        onClicked: page.openCategory("Installed")
+                        background: Rectangle {
+                            radius: 6
+                            color: page.installedView
+                                   ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, 0.14)
+                                   : installedButton.hovered ? window.hoverColor : "transparent"
+                            border.color: page.installedView ? window.accentColor : "transparent"
+                        }
+                    }
+                    Rectangle {
+                        width: parent.width - 16; x: 8; height: 1
+                        color: window.borderColor
+                    }
+                    Item { width: 1; height: 4 }
+                }
             ListView {
                 id: categoryList
-                anchors.fill: parent; anchors.topMargin: 12; spacing: 4; clip: true; model: page.categories
+                anchors.fill: parent; anchors.topMargin: installedNavigation.y + installedNavigation.height; spacing: 4; clip: true; model: page.categories
                 NaturalWheelScroll {
                     objectName: "categoryNaturalScroll"
                     scrollTarget: categoryList
@@ -346,13 +415,17 @@ Page {
 
                     ColumnLayout {
                         spacing: 5
-                        Label { text: window.searchText ? "Search results" : window.selectedCategory; color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold }
-                        Label { text: page.visibleApps.length + (page.visibleApps.length === 1 ? " application" : " applications"); color: window.mutedTextColor }
+                        Label { text: page.installedView ? qsTr("Installed") : window.searchText ? "Search results" : window.selectedCategory; color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold }
+                        Label {
+                            readonly property int count: page.installedView ? page.installedMatches.length : page.visibleApps.length
+                            text: count + (count === 1 ? " application" : " applications")
+                            color: window.mutedTextColor
+                        }
                     }
                     Item { Layout.fillWidth: true }
                     ComboBox {
                         id: searchCategoryFilter
-                        visible: window.searchText.length > 0
+                        visible: !page.installedView && window.searchText.length > 0
                         Layout.preferredWidth: 210
                         Layout.preferredHeight: 42
                         model: page.categories
@@ -381,6 +454,7 @@ Page {
                 GridView {
                     id: catalogGrid
                     objectName: "catalogGrid"
+                    visible: !page.installedView
                     Layout.fillWidth: true; Layout.fillHeight: true
                     Layout.leftMargin: 20; Layout.rightMargin: 20; Layout.bottomMargin: 20
                     clip: true
@@ -403,11 +477,38 @@ Page {
                         onClicked: window.openApp(app)
                     }
                 }
+                ListView {
+                    id: installedList
+                    objectName: "installedList"
+                    visible: page.installedView
+                    Layout.fillWidth: true; Layout.fillHeight: true
+                    Layout.leftMargin: 28; Layout.rightMargin: 28; Layout.bottomMargin: 20
+                    clip: true; spacing: 12
+                    model: page.installedMatches
+                    boundsBehavior: Flickable.StopAtBounds
+                    ScrollBar.vertical: ScrollBar {}
+                    NaturalWheelScroll { scrollTarget: installedList }
+                    delegate: InstalledRow {
+                        required property var modelData
+                        width: ListView.view.width
+                        app: modelData
+                        onClicked: window.openApp(app)
+                    }
+                }
+            }
+            LoadingSpinner {
+                anchors.centerIn: parent
+                running: page.installedView && !!window.installedLoading
+                color: window.textColor
             }
             Label {
                 anchors.centerIn: parent
-                visible: window.catalogLoaded && page.visibleApps.length === 0
-                text: window.catalog.length === 0 ? "No Flatpak applications were found." : "No applications match this view."
+                width: parent.width - 48
+                wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
+                visible: page.installedView ? !window.installedLoading && (window.installedError || page.installedMatches.length === 0)
+                                            : window.catalogLoaded && page.visibleApps.length === 0
+                text: page.installedView ? (window.installedError || (window.searchText ? qsTr("No installed apps match your search.") : qsTr("No Flatpak apps are installed.")))
+                     : window.catalog.length === 0 ? "No Flatpak applications were found." : "No applications match this view."
                 color: window.mutedTextColor; font.pixelSize: 17
             }
         }

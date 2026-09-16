@@ -24,6 +24,9 @@ ApplicationWindow {
     property var catalog: typeof fluffInitialCatalog !== "undefined"
                           ? fluffInitialCatalog : []
     property var selectedApp: null
+    property var installedApps: typeof fluffInstalledApps !== "undefined" ? fluffInstalledApps : []
+    property bool installedLoading: typeof fluffInstalledLoading !== "undefined" && fluffInstalledLoading
+    property string installedError: typeof fluffInstalledError !== "undefined" ? fluffInstalledError : ""
     property string selectedCategory: "All Apps"
     property string searchCategoryFilter: "All Apps"
     property string searchText: ""

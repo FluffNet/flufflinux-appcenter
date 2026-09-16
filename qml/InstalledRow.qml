@@ -1,0 +1,59 @@
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+
+AbstractButton {
+    id: row
+    required property var app
+    height: 108
+    padding: 16
+    hoverEnabled: true
+    Accessible.name: app.name + ", " + app.installedSize
+    background: Rectangle {
+        radius: 8
+        color: row.hovered ? window.raisedSurfaceColor : window.surfaceColor
+        border.color: row.activeFocus ? window.accentColor : window.borderColor
+    }
+    contentItem: RowLayout {
+        spacing: 16
+        Image {
+            Layout.preferredWidth: 56; Layout.preferredHeight: 56
+            sourceSize: Qt.size(64, 64)
+            fillMode: Image.PreserveAspectFit
+            asynchronous: true
+            source: !app.icon ? "image://icon/application-x-executable"
+                    : app.icon.indexOf("://") >= 0 ? app.icon
+                    : app.icon.indexOf("/") >= 0 ? "file://" + app.icon
+                    : "image://icon/" + app.icon
+        }
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 5
+            Label {
+                Layout.fillWidth: true
+                text: app.name; color: window.textColor
+                font.pixelSize: 18; font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+            Label {
+                Layout.fillWidth: true
+                text: app.installedOrigin + " · " + app.installation + " · " + app.installedBranch
+                color: window.mutedTextColor; elide: Text.ElideRight
+            }
+            Label { text: app.installedSize; color: window.mutedTextColor }
+        }
+        ToolButton {
+            objectName: "uninstallButton"
+            enabled: false
+            Layout.preferredWidth: 44; Layout.preferredHeight: 44
+            Accessible.name: qsTr("Uninstall %1 (unavailable)").arg(app.name)
+            // Explicit image tint keeps the disabled trash visibly red in Breeze.
+            contentItem: Image {
+                source: "trash-red.svg"
+                sourceSize: Qt.size(24, 24)
+                fillMode: Image.PreserveAspectFit
+            }
+            background: Rectangle { radius: 6; color: "transparent"; border.color: window.borderColor }
+        }
+    }
+}
