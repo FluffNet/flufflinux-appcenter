@@ -1,7 +1,6 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
-import QtQuick.Dialogs as Dialogs
 
 ApplicationWindow {
     id: window
@@ -69,7 +68,6 @@ ApplicationWindow {
         return clean
     }
     function uninstallApp(app) { if (backend) backend.uninstallApp(app) }
-    function openFlatpak() { sourceDialog.open() }
     Connections {
         target: window.backend
         function onAppOpened(app) { window.openApp(app) }
@@ -114,27 +112,6 @@ ApplicationWindow {
     Component { id: appPage; AppPage { app: window.detailsFor(window.selectedApp) } }
     Component { id: downloadsPage; DownloadsPage {} }
     TransactionReview { backend: window.backend }
-    Dialog {
-        id: sourceDialog
-        title: qsTr("Open a Flatpak")
-        anchors.centerIn: parent
-        width: Math.min(window.width - 48, 620)
-        modal: true
-        standardButtons: Dialog.Cancel | Dialog.Open
-        contentItem: ColumnLayout {
-            spacing: 16
-            Label { Layout.fillWidth: true; text: qsTr("Choose a local file or paste a Flatpak link. You will review the installation before it starts."); wrapMode: Text.WordWrap }
-            TextField { id: sourceLink; Layout.fillWidth: true; placeholderText: qsTr("flatpak+https://… or https://…") }
-            Button { text: qsTr("Choose file…"); icon.name: "document-open"; onClicked: flatpakFile.open() }
-        }
-        onAccepted: if (backend) backend.openSource(sourceLink.text)
-    }
-    Dialogs.FileDialog {
-        id: flatpakFile
-        title: qsTr("Open a Flatpak")
-        nameFilters: [qsTr("Flatpak files (*.flatpak *.flatpakref *.flatpakrepo)")]
-        onAccepted: { sourceDialog.close(); if (backend) backend.openSource(selectedFile.toString()) }
-    }
     Dialog {
         id: errorDialog
         anchors.centerIn: parent; width: Math.min(window.width - 48, 600)

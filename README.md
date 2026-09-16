@@ -38,8 +38,10 @@ background update services, notifications, settings, or tray components.
 
 ## Local files and browser links
 
-Use **Open Flatpak…**, drop files onto the window, or pass them on the command
-line. Supported inputs:
+Open files with **App Center** from the file manager, or let your browser open
+Flatpak links through the registered desktop handler. Drag-and-drop and command
+line inputs also work; there is no separate file/link picker in the catalog.
+Supported inputs:
 
 - Local `.flatpak` bundles, `.flatpakref` references and `.flatpakrepo` sources.
 - HTTPS references, including `flatpak+https://…` browser links.

@@ -25,6 +25,17 @@ TestCase {
         function cancelJob(index) { requested = "cancel:" + index }
     }
     AppCenter.Main { id: main; backend: backend; visible: true }
+    function test_external_flatpak_opens_app_view_without_catalog_picker() {
+        const app = {id: "org.example.External", name: "External app", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
+        backend.appOpened(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        compare(stack.currentItem.app.id, app.id)
+        verify(findChild(stack.currentItem, "installAppButton").visible)
+        compare(typeof main.openFlatpak, "undefined")
+        main.showCatalog()
+        tryCompare(stack, "busy", false)
+    }
     function test_app_actions_review_progress_and_installed_refresh() {
         const app = {id: "org.example.Test", name: "Test", summary: "A test", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
         main.openApp(app)

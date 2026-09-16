@@ -423,15 +423,6 @@ Page {
                         }
                     }
                     Item { Layout.fillWidth: true }
-                    ToolButton {
-                        text: qsTr("Open Flatpak…")
-                        icon.name: "document-open"
-                        display: page.width < 1040 ? AbstractButton.IconOnly : AbstractButton.TextBesideIcon
-                        Accessible.name: text
-                        ToolTip.visible: hovered
-                        ToolTip.text: text
-                        onClicked: window.openFlatpak()
-                    }
                     ComboBox {
                         id: searchCategoryFilter
                         visible: !page.installedView && window.searchText.length > 0
