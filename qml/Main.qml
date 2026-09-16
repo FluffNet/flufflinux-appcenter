@@ -83,6 +83,8 @@ ApplicationWindow {
     function goBack() { if (stack.depth > 1) stack.pop() }
     function openApp(app) {
         selectedApp = app
+        if (backend && typeof backend.requestInstallInfo === "function" && !findInstalled(app))
+            backend.requestInstallInfo(app)
         if (stack.depth === 1)
             stack.push(appPage)
         else

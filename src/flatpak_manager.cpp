@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QIcon>
 #include <QJsonDocument>
+#include <QJsonArray>
 #include <QJsonObject>
 #include <QPixmapCache>
 #include <QRegularExpression>
@@ -23,6 +24,23 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
         const auto app = entry.toMap();
         m_metadata.insert(normalizedId(app.value("id").toString()), app);
     }
+    m_estimateTimeout.setSingleShot(true);
+    connect(&m_estimateTimeout, &QTimer::timeout, &m_estimate, &QProcess::kill);
+    connect(&m_estimate, &QProcess::readyReadStandardOutput, this, &FlatpakManager::receiveEstimate);
+    connect(&m_estimate, &QProcess::readyReadStandardError, this, [this] { m_estimate.readAllStandardError(); });
+    auto estimateDone = [this] {
+        m_estimateTimeout.stop(); receiveEstimate();
+        if (m_installSizes.value(m_estimateId).toMap().value("state") == "loading") {
+            m_installSizes[m_estimateId] = QVariantMap{{"state", "unavailable"}};
+            emit installSizesChanged();
+        }
+        QTimer::singleShot(0, this, &FlatpakManager::startEstimate);
+    };
+    connect(&m_estimate, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+        [estimateDone](int, QProcess::ExitStatus) { estimateDone(); });
+    connect(&m_estimate, &QProcess::errorOccurred, this, [estimateDone](QProcess::ProcessError e) {
+        if (e == QProcess::FailedToStart) estimateDone();
+    });
     connect(&m_worker, &QProcess::readyReadStandardOutput, this, &FlatpakManager::receive);
     connect(&m_worker, &QProcess::readyReadStandardError, this, [this] {
         m_diagnostics += m_worker.readAllStandardError();
@@ -41,8 +59,18 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
             if (!m_resultReceived) patchJob(m_current, {{"active", false}, {"failed", true},
                 {"status", tr("The Flatpak worker stopped unexpectedly")}, {"error", QString::fromUtf8(m_diagnostics)}});
             m_review.clear(); emit reviewChanged();
+            const bool preparation = m_current >= 0 && m_requests[m_current].toMap().value("prepareOnly").toBool();
             m_current = -1;
-            refreshCaches();
+            if (preparation) QTimer::singleShot(0, this, &FlatpakManager::startNext);
+            else {
+                // Dependencies may now be installed (or removed). Never reuse
+                // stale totals after another transaction changes the machine.
+                m_installSizes.clear(); emit installSizesChanged();
+                m_estimateId.clear();
+                if (m_estimate.state() != QProcess::NotRunning) m_estimate.kill();
+                if (!m_estimateApp.isEmpty()) requestInstallInfo(m_estimateApp);
+                refreshCaches();
+            }
         });
     m_installedTimeout.setSingleShot(true);
     connect(&m_installedTimeout, &QTimer::timeout, this, [this] {
@@ -103,8 +131,76 @@ FlatpakManager::~FlatpakManager() {
     if (!m_worker.waitForFinished(3000) && m_worker.state() != QProcess::NotRunning) {
         m_worker.terminate(); m_worker.waitForFinished(1000);
     }
-    for (auto process : {&m_installedProcess, &m_cache}) {
+    for (auto process : {&m_installedProcess, &m_cache, &m_estimate}) {
         if (process->state() != QProcess::NotRunning) { process->kill(); process->waitForFinished(1000); }
+    }
+}
+QVariantList FlatpakManager::jobs() const {
+    QVariantList visible;
+    for (const auto &job : m_jobs) if (!job.toMap().value("hidden").toBool()) visible.append(job);
+    return visible;
+}
+QVariantMap FlatpakManager::installRequest(const QVariantMap &app) const {
+    const auto id = normalizedId(app.value("id").toString());
+    if (m_sources.contains(id)) {
+        auto request = m_sources.value(id);
+        request["prepareOnly"] = false; request["hidden"] = false;
+        request["id"] = id; request["name"] = app.value("name");
+        return request;
+    }
+    const auto catalogApp = m_metadata.value(id, app);
+    return {{"action", "install"}, {"id", id}, {"name", app.value("name")}, {"installation", "user"},
+        {"flatpakRef", catalogApp.value("flatpakRef")}, {"remote", catalogApp.value("remote")}};
+}
+void FlatpakManager::requestInstallInfo(QVariantMap app) {
+    if (m_stopping) return;
+    const auto id = normalizedId(app.value("id").toString());
+    if (id.isEmpty()) return;
+    m_estimateApp = app;
+    if (m_installSizes.value(id).toMap().value("state") == "ready") return;
+    if (m_estimate.state() != QProcess::NotRunning && id == m_estimateId && m_pendingEstimate.isEmpty()) return;
+    // External sources are resolved once by openSource, including any explicit
+    // trust prompt. Passive browsing must never add sources or open a dialog.
+    auto request = installRequest(app);
+    if (request.value("action") != "install") {
+        if (request.value("flatpakRef").toString().isEmpty() || request.value("remote").toString().isEmpty()) {
+            m_installSizes[id] = QVariantMap{{"state", "unavailable"}}; emit installSizesChanged(); return;
+        }
+        request["action"] = "install"; request.remove("source"); request["prepareOnly"] = false;
+    }
+    request["estimateOnly"] = true;
+    m_pendingEstimate = request;
+    m_installSizes[id] = QVariantMap{{"state", "loading"}}; emit installSizesChanged();
+    if (m_estimate.state() != QProcess::NotRunning) m_estimate.kill();
+    else startEstimate();
+}
+void FlatpakManager::startEstimate() {
+    if (m_stopping || m_pendingEstimate.isEmpty() || m_estimate.state() != QProcess::NotRunning) return;
+    const auto request = m_pendingEstimate; m_pendingEstimate.clear();
+    m_estimateId = request.value("id").toString(); m_estimateBuffer.clear();
+    m_estimateTimeout.start(60000);
+    m_estimate.start(QCoreApplication::applicationFilePath(), {"--transaction-worker",
+        QString::fromUtf8(QJsonDocument::fromVariant(request).toJson(QJsonDocument::Compact))});
+}
+void FlatpakManager::receiveEstimate() {
+    m_estimateBuffer += m_estimate.readAllStandardOutput();
+    while (m_estimateBuffer.contains('\n')) {
+        const auto end = m_estimateBuffer.indexOf('\n');
+        const auto message = QJsonDocument::fromJson(m_estimateBuffer.left(end)).object();
+        m_estimateBuffer.remove(0, end + 1);
+        if (m_estimateId.isEmpty()) continue;
+        if (message["type"] == "plan") {
+            m_installSizes[m_estimateId] = message.toVariantMap(); emit installSizesChanged();
+        } else if (message["type"] == "result") {
+            if (!message["success"].toBool()) {
+                m_installSizes[m_estimateId] = QVariantMap{{"state", "unavailable"}, {"error", message["error"].toString()}};
+                emit installSizesChanged();
+            }
+            m_estimate.closeWriteChannel();
+        } else if (message["type"] == "review") {
+            // Defensive: a size probe must never wait for user interaction.
+            m_estimate.write("{\"cancel\":true}\n");
+        }
     }
 }
 bool FlatpakManager::busy() const {
@@ -140,9 +236,7 @@ void FlatpakManager::installApp(QVariantMap app) {
     const auto id = normalizedId(app.value("id").toString());
     if (id.isEmpty()) return;
     for (const auto &entry : m_installed) if (normalizedId(entry.toMap().value("id").toString()) == id) return;
-    const auto catalogApp = m_metadata.value(id, app);
-    enqueue({{"action", "install"}, {"id", id}, {"name", app.value("name")}, {"installation", "user"},
-        {"flatpakRef", catalogApp.value("flatpakRef")}, {"remote", catalogApp.value("remote")}});
+    enqueue(installRequest(app));
 }
 void FlatpakManager::uninstallApp(QVariantMap app) {
     // Re-resolve against our installed list; never trust a path/ref from QML.
@@ -167,7 +261,7 @@ void FlatpakManager::openSource(QString source) {
     if (url.scheme() == "flatpak") {
         // flatpak:org.example.App and flatpak://org.example.App preserve ID case.
         const auto id = source.mid(source.indexOf(':') + 1).remove(QRegularExpression("^//"));
-        installApp(metadata(id)); return;
+        emit appOpened(metadata(id)); return;
     }
     if (!url.scheme().isEmpty() && !url.isLocalFile() && url.scheme() != "https" && url.scheme() != "flatpak+https") {
         emit inputError(tr("Use a local .flatpak, .flatpakref or .flatpakrepo file, or an HTTPS Flatpak link.")); return;
@@ -179,7 +273,8 @@ void FlatpakManager::openSource(QString source) {
         }
         source = QUrl::fromLocalFile(file.absoluteFilePath()).toString();
     }
-    enqueue({{"action", "source"}, {"source", source}, {"name", QUrl(source).fileName()}, {"installation", "user"}});
+    enqueue({{"action", "source"}, {"source", source}, {"name", QUrl(source).fileName()},
+        {"installation", "user"}, {"prepareOnly", true}, {"hidden", true}});
 }
 void FlatpakManager::startNext() {
     if (m_stopping || m_current >= 0 || m_worker.state() != QProcess::NotRunning || m_cache.state() != QProcess::NotRunning) return;
@@ -213,7 +308,24 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
         const auto id = message["appId"].toString();
         if (!id.isEmpty()) {
             auto app = metadata(id); patchJob(m_current, {{"id", id}, {"name", app.value("name")}});
-            if (m_requests[m_current].toMap().value("action") == "source") emit appOpened(app);
+        }
+    } else if (type == "plan") {
+        const auto id = message["appId"].toString();
+        patchJob(m_current, {{"operations", message["operations"].toArray().toVariantList()}});
+        const auto request = m_requests[m_current].toMap();
+        if (request.value("action") != "uninstall") {
+            m_installSizes[id] = message.toVariantMap(); emit installSizesChanged();
+        }
+        if (request.value("prepareOnly").toBool() && !id.isEmpty()) {
+            m_sources[id] = request;
+            for (const auto &entry : message["operations"].toArray()) {
+                const auto op = entry.toObject();
+                if (op["ref"].toString().startsWith("app/")) {
+                    m_sources[id]["flatpakRef"] = op["ref"].toString();
+                    m_sources[id]["remote"] = op["remote"].toString();
+                }
+            }
+            emit appOpened(metadata(id));
         }
     } else if (type == "operation") {
         auto job = m_jobs[m_current].toMap();
@@ -234,6 +346,12 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
     } else if (type == "result") {
         m_resultReceived = true; m_worker.closeWriteChannel();
         const bool ok = message["success"].toBool(), cancelled = message["cancelled"].toBool();
+        const bool preparation = m_requests[m_current].toMap().value("prepareOnly").toBool();
+        // A prepared app is not an installed download. Repository additions
+        // and failed source imports still get an honest session-history row.
+        if (preparation && (!ok || m_jobs[m_current].toMap().value("id").toString().isEmpty()))
+            patchJob(m_current, {{"hidden", false}});
+        if (preparation && !ok && !cancelled) emit inputError(message["error"].toString());
         patchJob(m_current, {{"active", false}, {"failed", !ok && !cancelled}, {"cancelled", cancelled},
             {"progress", ok ? 1 : m_jobs[m_current].toMap().value("progress")},
             {"status", ok ? tr("Complete") : cancelled ? tr("Cancelled") : tr("Failed")}, {"error", message["error"].toString()}});

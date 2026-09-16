@@ -8,9 +8,39 @@ ColumnLayout {
     readonly property var installed: typeof window.findInstalled === "function" ? window.findInstalled(app) : null
     readonly property var job: typeof window.jobForApp === "function" ? window.jobForApp(app) : null
     readonly property bool running: !!job && job.active === true
+    readonly property var sizeInfo: window.backend && window.backend.installSizes
+                                   ? window.backend.installSizes[String(app.id).replace(/\.desktop$/, "")] || ({}) : ({})
+    function sizeText(field) {
+        if (sizeInfo.state === "ready") return sizeInfo[field]
+        return sizeInfo.state === "unavailable" ? qsTr("Unavailable") : qsTr("Calculating…")
+    }
     visible: typeof window.backend !== "undefined" && !!window.backend
     Layout.fillWidth: true
     spacing: 8
+    GridLayout {
+        objectName: "installSizeDetails"
+        Layout.fillWidth: true
+        visible: !actions.installed
+        columns: 2; columnSpacing: 16; rowSpacing: 4
+        Label { text: qsTr("App size:"); color: window.mutedTextColor }
+        Label {
+            objectName: "appDownloadSize"
+            Layout.fillWidth: true
+            text: actions.sizeText("appSize"); color: window.textColor; font.bold: true
+        }
+        Label { text: qsTr("Total size with dependencies:"); color: window.mutedTextColor }
+        Label {
+            objectName: "totalDownloadSize"
+            Layout.fillWidth: true
+            text: actions.sizeText("totalSize"); color: window.textColor; font.bold: true
+        }
+    }
+    Label {
+        Layout.fillWidth: true
+        visible: !actions.installed
+        text: qsTr("Estimated download. Already installed dependencies are reused.")
+        color: window.mutedTextColor; wrapMode: Text.Wrap; font.pixelSize: 12
+    }
     RowLayout {
         Layout.fillWidth: true
         Button {

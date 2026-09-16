@@ -89,16 +89,22 @@ def main():
     remove = {"action": "uninstall", "id": APP, "installation": "user", "installedBranch": "stable", "installedArch": ARCH}
     invalid = run({"action": "uninstall", "id": "../../Documents"}, expect=False)
     assert not any(e["type"] == "review" for e in invalid)
-    cancelled = run(install, approve=False, expect=False)
-    assert cancelled[-1]["cancelled"] and APP not in installed()
+    prepared = run(dict(install, estimateOnly=True))
+    assert APP not in installed()
+    assert not any(e["type"] in ("review", "operation") for e in prepared)
+    estimate = next(e for e in prepared if e["type"] == "plan")
+    existing_refs = set(subprocess.check_output(["flatpak", "list", "--columns=ref"], text=True).splitlines())
+    assert estimate["totalBytes"] == sum(op["downloadBytes"] for op in estimate["operations"])
+    assert estimate["appBytes"] == sum(op["downloadBytes"] for op in estimate["operations"] if not op["dependency"])
+    assert all(op["ref"] not in existing_refs for op in estimate["operations"] if op["dependency"]), "Existing dependencies inflated the estimate"
     events = run(install)
-    plan = next(e for e in events if e["type"] == "review" and e["kind"] == "transaction")
+    plan = next(e for e in events if e["type"] == "plan")
+    assert not any(e["type"] == "review" and e["kind"] == "transaction" for e in events)
     assert any(op["ref"] == REF for op in plan["operations"])
     assert all("downloadSize" in op and "dependency" in op for op in plan["operations"])
     assert any(e["type"] == "operation" and e["progress"] == 1 for e in events)
     assert APP in installed()
     subprocess.run(["flatpak", "info", "--user", APP], check=True)
-    assert "for your user only" in plan["message"]
     data_dir.mkdir(parents=True)
     marker = data_dir / "app-center-uninstall-test.txt"
     marker.write_text("This must not survive the test uninstall.\n")
@@ -109,6 +115,9 @@ def main():
     with tempfile.TemporaryDirectory(prefix="appcenter-flatpakref-") as temp:
         reference = Path(temp) / "calculator.flatpakref"
         reference.write_text(f"[Flatpak Ref]\nName={APP}\nBranch=stable\nUrl=https://dl.flathub.org/repo/\nIsRuntime=false\n")
+        run({"action": "source", "source": reference.as_uri(), "prepareOnly": True})
+        assert APP not in installed(), "Opening a reference silently installed it"
+        run({"action": "source", "source": reference.as_uri(), "id": "org.example.WrongApp"}, expect=False)
         run({"action": "source", "source": reference.as_uri()})
         assert APP in installed() and not marker.exists()
         bundle = Path(temp) / "calculator.flatpak"
@@ -123,6 +132,8 @@ def main():
         data_dir.symlink_to(external, target_is_directory=True)
         run(remove)
         assert sentinel.exists() and not data_dir.is_symlink(), "Uninstall followed a symlink into unrelated data"
+        run({"action": "source", "source": bundle.as_uri(), "prepareOnly": True})
+        assert APP not in installed(), "Opening a bundle silently installed it"
         run({"action": "source", "source": bundle.as_uri()})
         assert APP in installed()
         run(remove)
@@ -135,8 +146,8 @@ def main():
         duplicate = run({"action": "source", "source": repo_file.as_uri()}, expect=False)
         assert "already configured" in duplicate[-1]["error"]
         subprocess.run(["flatpak", "remote-delete", "--user", repo_name], check=True)
-    # Exercise the browser scheme/HTTPS loader, but cancel before reinstallation.
-    run({"action": "source", "source": f"flatpak+https://dl.flathub.org/repo/appstream/{APP}.flatpakref"}, approve=False, expect=False)
+    # A browser link opens an app page, never silently starts deployment.
+    run({"action": "source", "source": f"flatpak+https://dl.flathub.org/repo/appstream/{APP}.flatpakref", "prepareOnly": True})
     run({"action": "source", "source": "http://example.org/unsafe.flatpakref"}, expect=False)
     run({"action": "install", "id": "org.example.DoesNotExistInFlathub"}, expect=False)
     assert set(installed()) == before, "Installed apps changed outside the test target"

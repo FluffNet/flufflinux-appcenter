@@ -1,5 +1,6 @@
 // libflatpak runs in a separate, unprivileged process. JSON messages keep the
-// GUI responsive; only an explicit reply to a review allows a transaction on.
+// GUI responsive. Installation starts from the app page; removals and new
+// software sources retain their explicit confirmation.
 #include <flatpak.h>
 #include <QCoreApplication>
 #include <QDir>
@@ -51,6 +52,9 @@ struct Worker {
     bool systemRemoval = false;
     bool hadOperationError = false;
     bool declined = false;
+    bool estimateOnly = false;
+    bool prepareOnly = false;
+    bool planReady = false;
 
     ~Worker() { g_object_unref(cancel); }
     bool ask(QJsonObject review) {
@@ -100,32 +104,45 @@ QJsonObject operationInfo(FlatpakTransactionOperation *op) {
 gboolean ready(FlatpakTransaction *tx, gpointer data) {
     auto &w = *static_cast<Worker *>(data);
     auto list = flatpak_transaction_get_operations(tx);
-    quint64 total = 0;
+    quint64 total = 0, appSize = 0;
     for (auto node = list; node; node = node->next) {
         auto op = FLATPAK_TRANSACTION_OPERATION(node->data);
         if (flatpak_transaction_operation_get_is_skipped(op)) continue;
         w.operations.append(operationInfo(op));
         total += flatpak_transaction_operation_get_download_size(op);
         const auto ref = str(flatpak_transaction_operation_get_ref(op));
+        if (!w.appId.isEmpty() && ref.startsWith("app/") && ref.section('/', 1, 1) != w.appId) {
+            w.problem = "The Flatpak source changed to a different application. Open it again to review the app.";
+            g_list_free(list);
+            return false;
+        }
         if (w.appId.isEmpty() && ref.startsWith("app/")) w.appId = ref.section('/', 1, 1);
+        if (ref.startsWith("app/")) appSize += flatpak_transaction_operation_get_download_size(op);
     }
     g_list_free(list);
-    // Do not use the transaction to silently update arbitrary apps or runtimes.
-    // Only the resolved operations explicitly shown here may proceed.
     send({{"type", "identity"}, {"appId", w.appId}});
+    send({{"type", "plan"}, {"appId", w.appId}, {"operations", w.operations},
+        {"appBytes", double(appSize)}, {"totalBytes", double(total)},
+        {"appSize", bytes(appSize)}, {"totalSize", bytes(total)}, {"state", "ready"}});
+    w.planReady = true;
+    // Abort before payload download/deployment for passive size lookup or a
+    // newly opened file/link. Opening a source is not consent to install it.
+    if (w.estimateOnly || w.prepareOnly) return false;
+    if (!w.removing) return !g_cancellable_is_cancelled(w.cancel);
     return w.ask({{"kind", "transaction"}, {"operations", w.operations},
         {"appId", w.appId}, {"removing", w.removing}, {"downloadSize", bytes(total)},
-        {"title", w.removing ? QCoreApplication::translate("Flatpak", "Uninstall and delete app data?")
-                              : QCoreApplication::translate("Flatpak", "Review installation")},
-        {"message", w.removing
-            ? (w.systemRemoval ? QCoreApplication::translate("Flatpak", "This app was installed system-wide. Removing it affects all users and may require administrator authorization.\n\n") : QString())
-                + QCoreApplication::translate("Flatpak", "This removes the app and its saved settings, cache and data in ~/.var/app/%1 for your user, and resets its Flatpak permissions. Files saved elsewhere and other users’ data are not deleted. Close the app first. This cannot be undone.").arg(w.appId)
-            : QCoreApplication::translate("Flatpak", "The following app and dependencies will be installed for your user only. Download sizes are estimates; shared dependencies already installed are reused.")}});
+        {"title", QCoreApplication::translate("Flatpak", "Uninstall and delete app data?")},
+        {"message", (w.systemRemoval ? QCoreApplication::translate("Flatpak", "This app was installed system-wide. Removing it affects all users and may require administrator authorization.\n\n") : QString())
+                + QCoreApplication::translate("Flatpak", "This removes the app and its saved settings, cache and data in ~/.var/app/%1 for your user, and resets its Flatpak permissions. Files saved elsewhere and other users’ data are not deleted. Close the app first. This cannot be undone.").arg(w.appId)}});
 }
 
 gboolean addRemote(FlatpakTransaction *, FlatpakTransactionRemoteReason, const char *,
                    const char *name, const char *url, gpointer data) {
     auto &w = *static_cast<Worker *>(data);
+    if (w.estimateOnly) {
+        w.problem = QCoreApplication::translate("Flatpak", "Sizes will be available after the required software source is configured.");
+        return false;
+    }
     if (!safeUrl(QUrl(str(url)))) {
         w.problem = QCoreApplication::translate("Flatpak", "The new repository must use HTTPS without embedded credentials.");
         return false;
@@ -242,6 +259,10 @@ bool clearAppData(const QString &id, Worker &w) {
 bool ensureUserRemote(FlatpakInstallation *installation, const QString &name, Worker &w) {
     g_autoptr(FlatpakRemote) existing = flatpak_installation_get_remote_by_name(installation, name.toUtf8(), w.cancel, nullptr);
     if (existing) return true;
+    if (w.estimateOnly) {
+        w.problem = QCoreApplication::translate("Flatpak", "Sizes will be available after the software source is configured for your user.");
+        return false;
+    }
     // A distro commonly ships a system Flathub catalog but no per-user source.
     // Bootstrap the official signed source, never silently install system-wide
     // or copy a different source's name without its signing key and policy.
@@ -287,6 +308,11 @@ bool execute(const QJsonObject &request, Worker &w) {
     g_autoptr(GError) error = nullptr;
     const auto scope = request["installation"].toString("user");
     w.removing = request["action"].toString() == "uninstall";
+    w.estimateOnly = request["estimateOnly"].toBool();
+    w.prepareOnly = request["prepareOnly"].toBool();
+    if (w.estimateOnly && request["action"].toString() != "install") {
+        w.problem = "Passive estimates only support catalog applications."; return false;
+    }
     w.appId = request["id"].toString();
     if (!w.appId.isEmpty() && !validId(w.appId)) { w.problem = "Invalid Flatpak app ID."; return false; }
     w.systemRemoval = w.removing && scope != "user";
@@ -305,6 +331,8 @@ bool execute(const QJsonObject &request, Worker &w) {
     if (!tx) { w.problem = str(error->message); return false; }
     g_object_set_data(G_OBJECT(tx), "worker", &w);
     flatpak_transaction_set_no_interaction(tx, false);
+    // Reuse compatible system runtimes too; new deployments remain per-user.
+    if (!w.removing) flatpak_transaction_add_default_dependency_sources(tx);
     g_signal_connect(tx, "ready-pre-auth", G_CALLBACK(ready), &w);
     g_signal_connect(tx, "add-new-remote", G_CALLBACK(addRemote), &w);
     g_signal_connect(tx, "new-operation", G_CALLBACK(newOperation), &w);
@@ -336,7 +364,7 @@ bool execute(const QJsonObject &request, Worker &w) {
         const auto path = url.isLocalFile() ? url.toLocalFile() : input;
         if ((url.isLocalFile() || url.scheme().isEmpty()) && path.endsWith(".flatpak", Qt::CaseInsensitive)) {
             if (!w.ask({{"kind", "bundle"}, {"title", QCoreApplication::translate("Flatpak", "Open local Flatpak bundle?")},
-                {"message", QCoreApplication::translate("Flatpak", "Only open bundles from a source you trust. Flatpak may register the bundle’s software source for your user while preparing it. You will review its dependencies before installation.\n\n%1").arg(path)},
+                {"message", QCoreApplication::translate("Flatpak", "Only open bundles from a source you trust. Flatpak may register the bundle’s software source for your user while preparing it.\n\n%1").arg(path)},
                 {"operations", QJsonArray{}}})) return false;
             g_autoptr(GFile) file = g_file_new_for_path(QFile::encodeName(QFileInfo(path).absoluteFilePath()));
             added = flatpak_transaction_add_install_bundle(tx, file, nullptr, &error);
@@ -348,6 +376,7 @@ bool execute(const QJsonObject &request, Worker &w) {
                 w.problem = str(error->message); return false;
             }
             if (g_key_file_has_group(key, "Flatpak Repo")) {
+                if (!w.appId.isEmpty()) { w.problem = "The app reference was replaced by a repository file."; return false; }
                 g_autofree char *repositoryUrl = g_key_file_get_string(key, "Flatpak Repo", "Url", nullptr);
                 if (!safeUrl(QUrl(str(repositoryUrl)))) { w.problem = "Repository URL must use HTTPS."; return false; }
                 const QString name = QFileInfo(url.path()).completeBaseName().isEmpty()
@@ -380,6 +409,7 @@ bool execute(const QJsonObject &request, Worker &w) {
             g_autofree char *id = g_key_file_get_string(key, "Flatpak Ref", "Name", nullptr);
             g_autofree char *repoUrl = g_key_file_get_string(key, "Flatpak Ref", "Url", nullptr);
             if (!validId(str(id)) || !safeUrl(QUrl(str(repoUrl)))) { w.problem = "Invalid app ID or insecure repository in reference file."; return false; }
+            if (!w.appId.isEmpty() && w.appId != str(id)) { w.problem = "The reference now names a different app. Open it again."; return false; }
             w.appId = str(id);
             send({{"type", "identity"}, {"appId", w.appId}});
             g_autoptr(GBytes) data = g_bytes_new(contents.constData(), contents.size());
@@ -388,6 +418,7 @@ bool execute(const QJsonObject &request, Worker &w) {
     } else { w.problem = "Unsupported transaction request."; return false; }
     if (!added) { w.problem = error ? str(error->message) : "No app selected."; return false; }
     if (!flatpak_transaction_run(tx, w.cancel, &error) || w.hadOperationError) {
+        if ((w.estimateOnly || w.prepareOnly) && w.planReady && !g_cancellable_is_cancelled(w.cancel)) return true;
         if (w.problem.isEmpty() && error) w.problem = str(error->message);
         return false;
     }

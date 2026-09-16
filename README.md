@@ -13,10 +13,15 @@ background update services, notifications, settings, or tray components.
 - On first use, an account without Flathub is offered the official signed
   Flathub source for that user. Other missing sources require their `.flatpakrepo`
   file; the app never silently falls back to a system installation.
-- Before deployment, review Flatpak's resolved app/dependency list and estimated
-  download sizes. Existing shared runtimes are reused. New sources require a
-  separate trust confirmation; source additions can remain after cancelling the
-  later app installation.
+- App pages show **App size** and **Total size with dependencies** before
+  installation. These are download estimates from Flatpak's resolved plan, not
+  installed disk usage. Dependencies already available in the user or system
+  installation are reused, rather than added to the download total. Estimates
+  resolve in the background without downloading payloads or installing apps.
+- **Install starts immediately**, without an installation-confirmation dialog.
+  New software sources still require an explicit trust confirmation; source
+  additions can remain after cancelling the later app installation. Missing
+  sources or offline lookup failures show unavailable sizes, never a fake zero.
 - Downloads keeps this session's jobs, per-dependency status, progress, errors,
   and cancellations. App pages show the same live progress. Operations are
   serialized; additional requests wait in the queue.
@@ -47,7 +52,9 @@ Supported inputs:
 - HTTPS references, including `flatpak+https://…` browser links.
 - `flatpak:org.example.App` and `flatpak://org.example.App` IDs.
 
-Local bundles and references still require confirmation. Remote references are
+Files and links open the app page with sizes and an Install button; merely
+opening a file/link does not install the app. Local bundles and new sources
+retain their trust warning. Remote references are
 limited to 2 MiB, with a bounded timeout and HTTPS-only redirects. Insecure HTTP
 and URLs with embedded credentials are rejected. Signed Flatpak repositories
 and bundle verification use libflatpak; private sources requiring additional
@@ -101,7 +108,9 @@ configuration prefix.
 Rust reads/normalizes AppStream metadata. QML renders the Breeze light/dark
 interface. The C++ Qt bridge exposes an asynchronous manager; an unprivileged
 child process runs libflatpak transactions and emits structured progress. It
-pauses at the actual transaction plan until the GUI replies to the review.
+resolves passive estimates at `ready-pre-auth` and stops before deployment.
+Actual installation proceeds directly after the app-page Install action;
+uninstall and software-source trust requests wait for the GUI's confirmation.
 The worker never interpolates file names, app IDs or URLs into shell commands.
 
 Mouse, touchpad, touch-screen scrolling and screenshot zoom remain independent

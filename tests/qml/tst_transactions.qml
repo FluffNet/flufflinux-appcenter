@@ -15,6 +15,9 @@ TestCase {
         property string installedError: ""
         property int iconRevision: 0
         property bool busy: false
+        property var installSizes: ({})
+        property string sizeRequested: ""
+        function requestInstallInfo(app) { sizeRequested = app.id }
         property string requested: ""
         property int acceptedToken: 0
         signal appOpened(var app)
@@ -25,6 +28,31 @@ TestCase {
         function cancelJob(index) { requested = "cancel:" + index }
     }
     AppCenter.Main { id: main; backend: backend; visible: true }
+    function test_inline_sizes_and_website_alignment() {
+        const app = {id: "org.example.Size", name: "Size test", summary: "", description: "", icon: "", screenshots: [], category: "Games", license: "MIT", homepage: "https://example.org/", developer: ""}
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        compare(backend.sizeRequested, app.id)
+        const page = stack.currentItem
+        const appSize = findChild(page, "appDownloadSize")
+        const totalSize = findChild(page, "totalDownloadSize")
+        compare(appSize.text, "Calculating…")
+        backend.installSizes = {"org.example.Size": {state: "ready", appSize: "2 MiB", totalSize: "3 MiB"}}
+        compare(appSize.text, "2 MiB")
+        compare(totalSize.text, "3 MiB")
+        verify(appSize.font.bold && totalSize.font.bold)
+        compare(appSize.color, main.textColor)
+        const website = findChild(page, "appWebsiteLink")
+        compare(website.contentItem.horizontalAlignment, Text.AlignLeft)
+        compare(website.leftPadding, 0)
+        compare(website.contentItem.text, app.homepage)
+        backend.installSizes = {"org.example.Size": {state: "unavailable"}}
+        compare(totalSize.text, "Unavailable")
+        verify(findChild(page, "installAppButton").enabled)
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.installSizes = ({})
+    }
     function hasDownloadsText(item) {
         if (item.text === "Downloads") return true
         const children = item.children || []
@@ -71,12 +99,13 @@ TestCase {
         verify(install.visible)
         mouseClick(install)
         compare(backend.requested, "install:org.example.Test")
+        verify(!findChild(main, "transactionReview").visible)
         backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, progress: 0.35,
                          status: "Downloading", operations: [{name: "org.example.Runtime", progress: 0.35}]}]
         verify(findChild(page, "appInstallProgress").visible)
         compare(findChild(page, "appInstallProgress").value, 0.35)
         verify(!install.visible)
-        backend.review = {token: 7, title: "Review", kind: "transaction", message: "An app and a dependency",
+        backend.review = {token: 7, title: "Uninstall", kind: "transaction", removing: true, message: "Remove app and data",
                           operations: [], downloadSize: "10 MB"}
         const dialog = findChild(main, "transactionReview")
         tryCompare(dialog, "visible", true)

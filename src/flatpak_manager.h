@@ -15,10 +15,12 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(bool installedLoading READ installedLoading NOTIFY installedChanged)
     Q_PROPERTY(QString installedError READ installedError NOTIFY installedChanged)
     Q_PROPERTY(int iconRevision READ iconRevision NOTIFY installedChanged)
+    Q_PROPERTY(QVariantMap installSizes READ installSizes NOTIFY installSizesChanged)
 public:
     explicit FlatpakManager(const QVariantList &catalog, QObject *parent = nullptr);
     ~FlatpakManager() override;
-    QVariantList jobs() const { return m_jobs; }
+    QVariantList jobs() const;
+    QVariantMap installSizes() const { return m_installSizes; }
     QVariantMap review() const { return m_review; }
     bool busy() const;
     QVariantList installedApps() const { return m_installed; }
@@ -26,6 +28,7 @@ public:
     QString installedError() const { return m_installedError; }
     int iconRevision() const { return m_iconRevision; }
     Q_INVOKABLE void installApp(QVariantMap app);
+    Q_INVOKABLE void requestInstallInfo(QVariantMap app);
     Q_INVOKABLE void uninstallApp(QVariantMap app);
     Q_INVOKABLE void openSource(QString source);
     Q_INVOKABLE void answerReview(int token, bool accept);
@@ -39,6 +42,7 @@ signals:
     void installedChanged();
     void appOpened(QVariantMap app);
     void inputError(QString message);
+    void installSizesChanged();
 private:
     void enqueue(QVariantMap request);
     void startNext();
@@ -46,13 +50,20 @@ private:
     void handleMessage(const QJsonObject &message);
     void patchJob(int index, const QVariantMap &values);
     void refreshCaches();
+    void startEstimate();
+    void receiveEstimate();
+    QVariantMap installRequest(const QVariantMap &app) const;
     QVariantMap metadata(const QString &id) const;
     QVariantList m_jobs, m_requests, m_installed;
     QVariantMap m_review;
+    QVariantMap m_installSizes, m_estimateApp, m_pendingEstimate;
+    QHash<QString, QVariantMap> m_sources;
     QHash<QString, QVariantMap> m_metadata;
-    QProcess m_worker, m_installedProcess, m_cache;
-    QTimer m_installedTimeout, m_cacheTimeout;
+    QProcess m_worker, m_installedProcess, m_cache, m_estimate;
+    QTimer m_installedTimeout, m_cacheTimeout, m_estimateTimeout;
     QByteArray m_buffer, m_diagnostics;
+    QByteArray m_estimateBuffer;
+    QString m_estimateId;
     int m_current = -1, m_iconRevision = 0;
     bool m_resultReceived = false, m_loading = true, m_stopping = false;
     QString m_installedError;

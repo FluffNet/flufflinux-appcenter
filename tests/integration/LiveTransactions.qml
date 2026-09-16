@@ -19,10 +19,10 @@ AppCenter.Main {
                 main.testApp = main.catalog.find(function(app) { return app.id.replace(/\.desktop$/, "") === "org.gnome.Calculator" })
                 if (!main.testApp || main.findInstalled(main.testApp)) { main.fail("Calculator missing from catalog or already installed"); return }
                 main.openApp(main.testApp)
-                main.installApp(main.testApp)
                 main.testStage = 1
-            } else if (main.testStage === 1 && main.backend.review.token) {
-                console.info("LIVE_TEST_REVIEW")
+            } else if (main.testStage === 1 && main.backend.installSizes["org.gnome.Calculator"]
+                       && main.backend.installSizes["org.gnome.Calculator"].state === "ready") {
+                console.info("LIVE_TEST_INLINE_SIZES: " + JSON.stringify(main.backend.installSizes["org.gnome.Calculator"]))
                 pause.action = "install"; pause.restart(); main.testStage = 2
             } else if (main.testStage === 3 && !main.backend.busy) {
                 if (!main.findInstalled(main.testApp)) { main.fail("Installed metadata did not refresh"); return }
@@ -30,9 +30,7 @@ AppCenter.Main {
                 console.info("LIVE_TEST_APP_INSTALLED")
                 pause.action = "downloads"; pause.restart(); main.testStage = 4
             } else if (main.testStage === 3 && main.backend.review.token) {
-                // First-run source trust and dependency review are separate.
-                console.info("LIVE_TEST_REVIEW")
-                pause.action = "install"; pause.restart(); main.testStage = 2
+                main.fail("Install unexpectedly opened a confirmation dialog")
             } else if (main.testStage === 6 && main.backend.review.token) {
                 console.info("LIVE_TEST_UNINSTALL_REVIEW")
                 pause.action = "uninstall"; pause.restart(); main.testStage = 7
@@ -47,11 +45,11 @@ AppCenter.Main {
     }
     Timer {
         id: pause
-        interval: 30000
+        interval: 12000
         property string action: ""
         onTriggered: {
             if (action === "install") {
-                main.backend.answerReview(main.backend.review.token, true)
+                main.installApp(main.testApp)
                 main.testStage = 3
             } else if (action === "downloads") {
                 main.showDownloads(); console.info("LIVE_TEST_DOWNLOADS")

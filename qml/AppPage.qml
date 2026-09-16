@@ -482,8 +482,18 @@ Page {
                 Label { text: app ? app.license : ""; color: window.textColor; Layout.fillWidth: true; visible: text.length > 0 }
                 Label { text: "Website"; color: window.mutedTextColor; visible: app && app.homepage }
                 Button {
+                    objectName: "appWebsiteLink"
                     text: app ? app.homepage : ""; visible: text.length > 0; Layout.fillWidth: true
                     flat: true
+                    leftPadding: 0; rightPadding: 0; topPadding: 0; bottomPadding: 0
+                    contentItem: Label {
+                        text: parent.text
+                        color: window.accentColor
+                        font: parent.font
+                        horizontalAlignment: Text.AlignLeft
+                        verticalAlignment: Text.AlignVCenter
+                        elide: Text.ElideRight
+                    }
                     palette.buttonText: window.accentColor
                     font.weight: Font.DemiBold
                     onClicked: Qt.openUrlExternally(text)

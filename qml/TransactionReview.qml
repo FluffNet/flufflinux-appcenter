@@ -18,14 +18,14 @@ Dialog {
         color: Qt.rgba(window.raisedSurfaceColor.r, window.raisedSurfaceColor.g, window.raisedSurfaceColor.b, 1)
         border.color: window.borderColor
     }
-    title: plan.title || qsTr("Review installation")
+    title: plan.title || qsTr("Confirm action")
     standardButtons: Dialog.Cancel | Dialog.Ok
     closePolicy: Popup.CloseOnEscape
     onAccepted: if (backend) backend.answerReview(plan.token, true)
     onRejected: if (backend) backend.answerReview(plan.token, false)
     onOpened: standardButton(Dialog.Ok).text = plan.removing ? qsTr("Uninstall and delete data")
                 : plan.kind === "remote" ? qsTr("Trust and add source")
-                : plan.kind === "bundle" ? qsTr("Continue") : qsTr("Install")
+                : qsTr("Continue")
     Connections {
         target: dialog.backend
         function onReviewChanged() {
@@ -43,12 +43,6 @@ Dialog {
             width: parent.width
             spacing: 14
             Label { Layout.fillWidth: true; text: dialog.plan.message || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap }
-            Label {
-                Layout.fillWidth: true
-                visible: dialog.plan.kind === "transaction" && !dialog.plan.removing
-                text: qsTr("Estimated download: %1").arg(dialog.plan.downloadSize || "")
-                font.bold: true
-            }
             Repeater {
                 model: dialog.plan.operations || []
                 delegate: ColumnLayout {
