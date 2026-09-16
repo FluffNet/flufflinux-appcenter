@@ -61,6 +61,7 @@ fn main() {
         PathBuf::from("src/qt_bridge.cpp"),
         PathBuf::from("src/flatpak_manager.cpp"),
         PathBuf::from("src/flatpak_worker.cpp"),
+        PathBuf::from("src/flatpak_sizes.cpp"),
         generated,
     ] {
         let object = output_dir
@@ -106,4 +107,6 @@ fn main() {
     println!("cargo:rerun-if-changed=src/flatpak_manager.h");
     println!("cargo:rerun-if-changed=src/flatpak_manager.cpp");
     println!("cargo:rerun-if-changed=src/flatpak_worker.cpp");
+    println!("cargo:rerun-if-changed=src/flatpak_sizes.cpp");
+    println!("cargo:rerun-if-changed=src/flatpak_sizes.h");
 }

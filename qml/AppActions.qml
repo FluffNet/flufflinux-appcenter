@@ -11,8 +11,7 @@ ColumnLayout {
     readonly property var sizeInfo: window.backend && window.backend.installSizes
                                    ? window.backend.installSizes[String(app.id).replace(/\.desktop$/, "")] || ({}) : ({})
     function sizeText(field) {
-        if (sizeInfo.state === "ready") return sizeInfo[field]
-        return sizeInfo.state === "unavailable" ? qsTr("Unavailable") : qsTr("Calculating…")
+        return sizeInfo[field] || qsTr("Unavailable")
     }
     visible: typeof window.backend !== "undefined" && !!window.backend
     Layout.fillWidth: true
@@ -34,12 +33,6 @@ ColumnLayout {
             Layout.fillWidth: true
             text: actions.sizeText("totalSize"); color: window.textColor; font.bold: true
         }
-    }
-    Label {
-        Layout.fillWidth: true
-        visible: !actions.installed
-        text: qsTr("Estimated download. Already installed dependencies are reused.")
-        color: window.mutedTextColor; wrapMode: Text.Wrap; font.pixelSize: 12
     }
     RowLayout {
         Layout.fillWidth: true

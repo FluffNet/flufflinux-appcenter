@@ -14,14 +14,18 @@ background update services, notifications, settings, or tray components.
   Flathub source for that user. Other missing sources require their `.flatpakrepo`
   file; the app never silently falls back to a system installation.
 - App pages show **App size** and **Total size with dependencies** before
-  installation. These are download estimates from Flatpak's resolved plan, not
-  installed disk usage. Dependencies already available in the user or system
-  installation are reused, rather than added to the download total. Estimates
-  resolve in the background without downloading payloads or installing apps.
+  installation. These are download estimates from Flatpak's existing local
+  repository metadata, not installed disk usage. Dependencies already available
+  in the user or system installation are excluded. Opening an app reads this
+  metadata directly before showing the page: no network transaction, waiting
+  state, extra size cache, or saved size results. Automatic runtime/locale/driver
+  extensions are included; build SDKs and optional debug extensions are not.
 - **Install starts immediately**, without an installation-confirmation dialog.
   New software sources still require an explicit trust confirmation; source
   additions can remain after cancelling the later app installation. Missing
-  sources or offline lookup failures show unavailable sizes, never a fake zero.
+  local metadata shows unavailable sizes, never a fake zero. Installation still
+  resolves the current plan normally, so actual transfers can differ from the
+  repository's published estimates.
 - Downloads keeps this session's jobs, per-dependency status, progress, errors,
   and cancellations. App pages show the same live progress. Operations are
   serialized; additional requests wait in the queue.
@@ -108,7 +112,9 @@ configuration prefix.
 Rust reads/normalizes AppStream metadata. QML renders the Breeze light/dark
 interface. The C++ Qt bridge exposes an asynchronous manager; an unprivileged
 child process runs libflatpak transactions and emits structured progress. It
-resolves passive estimates at `ready-pre-auth` and stops before deployment.
+resolves file/link preparation at `ready-pre-auth` and stops before deployment.
+App-page sizes instead use local-only libflatpak metadata queries, without
+starting that worker or storing a separate cache.
 Actual installation proceeds directly after the app-page Install action;
 uninstall and software-source trust requests wait for the GUI's confirmation.
 The worker never interpolates file names, app IDs or URLs into shell commands.
@@ -123,7 +129,14 @@ On Fluff Linux:
 ```sh
 cargo test
 /usr/lib/qt6/bin/qmltestrunner -input tests/qml -import qml -platform offscreen
+c++ -std=c++17 -fPIC tests/native/test_flatpak_sizes.cpp -o target/test-flatpak-sizes $(pkg-config --cflags --libs Qt6Core flatpak)
+target/test-flatpak-sizes
 ```
+
+`target/test-flatpak-sizes com.onepassword.OnePassword` prints the actual local
+sizes and lookup time. `python3 tests/integration/test_local_sizes.py` compares
+four local lookups with libflatpak's resolved plans without installing apps
+(the reference plans require network access and a configured user Flathub).
 
 The integration suite really installs and removes GNOME Calculator, including
 a data-deletion/fresh-install check. It refuses pre-existing Calculator

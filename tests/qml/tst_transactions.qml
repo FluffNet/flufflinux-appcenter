@@ -37,7 +37,7 @@ TestCase {
         const page = stack.currentItem
         const appSize = findChild(page, "appDownloadSize")
         const totalSize = findChild(page, "totalDownloadSize")
-        compare(appSize.text, "Calculating…")
+        compare(appSize.text, "Unavailable")
         backend.installSizes = {"org.example.Size": {state: "ready", appSize: "2 MiB", totalSize: "3 MiB"}}
         compare(appSize.text, "2 MiB")
         compare(totalSize.text, "3 MiB")
@@ -50,6 +50,9 @@ TestCase {
         backend.installSizes = {"org.example.Size": {state: "unavailable"}}
         compare(totalSize.text, "Unavailable")
         verify(findChild(page, "installAppButton").enabled)
+        backend.installSizes = {"org.example.Size": {state: "partial", appSize: "2 MiB"}}
+        compare(appSize.text, "2 MiB")
+        compare(totalSize.text, "Unavailable")
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.installSizes = ({})
     }
