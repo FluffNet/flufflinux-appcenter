@@ -20,9 +20,26 @@ unsafe extern "C" {
     fn fluff_transaction_worker(request: *const i8) -> i32;
 }
 
+fn installed_assets(executable: &Path) -> Option<PathBuf> {
+    let bin = executable.parent()?;
+    // An installed executable must use its installed interface, even while
+    // the original build checkout still exists and is being edited.
+    (bin.file_name()? == "bin").then(|| {
+        bin.parent()
+            .map(|prefix| prefix.join("share/flufflinux-appcenter"))
+    })?
+}
+
 fn find_main_qml() -> Option<PathBuf> {
     if let Some(path) = env::var_os("FLUFF_APP_CENTER_QML") {
         return Some(path.into());
+    }
+    if let Some(assets) = env::current_exe()
+        .ok()
+        .and_then(|exe| installed_assets(&exe))
+    {
+        let installed = assets.join("qml/Main.qml");
+        return installed.is_file().then_some(installed);
     }
     let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("qml/Main.qml");
     if source.is_file() {
@@ -41,6 +58,13 @@ fn cache_path() -> PathBuf {
 }
 
 fn find_icon() -> Option<PathBuf> {
+    if let Some(assets) = env::current_exe()
+        .ok()
+        .and_then(|exe| installed_assets(&exe))
+    {
+        let installed = assets.join("qml/flufflinux-appcenter.svg");
+        return installed.is_file().then_some(installed);
+    }
     let source = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("assets/flufflinux-appcenter.svg");
     if source.is_file() {
         return Some(source);
@@ -106,5 +130,30 @@ fn main() -> ExitCode {
             eprintln!("flufflinux-appcenter: {message}");
             ExitCode::FAILURE
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installed_binary_uses_its_own_prefix_not_the_build_checkout() {
+        assert_eq!(
+            installed_assets(Path::new("/usr/bin/flufflinux-appcenter")),
+            Some(PathBuf::from("/usr/share/flufflinux-appcenter"))
+        );
+        assert_eq!(
+            installed_assets(Path::new("/opt/appcenter/bin/flufflinux-appcenter")),
+            Some(PathBuf::from("/opt/appcenter/share/flufflinux-appcenter"))
+        );
+        assert_eq!(
+            installed_assets(Path::new("/tmp/source/target/release/flufflinux-appcenter")),
+            None
+        );
+        assert_eq!(
+            installed_assets(Path::new("/tmp/source/target/debug/flufflinux-appcenter")),
+            None
+        );
     }
 }

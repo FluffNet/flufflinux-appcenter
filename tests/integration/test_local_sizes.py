@@ -7,9 +7,10 @@ import json
 import subprocess
 from test_transactions import ROOT, run
 
-for app in ("com.onepassword.OnePassword", "io.github.mezoahmedii.Picker",
-            "org.gnome.Calculator", "org.kde.krita"):
+for app in ("com.play0ad.zeroad", "com.onepassword.OnePassword", "io.github.mezoahmedii.Picker",
+            "org.gnome.Calculator", "org.kde.krita", "com.discordapp.Discord"):
     actual = json.loads(subprocess.check_output([str(ROOT / "target/test-flatpak-sizes"), app], text=True))
+    assert actual["state"] == "ready" and actual["elapsedMs"] < 500, actual
     events = run({"action": "install", "id": app, "estimateOnly": True}, approve=False)
     plan = next(event for event in events if event["type"] == "plan")
     assert actual["appBytes"] == plan["appBytes"], (app, actual, plan)

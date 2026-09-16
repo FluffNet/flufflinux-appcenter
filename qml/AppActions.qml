@@ -10,6 +10,9 @@ ColumnLayout {
     readonly property bool running: !!job && job.active === true
     readonly property var sizeInfo: window.backend && window.backend.installSizes
                                    ? window.backend.installSizes[String(app.id).replace(/\.desktop$/, "")] || ({}) : ({})
+    readonly property bool showDependencyTotal: !(typeof sizeInfo.appBytes === "number"
+                                                  && typeof sizeInfo.totalBytes === "number"
+                                                  && sizeInfo.appBytes === sizeInfo.totalBytes)
     function sizeText(field) {
         return sizeInfo[field] || qsTr("Unavailable")
     }
@@ -27,9 +30,14 @@ ColumnLayout {
             Layout.fillWidth: true
             text: actions.sizeText("appSize"); color: window.textColor; font.bold: true
         }
-        Label { text: qsTr("Total size with dependencies:"); color: window.mutedTextColor }
+        Label {
+            objectName: "totalDownloadSizeLabel"
+            visible: actions.showDependencyTotal
+            text: qsTr("Total size with dependencies:"); color: window.mutedTextColor
+        }
         Label {
             objectName: "totalDownloadSize"
+            visible: actions.showDependencyTotal
             Layout.fillWidth: true
             text: actions.sizeText("totalSize"); color: window.textColor; font.bold: true
         }

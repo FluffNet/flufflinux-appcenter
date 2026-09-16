@@ -41,6 +41,15 @@ TestCase {
         backend.installSizes = {"org.example.Size": {state: "ready", appSize: "2 MiB", totalSize: "3 MiB"}}
         compare(appSize.text, "2 MiB")
         compare(totalSize.text, "3 MiB")
+        const totalCaption = findChild(page, "totalDownloadSizeLabel")
+        backend.installSizes = {"org.example.Size": {state: "ready", appBytes: 2097152, totalBytes: 2097152, appSize: "2 MiB", totalSize: "2 MiB"}}
+        verify(appSize.visible)
+        verify(!totalSize.visible && !totalCaption.visible)
+        // Equal rounded strings must not hide a real, small dependency.
+        backend.installSizes = {"org.example.Size": {state: "ready", appBytes: 2097152, totalBytes: 2097153, appSize: "2 MiB", totalSize: "2 MiB"}}
+        verify(totalSize.visible && totalCaption.visible)
+        backend.installSizes = {"org.example.Size": {state: "ready", appBytes: 0, totalBytes: 0, appSize: "0 bytes", totalSize: "0 bytes"}}
+        verify(!totalSize.visible && !totalCaption.visible)
         verify(appSize.font.bold && totalSize.font.bold)
         compare(appSize.color, main.textColor)
         const website = findChild(page, "appWebsiteLink")
@@ -48,6 +57,7 @@ TestCase {
         compare(website.leftPadding, 0)
         compare(website.contentItem.text, app.homepage)
         backend.installSizes = {"org.example.Size": {state: "unavailable"}}
+        verify(totalSize.visible && totalCaption.visible)
         compare(totalSize.text, "Unavailable")
         verify(findChild(page, "installAppButton").enabled)
         backend.installSizes = {"org.example.Size": {state: "partial", appSize: "2 MiB"}}

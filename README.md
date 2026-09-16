@@ -14,7 +14,8 @@ background update services, notifications, settings, or tray components.
   Flathub source for that user. Other missing sources require their `.flatpakrepo`
   file; the app never silently falls back to a system installation.
 - App pages show **App size** and **Total size with dependencies** before
-  installation. These are download estimates from Flatpak's existing local
+  installation (only **App size** when their exact byte counts match). These
+  are download estimates from Flatpak's existing local
   repository metadata, not installed disk usage. Dependencies already available
   in the user or system installation are excluded. Opening an app reads this
   metadata directly before showing the page: no network transaction, waiting
@@ -135,8 +136,24 @@ target/test-flatpak-sizes
 
 `target/test-flatpak-sizes com.onepassword.OnePassword` prints the actual local
 sizes and lookup time. `python3 tests/integration/test_local_sizes.py` compares
-four local lookups with libflatpak's resolved plans without installing apps
+six local lookups (including 0 A.D. and Discord) with libflatpak's resolved plans without installing apps
 (the reference plans require network access and a configured user Flathub).
+
+For an end-to-end check, close App Center, then run the real executable with:
+
+```sh
+FLUFF_APP_CENTER_QML="$PWD/tests/integration/SizeSmoke.qml" target/release/flufflinux-appcenter
+```
+
+This clicks catalogue cards using the real backend, checks both visible labels,
+enforces under 500 ms from opening to the completed page transition, and saves
+screenshots in `target/size-proof-*.png`. It fails if the executable lacks the
+size API instead of treating a newer QML/older executable mismatch as success.
+The test needs the six apps above in the catalogue and not installed; Discord
+also verifies hiding the redundant total when its dependencies are present.
+The installed executable loads QML from its installation prefix, never from a
+leftover build checkout. Install the executable and QML together with
+`make install`; replacing QML alone does not update native features.
 
 The integration suite really installs and removes GNOME Calculator, including
 a data-deletion/fresh-install check. It refuses pre-existing Calculator
