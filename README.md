@@ -32,6 +32,9 @@ background update services, notifications, settings, or tray components.
   cancellation finishes. Cancelling the only job also hides the Downloads
   button; other completed/failed jobs stay. Operations are serialized;
   additional requests wait in the queue.
+- Removals never appear in Downloads or its badge. Their progress/errors are
+  shown in the Installed row and app view only; successful removal leaves no
+  lingering completion text on the app page.
 - Installed lists user and system applications, with version and installed size.
   Open an app, view its information, or uninstall it from its row or app page.
 - Uninstall confirms removal and deletes **the current user's sandbox directory**

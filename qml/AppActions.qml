@@ -88,7 +88,7 @@ ColumnLayout {
     Label {
         objectName: "appJobStatus"
         Layout.fillWidth: true
-        visible: !!actions.job
+        visible: !!actions.job && (actions.job.action !== "uninstall" || actions.running || actions.job.failed === true)
         text: actions.job ? actions.job.status + (actions.job.error ? "\n" + actions.job.error : "") : ""
         textFormat: Text.PlainText; wrapMode: Text.Wrap
         color: actions.job && actions.job.failed ? window.accentColor : window.mutedTextColor

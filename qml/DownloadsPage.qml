@@ -37,7 +37,7 @@ Page {
             x: 24; y: 24; width: parent.width - 48; spacing: 16
             Label {
                 Layout.fillWidth: true
-                text: qsTr("This session’s installations and removals. Dependencies appear under each app.")
+                text: qsTr("This session’s downloads and installations. Dependencies appear under each app.")
                 wrapMode: Text.WordWrap; color: window.mutedTextColor
             }
             Repeater {
@@ -61,7 +61,7 @@ Page {
                         }
                         Label {
                             Layout.fillWidth: true
-                            text: (modelData.action === "uninstall" ? qsTr("Uninstall") : qsTr("Install / add source")) + " · " + modelData.status
+                            text: modelData.status
                             textFormat: Text.PlainText; wrapMode: Text.Wrap
                             color: modelData.failed ? window.accentColor : window.mutedTextColor
                         }

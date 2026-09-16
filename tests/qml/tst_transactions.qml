@@ -115,6 +115,49 @@ TestCase {
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.jobs = []
     }
+    function test_removals_only_show_in_installed_and_app_view() {
+        const app = {id: "org.example.Remove", name: "Remove test", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "",
+                     installedSize: "10 MB", installedVersion: "1.0", installation: "user", installedBranch: "stable", installedArch: "x86_64"}
+        const removal = {id: app.id, index: 4, action: "uninstall", name: app.name, active: true, progress: 0.3, status: "Removing…", operations: [{name: app.id, progress: 0.3}]}
+        const download = {id: "org.example.Download", index: 7, action: "install", name: "Download", active: true, progress: 0.5, status: "Downloading", operations: []}
+        backend.installedApps = [app]
+        backend.jobs = [removal]
+        main.showCatalog()
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        main.selectedCategory = "Installed"
+        const list = findChild(stack.currentItem, "installedList")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const row = list.itemAtIndex(0)
+        verify(findChild(row, "installedRemovalProgress").visible)
+        compare(findChild(row, "installedRemovalProgress").value, 0.3)
+        compare(findChild(row, "installedRemovalStatus").text, "Removing…")
+        verify(!findChild(row, "uninstallButton").enabled)
+        verify(!main.downloadQueue.buttonVisible)
+        compare(main.downloadQueue.activeCount, 0)
+        backend.jobs = [removal, download]
+        compare(main.downloadQueue.jobs.length, 1)
+        compare(main.downloadQueue.activeCount, 1)
+        compare(main.downloadQueue.progress, 0.5)
+        main.openApp(app); tryCompare(stack, "busy", false)
+        verify(findChild(stack.currentItem, "appInstallProgress").visible)
+        compare(findChild(stack.currentItem, "appJobStatus").text, "Removing…")
+        backend.jobs = [Object.assign({}, removal, {active: false, failed: true, status: "Failed", error: "Removal failed"}), download]
+        verify(findChild(stack.currentItem, "appJobStatus").visible)
+        verify(!main.downloadQueue.hasError) // Removal errors stay with the app.
+        backend.jobs = [Object.assign({}, removal, {active: false, failed: false, status: "Complete"}), download]
+        verify(!findChild(stack.currentItem, "appJobStatus").visible)
+        main.showDownloads(); tryCompare(stack, "busy", false)
+        compare(findChild(stack.currentItem, "downloadJobs").count, 1)
+        // A cancelled download must not create a badge alongside a removal.
+        backend.jobs = [removal, Object.assign({}, download, {active: false, cancelled: true, status: "Cancelled"})]
+        compare(findChild(stack.currentItem, "downloadJobs").count, 0)
+        verify(!main.downloadQueue.buttonVisible)
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.jobs = []
+        backend.installedApps = []
+        main.selectedCategory = "All Apps"
+    }
     function test_external_flatpak_opens_app_view_without_catalog_picker() {
         const app = {id: "org.example.External", name: "External app", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
         backend.appOpened(app)

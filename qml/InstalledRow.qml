@@ -5,6 +5,9 @@ import QtQuick.Layouts
 AbstractButton {
     id: row
     required property var app
+    readonly property var job: typeof window.jobForApp === "function" ? window.jobForApp(app) : null
+    readonly property bool removing: !!job && job.action === "uninstall" && job.active === true
+    readonly property bool removalFailed: !!job && job.action === "uninstall" && job.failed === true
     height: Math.max(108, contentItem.implicitHeight + topPadding + bottomPadding)
     padding: 16
     hoverEnabled: true
@@ -58,10 +61,26 @@ AbstractButton {
                     wrapMode: Text.WrapAnywhere
                 }
             }
+            Label {
+                objectName: "installedRemovalStatus"
+                Layout.fillWidth: true
+                visible: row.removing || row.removalFailed
+                text: row.job ? row.job.status + (row.job.error ? "\n" + row.job.error : "") : ""
+                textFormat: Text.PlainText; wrapMode: Text.Wrap
+                color: row.removalFailed ? window.accentColor : window.mutedTextColor
+            }
+            FluffProgressBar {
+                objectName: "installedRemovalProgress"
+                Layout.fillWidth: true
+                visible: row.removing
+                value: row.job ? row.job.progress : 0
+                indeterminate: row.removing && !(row.job.operations || []).length
+                palette.highlight: window.accentColor
+            }
         }
         ToolButton {
             objectName: "uninstallButton"
-            enabled: !!window.backend && !(window.jobForApp(app) && window.jobForApp(app).active)
+            enabled: !!window.backend && !(row.job && row.job.active)
             Layout.preferredWidth: 44; Layout.preferredHeight: 44
             Accessible.name: qsTr("Uninstall %1").arg(app.name)
             onClicked: window.uninstallApp(app)

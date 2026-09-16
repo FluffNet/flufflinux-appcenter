@@ -34,7 +34,13 @@ ApplicationWindow {
     property string searchCategoryFilter: "All Apps"
     property string searchText: ""
     readonly property bool catalogLoaded: true
-    DownloadQueue { id: downloads; objectName: "downloadQueue"; jobs: window.backend ? window.backend.jobs : [] }
+    DownloadQueue {
+        id: downloads
+        objectName: "downloadQueue"
+        jobs: window.backend ? window.backend.jobs.filter(function(job) {
+            return job.action !== "uninstall" && job.cancelled !== true
+        }) : []
+    }
     readonly property alias downloadQueue: downloads
     function findInstalled(app) {
         if (!app) return null
@@ -48,7 +54,11 @@ ApplicationWindow {
     function jobForApp(app) {
         if (!app) return null
         const id = String(app.id).replace(/\.desktop$/, "")
-        const matches = downloads.jobs.filter(function(job) { return job.id === id })
+        // App/Installed progress also includes removals, which never belong
+        // in Downloads or its badge. Cancellations are never status history.
+        const matches = (backend ? backend.jobs : []).filter(function(job) {
+            return job.id === id && job.cancelled !== true
+        })
         return matches.length ? matches[matches.length - 1] : null
     }
     function iconSource(icon) {
