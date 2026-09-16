@@ -466,6 +466,8 @@ Page {
             GridLayout {
                 Layout.fillWidth: true; Layout.bottomMargin: 38
                 columns: 2; columnSpacing: 28; rowSpacing: 10
+                Label { text: qsTr("Installed version"); color: window.mutedTextColor; visible: !!(app && app.installedSize) }
+                Label { text: app && app.installedVersion || qsTr("Unavailable"); color: window.textColor; visible: !!(app && app.installedSize); Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
                 Label { text: qsTr("Installed size"); color: window.mutedTextColor; visible: !!(app && app.installedSize) }
                 Label { text: app && app.installedSize || ""; color: window.textColor; visible: text.length > 0 }
                 Label { text: qsTr("Installation"); color: window.mutedTextColor; visible: !!(app && app.installation) }

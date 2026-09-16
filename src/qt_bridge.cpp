@@ -114,7 +114,7 @@ extern "C" int fluff_run_qml(const char *qml_path,
         const QString output = QString::fromUtf8(installed.readAllStandardOutput());
         for (const QString &line : output.split('\n', Qt::SkipEmptyParts)) {
             const auto columns = line.split('\t');
-            if (columns.size() != 8) {
+            if (columns.size() != 9) {
                 failInstalled(QCoreApplication::translate("Installed", "Flatpak returned an unexpected installed-app list."));
                 return;
             }
@@ -131,6 +131,7 @@ extern "C" int fluff_run_qml(const char *qml_path,
             app.insert(QStringLiteral("installation"), columns[4].trimmed());
             app.insert(QStringLiteral("installedBranch"), columns[5].trimmed());
             app.insert(QStringLiteral("installedArch"), columns[6].trimmed());
+            app.insert(QStringLiteral("installedVersion"), columns[8].trimmed());
             apps.append(app);
         }
         engine.rootContext()->setContextProperty(QStringLiteral("fluffInstalledApps"), apps);
@@ -138,7 +139,7 @@ extern "C" int fluff_run_qml(const char *qml_path,
     });
     installedTimeout.start(15000);
     installed.start(QStringLiteral("flatpak"), {QStringLiteral("list"), QStringLiteral("--app"),
-        QStringLiteral("--columns=application:f,name:f,size,origin:f,installation:f,branch:f,arch:f,description:f")});
+        QStringLiteral("--columns=application:f,name:f,size,origin:f,installation:f,branch:f,arch:f,description:f,version:f")});
     engine.load(QUrl::fromLocalFile(QString::fromUtf8(qml_path)));
     if (engine.rootObjects().isEmpty()) {
         return 4;

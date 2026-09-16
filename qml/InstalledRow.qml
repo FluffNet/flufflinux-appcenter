@@ -40,7 +40,13 @@ AbstractButton {
                 text: app.installedOrigin + " · " + app.installation + " · " + app.installedBranch
                 color: window.mutedTextColor; elide: Text.ElideRight
             }
-            Label { text: app.installedSize; color: window.mutedTextColor }
+            Label {
+                Layout.fillWidth: true
+                text: (app.installedVersion ? qsTr("Version %1").arg(app.installedVersion)
+                                            : qsTr("Version unavailable")) + " · " + app.installedSize
+                color: window.mutedTextColor
+                elide: Text.ElideRight
+            }
         }
         ToolButton {
             objectName: "uninstallButton"
