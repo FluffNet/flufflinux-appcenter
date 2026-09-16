@@ -291,6 +291,13 @@ TestCase {
         compare(findChild(page, "appOverallProgress").text, "Overall installation progress: 35%")
         verify(findChild(page, "appJobStatus").visible)
         verify(!install.visible)
+        backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, progress: 0.99,
+                         status: "Installing…", operations: [{name: app.id, progress: 1}]}]
+        compare(findChild(page, "appJobStatus").text, "Installing…")
+        compare(findChild(page, "appInstallProgress").value, 0.99)
+        backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, progress: 0.4,
+                         status: "Downloading… 1.50 MiB received", operations: [{name: app.id, progress: 0.4}]}]
+        compare(findChild(page, "appJobStatus").text, "Downloading… 1.50 MiB received")
         backend.jobs = [{id: app.id, name: app.name, index: 0, active: false, failed: true,
                          progress: 0.35, status: "Failed", error: "Connection lost", operations: []}]
         verify(findChild(page, "appJobStatus").visible)

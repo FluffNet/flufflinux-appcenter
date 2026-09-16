@@ -109,6 +109,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/flatpak_manager.cpp");
     println!("cargo:rerun-if-changed=src/install_history.h");
     println!("cargo:rerun-if-changed=src/flatpak_worker.cpp");
+    println!("cargo:rerun-if-changed=src/transaction_status.h");
     println!("cargo:rerun-if-changed=src/flatpak_sizes.cpp");
     println!("cargo:rerun-if-changed=src/flatpak_sizes.h");
 }

@@ -12,6 +12,7 @@ AppCenter.Main {
     property bool sawApp: false
     property bool sawDependency: false
     property bool sawProgressUi: false
+    property bool sawAppProgressImage: false
     property string testId: "org.gnome.Calculator"
     property bool keepOpen: false
 
@@ -39,8 +40,12 @@ AppCenter.Main {
             if (!job || !job.active) return
             if (!main.check(job.icon === main.testApp.icon, "Active download lost its catalog icon")) return
             for (const op of (job.operations || [])) {
-                const prefix = op.dependency ? "Dependency: " + op.name : "App: " + main.testApp.name
-                if (job.status === prefix + "\n" + op.status) {
+                if (!main.check(!/delta parts|loose fetched|objects fetched/.test(op.status),
+                                "Internal transfer diagnostics leaked into an operation")) return
+                const prefix = op.dependency ? "Dependency: " + op.name + "\n" : ""
+                if (job.currentRef === op.ref) {
+                    if (!main.check(job.status === prefix + op.status,
+                                    "Unexpected/repeated app name in progress status: " + job.status)) return
                     if (op.dependency) main.sawDependency = true
                     else main.sawApp = true
                     // jobsChanged also invalidates the QML bindings. Inspect
@@ -55,6 +60,14 @@ AppCenter.Main {
                             if (!main.sawProgressUi) stack.currentItem.grabToImage(function(result) {
                                 result.saveToFile(Qt.resolvedUrl("../../target/install-progress-proof.png").toString().replace("file://", ""))
                             })
+                            if (!main.sawAppProgressImage && current.currentRef.startsWith("app/")
+                                    && (current.status === "Installing…" || current.status.startsWith("Downloading…"))) {
+                                main.sawAppProgressImage = true
+                                console.info("INSTALL_STATUS_PASS: " + current.status)
+                                stack.currentItem.grabToImage(function(result) {
+                                    result.saveToFile(Qt.resolvedUrl("../../target/install-app-progress-proof.png").toString().replace("file://", ""))
+                                })
+                            }
                             main.sawProgressUi = true
                         }
                     })
@@ -81,7 +94,7 @@ AppCenter.Main {
                 const job = main.jobForApp(main.testApp)
                 if (!main.check(job && !job.failed && job.progress === 1 && main.findInstalled(main.testApp),
                                 "Real installation did not finish successfully")) return
-                if (!main.check(main.sawApp && main.sawProgressUi && (main.sawDependency || !job.operations.some(op => op.dependency)),
+                if (!main.check(main.sawApp && main.sawProgressUi && main.sawAppProgressImage && (main.sawDependency || !job.operations.some(op => op.dependency)),
                                 "Missing per-component progress")) return
                 if (!main.check(!main.find(stack.currentItem, "appJobStatus").visible
                                 && !main.find(stack.currentItem, "appInstallProgress").visible

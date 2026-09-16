@@ -2,6 +2,7 @@
 // GUI responsive. Installation starts from the app page; removals and new
 // software sources retain their explicit confirmation.
 #include <flatpak.h>
+#include "transaction_status.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -196,7 +197,8 @@ void progressChanged(FlatpakTransactionProgress *progress, gpointer data) {
     auto op = flatpak_transaction_get_current_operation(tx);
     if (!op) return;
     g_autofree char *status = flatpak_transaction_progress_get_status(progress);
-    w->operationUpdate(str(flatpak_transaction_operation_get_ref(op)), str(status),
+    w->operationUpdate(str(flatpak_transaction_operation_get_ref(op)),
+                       simpleTransactionStatus(str(status), flatpak_transaction_progress_get_bytes_transferred(progress), w->removing),
                        flatpak_transaction_progress_get_progress(progress) / 100.0);
 }
 void newOperation(FlatpakTransaction *tx, FlatpakTransactionOperation *op,
@@ -204,7 +206,7 @@ void newOperation(FlatpakTransaction *tx, FlatpakTransactionOperation *op,
     auto &w = *static_cast<Worker *>(data);
     w.operationUpdate(str(flatpak_transaction_operation_get_ref(op)),
         w.removing ? QCoreApplication::translate("Flatpak", "Uninstalling…")
-                   : QCoreApplication::translate("Flatpak", "Downloading / installing…"), 0);
+                   : QCoreApplication::translate("Flatpak", "Installing…"), 0);
     flatpak_transaction_progress_set_update_frequency(progress, 100);
     g_signal_connect(progress, "changed", G_CALLBACK(progressChanged), tx);
 }

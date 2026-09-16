@@ -37,10 +37,12 @@ background update services, notifications, settings, or tray components.
   cancellation finishes. Cancelling the only job also hides the Downloads
   button; other completed/failed jobs stay. Operations are serialized;
   additional requests wait in the queue.
-  The overall bar includes every planned component; the status below identifies
-  the current app/dependency and preserves Flatpak's download/install phase.
-  Its live byte count is for that component, not the whole transaction. Published
-  estimates can exceed actual transfers, notably for locale subsets and reused
+  The overall bar includes every planned component; the status below uses simple
+  download/install labels, without repeating the app name or exposing internal
+  delta/object counters. Dependency names remain visible and actual errors are
+  still reported. Its received-byte count is for the current component, not the
+  whole transaction. Published estimates can exceed actual transfers, notably
+  for locale subsets and reused
   content. Successful installs leave Open/Uninstall actions, not completion text,
   on the app page; their completed Downloads history remains available.
 - Removals never appear in Downloads or its badge. Their progress/errors are
@@ -153,6 +155,8 @@ cargo test
 /usr/lib/qt6/bin/qmltestrunner -input tests/qml -import qml -platform offscreen
 c++ -std=c++17 -fPIC tests/native/test_flatpak_sizes.cpp -o target/test-flatpak-sizes $(pkg-config --cflags --libs Qt6Core flatpak)
 target/test-flatpak-sizes
+c++ -std=c++17 -fPIC tests/native/test_transaction_status.cpp -o target/test-transaction-status $(pkg-config --cflags --libs Qt6Core glib-2.0)
+target/test-transaction-status
 ```
 
 `target/test-flatpak-sizes com.onepassword.OnePassword` prints the actual local

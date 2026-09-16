@@ -301,23 +301,16 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
             auto op = entry.toMap();
             if (op.value("ref").toString() == message["ref"].toString()) {
                 op["status"] = message["status"].toString(); op["progress"] = message["progress"].toDouble(); entry = op;
-                // libflatpak's byte counts and phase describe this component,
-                // not the whole transaction represented by the progress bar.
-                // Keep its native status intact instead of guessing a phase
-                // from percentages or parsing a translated status string.
-                if (job.value("action") != "uninstall") {
-                    const auto name = op.value("dependency").toBool()
-                        ? op.value("name").toString()
-                        : metadata(op.value("name").toString()).value("name").toString();
-                    status = (op.value("dependency").toBool() ? tr("Dependency: %1\n%2") : tr("App: %1\n%2"))
-                        .arg(name, status);
-                }
+                // Dependency identity is useful, but the app name is already
+                // the page/card heading. The worker supplies clean status text.
+                if (job.value("action") != "uninstall" && op.value("dependency").toBool())
+                    status = tr("Dependency: %1\n%2").arg(op.value("name").toString(), status);
             }
             const double size = qMax(1.0, op.value("downloadBytes").toDouble());
             weighted += size * op.value("progress").toDouble(); weight += size;
         }
         patchJob(m_current, {{"operations", operations}, {"progress", weight > 0 ? qMin(0.99, weighted / weight) : 0},
-            {"status", status}});
+            {"status", status}, {"currentRef", message["ref"].toString()}});
     } else if (type == "status") {
         patchJob(m_current, {{"status", message["status"].toString()}});
     } else if (type == "result") {
