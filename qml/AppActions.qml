@@ -23,48 +23,6 @@ ColumnLayout {
     visible: typeof window.backend !== "undefined" && !!window.backend
     Layout.fillWidth: true
     spacing: 8
-    GridLayout {
-        objectName: "installSizeDetails"
-        Layout.fillWidth: true
-        visible: !actions.installed
-        columns: 2; columnSpacing: 16; rowSpacing: 4
-        Label { text: qsTr("App size:"); color: window.mutedTextColor }
-        Flow {
-            id: sizeAndVersion
-            Layout.fillWidth: true
-            Layout.minimumWidth: appSizeValue.implicitWidth
-            spacing: 20
-            Label {
-                id: appSizeValue
-                objectName: "appDownloadSize"
-                text: actions.sizeText("appSize"); color: window.textColor; font.bold: true
-            }
-            Row {
-                id: versionRow
-                objectName: "appVersionDetails"
-                visible: !!(actions.app && actions.app.version)
-                spacing: 8
-                Label { id: versionCaption; text: qsTr("Version:"); color: window.mutedTextColor }
-                Label {
-                    objectName: "appAvailableVersion"
-                    width: Math.min(implicitWidth, Math.max(1, sizeAndVersion.width - versionCaption.width - versionRow.spacing))
-                    text: actions.app && actions.app.version || ""
-                    textFormat: Text.PlainText; wrapMode: Text.WrapAnywhere; color: window.textColor; font.bold: true
-                }
-            }
-        }
-        Label {
-            objectName: "totalDownloadSizeLabel"
-            visible: actions.showDependencyTotal
-            text: qsTr("Total size with dependencies:"); color: window.mutedTextColor
-        }
-        Label {
-            objectName: "totalDownloadSize"
-            visible: actions.showDependencyTotal
-            Layout.fillWidth: true
-            text: actions.sizeText("totalSize"); color: window.textColor; font.bold: true
-        }
-    }
     RowLayout {
         Layout.fillWidth: true
         visible: !actions.running || !actions.removing

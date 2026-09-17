@@ -44,7 +44,10 @@ AppCenter.Main {
                     const version = main.find(stack.currentItem, "appAvailableVersion")
                     const size = main.find(stack.currentItem, "appDownloadSize")
                     if (!main.check(version.visible && version.text === app.version, "Wrong version")) return
-                    if (!main.check(version.mapToItem(stack.currentItem, 0, 0).y === size.mapToItem(stack.currentItem, 0, 0).y, "Version not beside size")) return
+                    if (!main.check(version.mapToItem(stack.currentItem, 0, 0).y > size.mapToItem(stack.currentItem, 0, 0).y, "Version not below size")) return
+                    const info = main.find(stack.currentItem, "appHeroText")
+                    const details = main.find(stack.currentItem, "installSizeDetails")
+                    if (!main.check(details.mapToItem(stack.currentItem, 0, 0).x >= info.mapToItem(stack.currentItem, info.width, 0).x, "Details not on the right")) return
                 }
                 console.info("METADATA_PASS: " + app.id + " version=" + app.version + " artwork=" + logo.source)
                 main.phase = "capture"

@@ -27,9 +27,10 @@ and captures `target/metadata-*.png`. It leaves 0 A.D.'s page open.
 
 ## Install and remove apps
 
-- App pages show the published version beside the download size, read from the
+- App pages show Size and Version in a compact stack on the right, read from the
   same local catalog (no additional network request). Unknown versions are
-  omitted, and the version wraps below the size when space is limited. The
+  omitted; dependency totals appear below when needed. On narrow windows the
+  stack moves below the app information, while progress keeps its full width. The
   developer's name is displayed without a “By” prefix.
 - Catalog artwork uses Flatpak's stable `active` deployment path, not the
   disposable snapshot directory. A catalog refresh can no longer leave an

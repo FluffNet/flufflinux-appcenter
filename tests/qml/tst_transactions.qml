@@ -42,13 +42,13 @@ TestCase {
         return [{tag: "user", message: "If you proceed, Calculator and its app data will be removed."},
                 {tag: "system", message: "If you proceed, Calculator will be removed for all users, and its app data for this account will be deleted."}]
     }
-    function test_version_beside_size_data() {
+    function test_version_stack_data() {
         return [{tag: "with-version", version: "0.28.0", total: "1.77 GiB", width: 1180},
                 {tag: "dependencies", version: "1.0", total: "2.35 GiB", width: 1180},
                 {tag: "narrow", version: "2026.09.17", total: "2.35 GiB", width: 720},
                 {tag: "unknown", version: "", total: "1.77 GiB", width: 1180}]
     }
-    function test_version_beside_size(data) {
+    function test_version_stack(data) {
         main.width = data.width
         const app = {id: "org.example.Version", name: "Version test", version: data.version, summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "Developer"}
         backend.installSizes = {[app.id]: {state: "ready", appSize: "1.77 GiB", totalSize: data.total}}
@@ -65,8 +65,22 @@ TestCase {
         if (version.visible) {
             const position = version.mapToItem(page, version.width, 0)
             verify(position.x <= page.width - 24, "Version must fit the page")
-            if (data.width > 720) compare(version.mapToItem(page, 0, 0).y, size.mapToItem(page, 0, 0).y)
+            verify(version.mapToItem(page, 0, 0).y > size.mapToItem(page, 0, 0).y)
+            const info = findChild(page, "appHeroText")
+            const details = findChild(page, "installSizeDetails")
+            if (data.width >= 980)
+                verify(details.mapToItem(page, 0, 0).x >= info.mapToItem(page, info.width, 0).x)
+            else
+                verify(details.mapToItem(page, 0, 0).y >= info.mapToItem(page, 0, info.height).y)
         }
+        backend.jobs = [{id: app.id, index: 0, active: true, progress: 0.25, status: "Downloading", operations: [{name: app.id}]}]
+        waitForRendering(page)
+        const bar = findChild(page, "overallInstallProgress")
+        const details = findChild(page, "installSizeDetails")
+        verify(bar.visible)
+        verify(bar.mapToItem(page, bar.width, 0).x >= details.mapToItem(page, details.width, 0).x - 1,
+               "Progress must extend beneath the right-side details too")
+        backend.jobs = []
         main.showCatalog(); tryCompare(stack, "busy", false)
         main.width = 1180
         backend.installSizes = ({})

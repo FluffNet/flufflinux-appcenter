@@ -307,10 +307,15 @@ Page {
                 implicitHeight: Math.max(172, heroLayout.implicitHeight + 52)
                 radius: window.cornerRadius; color: window.surfaceColor
                 border.color: window.borderColor; border.width: 1
-                RowLayout {
+                GridLayout {
                     id: heroLayout
-                    anchors.fill: parent; anchors.margins: 26; spacing: 24
+                    readonly property bool sideMetadata: page.width >= 980 && installDetails.visible
+                    anchors.fill: parent; anchors.margins: 26
+                    columns: sideMetadata ? 3 : 2
+                    columnSpacing: 24; rowSpacing: 12
                     Item {
+                        Layout.row: 0; Layout.column: 0
+                        Layout.rowSpan: heroActions.Layout.row + 1
                         Layout.preferredWidth: 112
                         Layout.preferredHeight: 112
 
@@ -329,11 +334,32 @@ Page {
                         }
                     }
                     ColumnLayout {
+                        objectName: "appHeroText"
+                        Layout.row: 0; Layout.column: 1
                         Layout.fillWidth: true; spacing: 7
                         Label { Layout.fillWidth: true; text: app ? app.name : ""; color: window.textColor; font.pixelSize: 34; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
                         Label { Layout.fillWidth: true; text: app ? app.summary : ""; color: window.mutedTextColor; font.pixelSize: 17; wrapMode: Text.WordWrap }
                         Label { objectName: "appDeveloper"; text: app && app.developer || ""; textFormat: Text.PlainText; visible: text.length > 0; color: window.accentColor; font.weight: Font.DemiBold }
-                        AppActions { app: page.app }
+                    }
+                    AppInstallDetails {
+                        id: installDetails
+                        actions: heroActions
+                        Layout.row: heroLayout.sideMetadata ? 0 : 1
+                        Layout.column: heroLayout.sideMetadata ? 2 : 1
+                        Layout.alignment: (heroLayout.sideMetadata ? Qt.AlignRight : Qt.AlignLeft) | Qt.AlignVCenter
+                        Layout.fillWidth: false
+                        Layout.preferredWidth: Math.min(340, implicitWidth)
+                        Layout.maximumWidth: 340
+                        Layout.minimumWidth: 0
+                    }
+                    // Keep the single progress bar full-width below the text
+                    // and metadata, rather than squeezing it into one column.
+                    AppActions {
+                        id: heroActions
+                        app: page.app
+                        Layout.row: heroLayout.sideMetadata || !installDetails.visible ? 1 : 2
+                        Layout.column: 1
+                        Layout.columnSpan: heroLayout.sideMetadata ? 2 : 1
                     }
                 }
             }
