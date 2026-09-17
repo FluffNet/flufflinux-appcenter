@@ -25,6 +25,7 @@ TestCase {
         signal inputError(string message)
         function installApp(app) { requested = "install:" + app.id }
         function uninstallApp(app) { requested = "uninstall:" + app.id }
+        function launchApp(app) { requested = "open:" + app.id }
         function answerReview(token, accept) { acceptedToken = accept ? token : -token; review = ({}) }
         function cancelJob(index) { requested = "cancel:" + index }
     }
@@ -37,6 +38,13 @@ TestCase {
     function init() {
         main.requestActivate()
         waitForRendering(main.contentItem)
+    }
+    function captureTouchLayout(page, name) {
+        let captured = false
+        page.grabToImage(function(result) {
+            captured = result.saveToFile(Qt.resolvedUrl("../../target/touch-" + name + ".png").toString().replace("file://", ""))
+        })
+        tryVerify(function() { return captured })
     }
     function test_simple_uninstall_confirmation_data() {
         return [{tag: "user", message: "If you proceed, Calculator and its app data will be removed."},
@@ -67,27 +75,78 @@ TestCase {
             const position = version.mapToItem(page, version.width, 0)
             verify(position.x <= page.width - 24, "Version must fit the page")
             verify(version.mapToItem(page, 0, 0).y > size.mapToItem(page, 0, 0).y)
-            const info = findChild(page, "appHeroText")
-            const details = findChild(page, "installSizeDetails")
-            if (data.width >= 980)
-                verify(details.mapToItem(page, 0, 0).x >= info.mapToItem(page, info.width, 0).x)
-            else
-                verify(details.mapToItem(page, 0, 0).y >= info.mapToItem(page, 0, info.height).y)
         }
+        const info = findChild(page, "appHeroText")
+        const details = findChild(page, "installSizeDetails")
+        const buttons = findChild(page, "appActionButtons")
+        verify(details.mapToItem(page, 0, 0).y >= info.mapToItem(page, 0, info.height).y,
+               "Size and version belong beneath the developer")
+        compare(details.mapToItem(page, 0, 0).x, info.mapToItem(page, 0, 0).x)
+        if (data.width >= 980)
+            verify(buttons.mapToItem(page, 0, 0).x >= info.mapToItem(page, info.width, 0).x,
+                   "Actions belong to the right of the information")
+        else
+            verify(buttons.mapToItem(page, 0, 0).y >= details.mapToItem(page, 0, details.height).y,
+                   "Narrow windows put actions below the information")
+        const install = findChild(page, "installAppButton")
+        verify(install.width >= 176 && install.height >= 56, "Install must be touch-friendly")
+        verify(install.width <= 200, "Actions must not stretch across the entire empty column")
         backend.jobs = [{id: app.id, index: 0, active: true, progress: 0.25, status: "Downloading", operations: [{name: app.id}]}]
         waitForRendering(page)
         const bar = findChild(page, "overallInstallProgress")
-        const details = findChild(page, "installSizeDetails")
         verify(bar.visible)
-        verify(bar.mapToItem(page, bar.width, 0).x >= details.mapToItem(page, details.width, 0).x - 1,
-               "Progress must extend beneath the right-side details too")
+        verify(bar.mapToItem(page, bar.width, 0).x >= buttons.mapToItem(page, buttons.width, 0).x - 1,
+               "Progress must extend beneath the right-side buttons too")
+        verify(bar.mapToItem(page, 0, 0).y >= buttons.mapToItem(page, 0, buttons.height).y)
         if (data.width >= 980)
-            verify(bar.mapToItem(page, bar.width, 0).x - details.mapToItem(page, details.width, 0).x >= 100,
-                   "The metadata stack should sit inward, not against the far edge")
+            verify(bar.mapToItem(page, bar.width, 0).x - buttons.mapToItem(page, buttons.width, 0).x >= 100,
+                   "The action stack should sit inward, not against the far edge")
+        const cancel = findChild(page, "cancelAppButton")
+        verify(cancel.width >= 176 && cancel.height >= 56, "Cancel must be touch-friendly")
+        if (data.width === 720) captureTouchLayout(page, "narrow-progress")
+        mouseClick(cancel)
+        compare(backend.requested, "cancel:0")
         backend.jobs = []
         main.showCatalog(); tryCompare(stack, "busy", false)
         main.width = 1180
         backend.installSizes = ({})
+    }
+    function test_installed_touch_actions_data() {
+        return [{tag: "wide", width: 1180}, {tag: "compact-wide", width: 980}, {tag: "narrow", width: 720}]
+    }
+    function test_installed_touch_actions(data) {
+        main.width = data.width
+        const app = {id: "org.example.Touch", name: "Touch test", summary: "An installed app", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "Developer", installation: "user"}
+        backend.installedApps = [app]
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        waitForRendering(page)
+        const open = findChild(page, "openAppButton")
+        const uninstall = findChild(page, "uninstallAppButton")
+        verify(uninstall.icon.source.toString().endsWith("/qml/trash-red.svg"))
+        const info = findChild(page, "appHeroText")
+        for (const button of [open, uninstall]) {
+            verify(button.visible && button.width >= 176 && button.height >= 56)
+            const point = button.mapToItem(page, 0, 0)
+            verify(point.x >= 0 && point.x + button.width <= page.width - 24, "Buttons must fit the window")
+        }
+        if (data.width >= 980) {
+            verify(open.mapToItem(page, 0, 0).x >= info.mapToItem(page, info.width, 0).x)
+            verify(uninstall.mapToItem(page, 0, 0).y >= open.mapToItem(page, 0, open.height).y + 12)
+        } else {
+            verify(open.mapToItem(page, 0, 0).y >= info.mapToItem(page, 0, info.height).y)
+            verify(uninstall.mapToItem(page, 0, 0).x >= open.mapToItem(page, open.width, 0).x + 12)
+        }
+        if (data.width === 720) captureTouchLayout(page, "narrow-installed")
+        mouseClick(open)
+        compare(backend.requested, "open:" + app.id)
+        mouseClick(uninstall)
+        compare(backend.requested, "uninstall:" + app.id)
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.installedApps = []
+        main.width = 1180
     }
     function test_simple_uninstall_confirmation(data) {
         const dialog = findChild(main, "transactionReview")

@@ -23,43 +23,6 @@ ColumnLayout {
     visible: typeof window.backend !== "undefined" && !!window.backend
     Layout.fillWidth: true
     spacing: 8
-    RowLayout {
-        Layout.fillWidth: true
-        visible: !actions.running || !actions.removing
-        Button {
-            objectName: "installAppButton"
-            visible: !actions.installed && !actions.running
-            enabled: !window.installedLoading
-            text: qsTr("Install")
-            icon.name: "list-add"
-            onClicked: window.installApp(actions.app)
-        }
-        Button {
-            objectName: "openAppButton"
-            visible: !!actions.installed && !actions.running
-            text: qsTr("Open")
-            icon.name: "media-playback-start"
-            onClicked: window.backend.launchApp(actions.installed)
-        }
-        Button {
-            objectName: "uninstallAppButton"
-            visible: !!actions.installed && !actions.running
-            text: qsTr("Uninstall")
-            onClicked: window.uninstallApp(actions.installed)
-            contentItem: Row {
-                spacing: 8
-                Image { source: "trash-red.svg"; width: 18; height: 18; anchors.verticalCenter: parent.verticalCenter }
-                Label { text: qsTr("Uninstall"); color: window.textColor; anchors.verticalCenter: parent.verticalCenter }
-            }
-        }
-        Button {
-            objectName: "cancelAppButton"
-            visible: actions.running && !actions.removing
-            text: qsTr("Cancel")
-            onClicked: window.backend.cancelJob(actions.job.index)
-        }
-        Item { Layout.fillWidth: true }
-    }
     InstallationProgress {
         id: installationProgress
         objectName: "appInstallProgress"

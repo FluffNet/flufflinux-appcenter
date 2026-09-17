@@ -47,7 +47,14 @@ AppCenter.Main {
                     if (!main.check(version.mapToItem(stack.currentItem, 0, 0).y > size.mapToItem(stack.currentItem, 0, 0).y, "Version not below size")) return
                     const info = main.find(stack.currentItem, "appHeroText")
                     const details = main.find(stack.currentItem, "installSizeDetails")
-                    if (!main.check(details.mapToItem(stack.currentItem, 0, 0).x >= info.mapToItem(stack.currentItem, info.width, 0).x, "Details not on the right")) return
+                    if (!main.check(details.mapToItem(stack.currentItem, 0, 0).y >= info.mapToItem(stack.currentItem, 0, info.height).y, "Details not beneath developer")) return
+                }
+                const buttons = main.find(stack.currentItem, "appActionButtons")
+                const info = main.find(stack.currentItem, "appHeroText")
+                if (!main.check(buttons.mapToItem(stack.currentItem, 0, 0).x >= info.mapToItem(stack.currentItem, info.width, 0).x, "Actions not on the right")) return
+                for (const name of ["installAppButton", "openAppButton", "uninstallAppButton"]) {
+                    const button = main.find(stack.currentItem, name)
+                    if (button.visible && !main.check(button.width >= 176 && button.height >= 56, "Small touch target: " + name)) return
                 }
                 console.info("METADATA_PASS: " + app.id + " version=" + app.version + " artwork=" + logo.source)
                 main.phase = "capture"

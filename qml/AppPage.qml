@@ -309,13 +309,13 @@ Page {
                 border.color: window.borderColor; border.width: 1
                 GridLayout {
                     id: heroLayout
-                    readonly property bool sideMetadata: page.width >= 980 && installDetails.visible
+                    readonly property bool sideActions: page.width >= 980
                     anchors.fill: parent; anchors.margins: 26
-                    columns: sideMetadata ? 3 : 2
+                    columns: sideActions ? 3 : 2
                     columnSpacing: 24; rowSpacing: 12
                     Item {
                         Layout.row: 0; Layout.column: 0
-                        Layout.rowSpan: heroActions.Layout.row + 1
+                        Layout.rowSpan: heroLayout.sideActions ? 2 : 3
                         Layout.preferredWidth: 112
                         Layout.preferredHeight: 112
 
@@ -344,25 +344,32 @@ Page {
                     AppInstallDetails {
                         id: installDetails
                         actions: heroActions
-                        Layout.row: heroLayout.sideMetadata ? 0 : 1
-                        Layout.column: heroLayout.sideMetadata ? 2 : 1
-                        Layout.alignment: (heroLayout.sideMetadata ? Qt.AlignRight : Qt.AlignLeft) | Qt.AlignVCenter
-                        // Bring the compact stack inward without reducing the
-                        // full-width actions/progress row below it.
-                        Layout.rightMargin: heroLayout.sideMetadata ? Math.min(160, heroLayout.width * 0.15) : 0
+                        Layout.row: 1; Layout.column: 1
+                        Layout.alignment: Qt.AlignLeft | Qt.AlignTop
                         Layout.fillWidth: false
                         Layout.preferredWidth: Math.min(340, implicitWidth)
                         Layout.maximumWidth: 340
                         Layout.minimumWidth: 0
                     }
-                    // Keep the single progress bar full-width below the text
-                    // and metadata, rather than squeezing it into one column.
+                    AppActionButtons {
+                        actions: heroActions
+                        stacked: heroLayout.sideActions
+                        Layout.row: heroLayout.sideActions ? 0 : 2
+                        Layout.column: heroLayout.sideActions ? 2 : 1
+                        Layout.rowSpan: heroLayout.sideActions ? 2 : 1
+                        Layout.alignment: (heroLayout.sideActions ? Qt.AlignRight : Qt.AlignLeft) | Qt.AlignVCenter
+                        Layout.rightMargin: heroLayout.sideActions ? Math.min(160, heroLayout.width * 0.15) : 0
+                        Layout.fillWidth: false
+                        Layout.preferredWidth: !stacked && heroActions.installed && !heroActions.running ? 380 : 184
+                    }
+                    // Buttons can move independently without narrowing the
+                    // single progress bar beneath the entire information area.
                     AppActions {
                         id: heroActions
                         app: page.app
-                        Layout.row: heroLayout.sideMetadata || !installDetails.visible ? 1 : 2
+                        Layout.row: heroLayout.sideActions ? 2 : 3
                         Layout.column: 1
-                        Layout.columnSpan: heroLayout.sideMetadata ? 2 : 1
+                        Layout.columnSpan: heroLayout.sideActions ? 2 : 1
                     }
                 }
             }
