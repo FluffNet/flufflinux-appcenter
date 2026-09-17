@@ -1,6 +1,6 @@
 #pragma once
 #include <QList>
-#include <QLocale>
+#include "download_size.h"
 
 // Recent actual network bytes, never a rate inferred from progress/estimates.
 // The caller also samples while idle so a stalled connection decays to zero.
@@ -22,7 +22,7 @@ public:
         return elapsed >= 100 ? double(bytes - m_samples.first().bytes) * 1000 / elapsed : 0;
     }
     static QString display(double bytesPerSecond) {
-        return QLocale().toString(bytesPerSecond / 1000000, 'f', 2) + " MB/s";
+        return QLocale().toString(bytesPerSecond / DownloadMebibyte, 'f', 2) + " MiB/s";
     }
 private:
     struct Sample { qint64 time; quint64 bytes; };

@@ -75,7 +75,34 @@ AppCenter.Main {
                 const op = (job.operations || []).find(item => item.ref === job.currentRef && !item.dependency)
                 if (!op || op.phase !== "download" || op.receivedBytes < 65536) return
                 console.info("CANCEL_LIVE_DOWNLOAD: received=" + op.receivedBytes)
-                main.cancelActive()
+                main.phase = "download-proof"
+                Qt.callLater(function() {
+                    const current = main.jobForApp(main.testApp)
+                    if (!main.check(current && current.active, "Download finished before the progress proof")) return
+                    const page = stack.currentItem
+                    const bytes = main.find(page, "downloadBytesLabel")
+                    const percentage = main.find(page, "overallPercentageLabel")
+                    const appSize = main.find(page, "appDownloadSize")
+                    const totalSize = main.find(page, "totalDownloadSize")
+                    const plannedApp = (current.operations || []).find(item => !item.dependency)
+                    if (!main.check(bytes.visible && bytes.color === main.textColor
+                                    && percentage.color === main.textColor
+                                    && !main.find(page, "completedOperationsLabel")
+                                    && plannedApp && appSize.text === plannedApp.downloadSize
+                                    && totalSize.text === current.downloadTotalSize
+                                    && / (MiB|GiB)$/.test(appSize.text)
+                                    && / (MiB|GiB)$/.test(current.downloadTotalSize)
+                                    && / MiB\/s$/.test(current.downloadSpeed),
+                                    "Real progress must use matching binary units, foreground text, and no completion count")) return
+                    if (current.operations.length === 1 && !main.check(appSize.text === current.downloadTotalSize,
+                            "Single-app page size differs from the live download total")) return
+                    console.info("BINARY_PROGRESS_PASS: app=" + appSize.text + ", total=" + totalSize.text + ", transfer=" + bytes.text)
+                    page.grabToImage(function(result) {
+                        if (!main.check(result.saveToFile(Qt.resolvedUrl("../../target/binary-download-proof.png").toString().replace("file://", "")),
+                                        "Could not save real binary-unit progress screenshot")) return
+                        main.cancelActive()
+                    })
+                })
             } else if (main.phase === "wait" && !main.backend.busy && !stack.busy) {
                 if (!main.verifyFinished()) return
                 if (!main.check(Date.now() - main.cancelledAt < 2000,

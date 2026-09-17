@@ -6,6 +6,23 @@
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     QLocale::setDefault(QLocale::c());
+    QVariantMap language{{"ref", "runtime/org.example.App.Locale/x86_64/stable"}, {"action", "install"},
+                        {"downloadBytes", 118875}, {"receivedBytes", 0}, {"downloadProgress", 0}};
+    QVariantMap liveApp{{"ref", "app/org.example.App/x86_64/stable"}, {"action", "install"},
+                       {"downloadBytes", 204285142}, {"receivedBytes", 0}, {"downloadProgress", 0}};
+    auto sizes = transactionStages({language, liveApp}, "preparing");
+    assert(sizes["sizeInfo"].toMap()["appSize"].toString() == "194.82 MiB");
+    assert(sizes["sizeInfo"].toMap()["totalSize"].toString() == "194.93 MiB");
+    language["receivedBytes"] = 7200; language["downloadProgress"] = 1;
+    sizes = transactionStages({language, liveApp}, "download");
+    assert(sizes["sizeInfo"].toMap()["totalSize"] == sizes["downloadTotalSize"]);
+    assert(sizes["sizeInfo"].toMap()["totalSize"].toString() == "194.83 MiB");
+    liveApp["receivedBytes"] = 1000000; liveApp["downloadProgress"] = 1;
+    sizes = transactionStages({language, liveApp}, "install");
+    assert(sizes["sizeInfo"].toMap()["appBytes"].toULongLong() == 1000000); // Reused payload: keep the actual count.
+    assert(sizes["sizeInfo"].toMap()["totalBytes"] == sizes["receivedBytes"]);
+    liveApp["action"] = "install-bundle";
+    assert(!transactionStages({language, liveApp}, "install").contains("sizeInfo")); // Bundle file size is not network size.
     QVariantMap runtime{{"action", "install"}, {"downloadBytes", 300}, {"phase", "download"},
                         {"downloadProgress", 0.5}, {"receivedBytes", 100}};
     QVariantMap application{{"action", "install"}, {"downloadBytes", 100}, {"phase", "waiting"}};
@@ -66,30 +83,33 @@ int main(int argc, char **argv) {
     application["downloadBytes"] = 128000000; application["receivedBytes"] = 128000000;
     application["downloadProgress"] = 1; application["phase"] = "install";
     result = transactionStages({application}, "install");
-    assert(result["downloadedSize"].toString() == "128.00 MB" && result["downloadTotalSize"].toString() == "128.00 MB");
+    assert(result["downloadedSize"].toString() == "122.07 MiB" && result["downloadTotalSize"].toString() == "122.07 MiB");
     assert(result["progress"].toDouble() == 0.9 && result["installCompleted"].toInt() == 0);
     application["downloadBytes"] = 100; application["receivedBytes"] = 120; application["downloadProgress"] = 0.9;
     result = transactionStages({application}, "download");
     assert(result["receivedBytes"].toULongLong() <= result["downloadTotalBytes"].toULongLong());
     application["receivedBytes"] = 190740000; application["downloadBytes"] = 1897850000;
     result = transactionStages({application}, "download");
-    assert(result["downloadedSize"].toString() == "190.74 MB");
-    assert(result["downloadTotalSize"].toString() == "1.90 GB");
+    assert(result["downloadedSize"].toString() == "181.90 MiB");
+    assert(result["downloadTotalSize"].toString() == "1.77 GiB");
     assert(result["downloadTotalSize"].toString() == downloadSizeText(application["downloadBytes"].toULongLong()));
-    assert(QLocale().formattedDataSize(1897850000) == "1.77 GiB"); // Same bytes; former app-page units.
+    assert(result["downloadTotalSize"].toString() == QLocale().formattedDataSize(1897850000)); // Keep the app page's binary units.
     assert(result["downloadTotalBytes"].toULongLong() == 1897850000); // Formatting does not alter accounting.
     application["receivedBytes"] = 1000000000;
-    assert(transactionStages({application}, "download")["downloadedSize"].toString() == "1.00 GB");
-    application["receivedBytes"] = 999000000;
-    assert(transactionStages({application}, "download")["downloadedSize"].toString() == "999.00 MB");
+    assert(transactionStages({application}, "download")["downloadedSize"].toString() == "953.67 MiB");
+    application["receivedBytes"] = 1073741824;
+    assert(transactionStages({application}, "download")["downloadedSize"].toString() == "1.00 GiB");
+    application["receivedBytes"] = 1023 * DownloadMebibyte;
+    assert(transactionStages({application}, "download")["downloadedSize"].toString() == "1023.00 MiB");
     application["receivedBytes"] = 0;
-    assert(transactionStages({application}, "download")["downloadedSize"].toString() == "0.00 MB");
+    assert(transactionStages({application}, "download")["downloadedSize"].toString() == "0.00 MiB");
     assert(transactionStages({}, "preparing")["progress"].toDouble() == 0);
     DownloadRate rate;
     assert(rate.sample(0, 0, false) == 0);
     assert(rate.sample(500, 0, true) == 0);
     assert(rate.sample(1000, 1000000, true) == 2000000);
-    assert(DownloadRate::display(2000000) == "2.00 MB/s");
+    assert(DownloadRate::display(2000000) == "1.91 MiB/s");
+    assert(DownloadRate::display(DownloadMebibyte) == "1.00 MiB/s");
     assert(rate.sample(1500, 2000000, true) == 2000000);
     rate.sample(2000, 2000000, true);
     rate.sample(2500, 2000000, true);
@@ -106,8 +126,8 @@ int main(int argc, char **argv) {
     assert(rate.sample(200, 10000000, false) == 0);
     QLocale::setDefault(QLocale("de_DE"));
     assert(transactionStages({application}, "download")["downloadedSize"].toString().contains(','));
-    assert(transactionStages({application}, "download")["downloadTotalSize"].toString() == "1,90 GB");
-    assert(downloadSizeText(1897850000) == "1,90 GB"); // App estimates use the same localized formatter.
-    assert(DownloadRate::display(1500000) == "1,50 MB/s");
+    assert(transactionStages({application}, "download")["downloadTotalSize"].toString() == "1,77 GiB");
+    assert(downloadSizeText(1897850000) == "1,77 GiB"); // App estimates use the same localized formatter.
+    assert(DownloadRate::display(1500000) == "1,43 MiB/s");
     qInfo("PASS: unified weighted progress, aggregate/actual bytes, no early 100%%, dependencies, cached transfers, local bundles and completion");
 }

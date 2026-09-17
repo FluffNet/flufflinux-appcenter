@@ -18,9 +18,9 @@ background update services, notifications, settings, or tray components.
   if the underlying byte counts differ slightly). These
   are download estimates from Flatpak's existing local
   repository metadata, not installed disk usage. App estimates, dependency sizes
-  and live transfer amounts all use the same decimal MB/GB formatter: an app
-  estimated at `1.90 GB` also reads `1.90 GB`
-  in the progress total, never `1.77 GiB` for the identical byte count.
+  and live transfer amounts all use the same binary MiB/GiB formatter: an app
+  estimated at `1.77 GiB` also reads `1.77 GiB`
+  in the progress total, never `1.90 GB` for the identical byte count.
   Dependencies already available in the user or system installation are excluded.
   Opening an app reads this metadata directly before showing the page: no network transaction, waiting
   state, extra size cache, or saved size results. Automatic runtime/locale/driver
@@ -47,9 +47,9 @@ background update services, notifications, settings, or tray components.
   only a plain percentage below (no component-completion count). Progress text
   uses the normal foreground color: white in the dark theme, dark in the light
   theme. Above the bar, right-aligned
-  `128.00 MB / 512.00 MB (2.30 MB/s)` shows the total received bytes and live speed.
-  Each amount switches independently to decimal GB at one billion bytes, so
-  larger transfers read `190.74 MB / 1.90 GB (2.21 MB/s)`.
+  `128.00 MiB / 512.00 MiB (2.30 MiB/s)` shows the total received bytes and live speed.
+  Each amount switches independently from MiB to GiB at 1,024 MiB, so
+  larger transfers read `181.90 MiB / 1.77 GiB (2.11 MiB/s)`.
   Speed uses a two-second rolling sample of actual network bytes, resets between
   pulls, and drops to zero during stalls; it never advances the progress bar.
   The byte/speed line disappears after all downloads finish, while the single
@@ -64,6 +64,10 @@ background update services, notifications, settings, or tray components.
   Received bytes are summed across the whole transaction. The initial total is
   Flatpak's maximum download estimate; each completed pull replaces its estimate
   with actual transferred bytes (locale subsets/reused content can reduce it).
+  During online installs the app-page sizes use this same transaction accounting,
+  so a reduced language-pack transfer updates the page total and progress total
+  together; the page never retains the old maximum while the bar shows less.
+  Local bundles keep their separate file/import sizes, not a network-byte substitute.
   Downloads retains component names/statuses
   but no extra component bars; the app page omits redundant activity/name text.
   Errors, cancellation and confirmation messages remain visible.
@@ -224,6 +228,9 @@ has transferred at least 64 KiB, not just during startup. It verifies immediate
 UI cancellation, worker exit plus refresh within two seconds, no installed test
 app, and a successful cancel/retry cycle. It refuses preinstalled 0 A.D. and
 Picker. Completed dependencies and reusable partial download data are retained.
+`SizeUnitsSmoke.qml` performs that real-download/cancel check with an absent
+1Password test app, also verifying matching MiB/GiB labels, MiB/s speed, foreground
+progress text, and no completion count. It saves `target/binary-download-proof.png`.
 
 Installation dates are saved locally after successful App Center installations,
 separately from Downloads history. Installed and app details show the date in the

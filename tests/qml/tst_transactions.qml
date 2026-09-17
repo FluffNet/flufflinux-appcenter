@@ -296,7 +296,7 @@ TestCase {
         const app = {id: "org.example.Stages", name: "Stages", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
         const job = {id: app.id, name: app.name, index: 0, active: true, action: "install", progress: 0.5,
             hasDownload: true, downloadProgress: 0.5, installProgress: 0, installCompleted: 0, installTotal: 2,
-            downloadedSize: "128.00 MB", downloadTotalSize: "512.00 MB", downloadSpeed: "2.30 MB/s", downloadComplete: false,
+            downloadedSize: "128.00 MiB", downloadTotalSize: "512.00 MiB", downloadSpeed: "2.30 MiB/s", downloadComplete: false,
             phase: "download", status: "Downloading…", operations: [{name: "Runtime", phase: "download", progress: 0.5, status: "Downloading…", downloadSize: "2 MiB"}]}
         backend.jobs = [job]
         main.openApp(app)
@@ -312,10 +312,10 @@ TestCase {
         compare(findChild(page, "completedOperationsLabel"), null)
         compare(findChild(page, "downloadBytesLabel").color, main.textColor)
         compare(findChild(page, "overallPercentageLabel").color, main.textColor)
-        compare(findChild(page, "downloadBytesLabel").text, "128.00 MB / 512.00 MB (2.30 MB/s)")
+        compare(findChild(page, "downloadBytesLabel").text, "128.00 MiB / 512.00 MiB (2.30 MiB/s)")
         verify(findChild(page, "downloadBytesLabel").visible)
         verify(!findChild(page, "appJobStatus").visible)
-        const deployment = Object.assign({}, job, {downloadProgress: 1, downloadComplete: true, progress: 0.95, downloadedSize: "128.00 MB", downloadTotalSize: "128.00 MB",
+        const deployment = Object.assign({}, job, {downloadProgress: 1, downloadComplete: true, progress: 0.95, downloadedSize: "128.00 MiB", downloadTotalSize: "128.00 MiB",
             phase: "install", installCompleted: 1, installProgress: 0.5})
         backend.jobs = [deployment]
         compare(bar.value, 0.95)
@@ -324,7 +324,7 @@ TestCase {
         compare(findChild(page, "completedOperationsLabel"), null)
         verify(!findChild(page, "downloadBytesLabel").visible)
         // A dependency deploying before the next pull must not hide the total.
-        backend.jobs = [Object.assign({}, job, {phase: "install", downloadSpeed: "0.00 MB/s"})]
+        backend.jobs = [Object.assign({}, job, {phase: "install", downloadSpeed: "0.00 MiB/s"})]
         verify(findChild(page, "downloadBytesLabel").visible)
         // Totals sit above the bar, right aligned, and wrap in narrow windows.
         const previousWidth = main.width
@@ -360,7 +360,7 @@ TestCase {
         backend.jobs = [Object.assign({}, job, {action: "source"})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(findChild(card, "downloadBytesLabel").visible)
-        compare(findChild(card, "downloadBytesLabel").text, "128.00 MB / 512.00 MB (2.30 MB/s)")
+        compare(findChild(card, "downloadBytesLabel").text, "128.00 MiB / 512.00 MiB (2.30 MiB/s)")
         backend.jobs = [Object.assign({}, deployment, {action: "source"})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(!findChild(card, "downloadBytesLabel").visible)
@@ -371,10 +371,10 @@ TestCase {
         backend.jobs = []
     }
     function test_download_amount_format_data() {
-        return [{tag: "megabytes", received: "128.00 MB", total: "512.00 MB", speed: "2.30 MB/s"},
-                {tag: "mixed_units", received: "190.74 MB", total: "1.90 GB", speed: "2.21 MB/s"},
-                {tag: "gigabytes", received: "1.20 GB", total: "1.90 GB", speed: "0.90 MB/s"},
-                {tag: "localized", received: "190,74 MB", total: "1,90 GB", speed: "2,21 MB/s"}]
+        return [{tag: "mebibytes", received: "128.00 MiB", total: "512.00 MiB", speed: "2.30 MiB/s"},
+                {tag: "mixed_units", received: "181.90 MiB", total: "1.77 GiB", speed: "2.11 MiB/s"},
+                {tag: "gibibytes", received: "1.20 GiB", total: "1.77 GiB", speed: "0.90 MiB/s"},
+                {tag: "localized", received: "181,90 MiB", total: "1,77 GiB", speed: "2,11 MiB/s"}]
     }
     function test_download_amount_format(data) {
         const app = {id: "org.example.Format", name: "Download formatting", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
@@ -414,6 +414,27 @@ TestCase {
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.jobs = []
     }
+    function test_active_sizes_follow_transaction_total() {
+        const app = {id: "org.example.ActualSize", name: "Actual sizes", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
+        backend.installSizes = {"org.example.ActualSize": {state: "ready", appSize: "194.82 MiB", totalSize: "194.93 MiB"}}
+        const job = {id: app.id, index: 0, active: true, action: "install", phase: "download", operations: [{}, {}],
+            downloadTotalSize: "194.83 MiB", sizeInfo: {state: "ready", appSize: "194.82 MiB", totalSize: "194.83 MiB"}}
+        backend.jobs = [job]
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        compare(findChild(stack.currentItem, "totalDownloadSize").text, job.downloadTotalSize)
+        compare(findChild(stack.currentItem, "appDownloadSize").text, "194.82 MiB")
+        backend.jobs = [Object.assign({}, job, {downloadTotalSize: "194.82 MiB",
+            sizeInfo: {state: "ready", appSize: "194.82 MiB", totalSize: "194.82 MiB"}})]
+        verify(!findChild(stack.currentItem, "totalDownloadSize").visible)
+        // Local bundle file sizes stay separate from network dependency bytes.
+        backend.jobs = [Object.assign({}, job, {action: "source", sizeInfo: null, downloadTotalSize: "0.11 MiB"})]
+        compare(findChild(stack.currentItem, "appDownloadSize").text, "194.82 MiB")
+        compare(findChild(stack.currentItem, "totalDownloadSize").text, "194.93 MiB")
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.jobs = []
+    }
     function test_progress_foreground_data() {
         return [{tag: "dark", background: "#202426", foreground: "#ffffff"},
                 {tag: "light", background: "#ffffff", foreground: "#202426"}]
@@ -426,10 +447,10 @@ TestCase {
         main.palette.windowText = data.foreground
         main.palette.placeholderText = data.tag === "dark" ? "#a0a7ad" : "#757575"
         const app = {id: "org.example.Units", name: "Consistent download sizes", summary: "App and transfer totals use the same units", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
-        backend.installSizes = {"org.example.Units": {state: "ready", appBytes: 1897842165, totalBytes: 1897842165, appSize: "1.90 GB", totalSize: "1.90 GB"}}
+        backend.installSizes = {"org.example.Units": {state: "ready", appBytes: 1897842165, totalBytes: 1897842165, appSize: "1.77 GiB", totalSize: "1.77 GiB"}}
         backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, action: "install", progress: 0.1,
-            hasDownload: true, downloadComplete: false, downloadedSize: "93.97 MB", downloadTotalSize: "1.90 GB",
-            downloadSpeed: "1.04 MB/s", installCompleted: 0, installTotal: 1, phase: "download", operations: [{}]}]
+            hasDownload: true, downloadComplete: false, downloadedSize: "89.62 MiB", downloadTotalSize: "1.77 GiB",
+            downloadSpeed: "0.99 MiB/s", installCompleted: 0, installTotal: 1, phase: "download", operations: [{}]}]
         main.openApp(app)
         const stack = findChild(main, "navigationStack")
         tryCompare(stack, "busy", false)

@@ -10,7 +10,8 @@ ColumnLayout {
     readonly property bool running: !!job && job.active === true
     readonly property bool removing: !!job && job.action === "uninstall"
     readonly property bool awaitingRemovalConfirmation: running && removing && job.removalConfirmed !== true
-    readonly property var sizeInfo: window.backend && window.backend.installSizes
+    readonly property var sizeInfo: running && !removing && job.sizeInfo && job.sizeInfo.state === "ready"
+                                   ? job.sizeInfo : window.backend && window.backend.installSizes
                                    ? window.backend.installSizes[String(app.id).replace(/\.desktop$/, "")] || ({}) : ({})
     // Hide redundant displayed sizes, including differences lost to rounding.
     // Missing estimates are not equal sizes: keep their unavailable row.
