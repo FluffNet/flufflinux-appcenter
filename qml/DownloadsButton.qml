@@ -3,6 +3,7 @@ import QtQuick.Controls
 
 ToolButton {
     id: control
+    hoverEnabled: true
     objectName: "downloadsButton"
     focusPolicy: Qt.NoFocus
     width: Math.max(146, implicitWidth); height: 48

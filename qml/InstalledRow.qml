@@ -91,7 +91,7 @@ AbstractButton {
                 palette.highlight: window.accentColor
             }
         }
-        ToolButton {
+        FluffToolButton {
             objectName: "uninstallButton"
             enabled: !!window.backend && !(row.job && row.job.active)
             Layout.preferredWidth: 44; Layout.preferredHeight: 44

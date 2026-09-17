@@ -265,7 +265,7 @@ Page {
                         function onMutedTextColorChanged() { searchIcon.requestPaint() }
                     }
                 }
-                ToolButton {
+                FluffToolButton {
                     id: clearSearchButton
                     objectName: "searchClearButton"
                     anchors.right: parent.right
@@ -328,6 +328,7 @@ Page {
                     spacing: 12
                     ItemDelegate {
                         id: installedButton
+                        hoverEnabled: true
                         objectName: "installedButton"
                         width: parent.width
                         height: Math.max(52, categoryFontMetrics.height + 24)
@@ -371,9 +372,9 @@ Page {
                         onClicked: page.openCategory("Installed")
                         background: Rectangle {
                             radius: window.cornerRadius
-                            color: page.installedView
+                            color: installedButton.hovered || installedButton.down ? window.hoverColor : page.installedView
                                    ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, 0.14)
-                                   : installedButton.hovered ? window.hoverColor : "transparent"
+                                   : "transparent"
                             border.color: page.installedView ? window.accentColor : "transparent"
                         }
                     }
@@ -391,6 +392,7 @@ Page {
                 }
                 delegate: ItemDelegate {
                     id: categoryButton
+                    hoverEnabled: true
                     objectName: "categoryButton-" + modelData.name
                     required property var modelData
                     width: ListView.view.width
@@ -425,9 +427,9 @@ Page {
                     font.weight: categorySelected ? Font.DemiBold : Font.Normal
                     background: Rectangle {
                         radius: window.cornerRadius
-                        color: categoryButton.categorySelected
+                        color: categoryButton.hovered || categoryButton.down ? window.hoverColor : categoryButton.categorySelected
                                ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, window.darkMode ? 0.16 : 0.10)
-                               : categoryButton.hovered ? window.hoverColor : "transparent"
+                               : "transparent"
                         border.color: categoryButton.categorySelected ? window.accentColor : "transparent"
                         border.width: categoryButton.categorySelected ? 1 : 0
                     }
@@ -461,6 +463,7 @@ Page {
                     Item { Layout.fillWidth: true }
                     ComboBox {
                         id: installedSort
+                        hoverEnabled: true
                         objectName: "installedSort"
                         visible: page.installedView
                         Layout.preferredWidth: 210
@@ -477,13 +480,14 @@ Page {
                         palette.highlightedText: "white"
                         background: Rectangle {
                             radius: window.cornerRadius
-                            color: window.raisedSurfaceColor
+                            color: installedSort.hovered || installedSort.down ? window.hoverColor : window.raisedSurfaceColor
                             border.color: installedSort.activeFocus ? window.accentColor : window.borderColor
                             border.width: installedSort.activeFocus ? 2 : 1
                         }
                     }
                     ComboBox {
                         id: searchCategoryFilter
+                        hoverEnabled: true
                         visible: !page.installedView && window.searchText.length > 0
                         Layout.preferredWidth: 210
                         Layout.preferredHeight: 42
@@ -502,7 +506,7 @@ Page {
                         palette.highlightedText: "white"
                         background: Rectangle {
                             radius: window.cornerRadius
-                            color: window.raisedSurfaceColor
+                            color: searchCategoryFilter.hovered || searchCategoryFilter.down ? window.hoverColor : window.raisedSurfaceColor
                             border.color: searchCategoryFilter.activeFocus
                                           ? window.accentColor
                                           : window.borderColor

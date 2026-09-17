@@ -55,6 +55,7 @@ TestCase {
         window.showCatalogCalled = false
         if (appPage.screenshotPreviewDialog.visible)
             appPage.screenshotPreviewDialog.close()
+        tryCompare(appPage.screenshotPreviewDialog, "visible", false)
         appPage.app = window.previewApp
         window.width = 1180
         window.height = 760
@@ -571,6 +572,34 @@ TestCase {
         compare(preview.visible, true)
     }
 
+    function test_thumbnail_highlight_without_preview_badge() {
+        window.requestActivate()
+        const list = findChild(appPage, "screenshotList")
+        const thumbnail = list.itemAtIndex(0)
+        verify(thumbnail !== null)
+        mouseMove(thumbnail, thumbnail.width / 2, thumbnail.height / 2)
+        tryCompare(thumbnail, "hovered", true)
+        compare(thumbnail.background.border.color, window.accentColor)
+        function hasBadge(item) {
+            if (item.text === "Preview") return true
+            return (item.children || []).some(child => hasBadge(child))
+        }
+        verify(!hasBadge(thumbnail))
+    }
+    function test_preview_controls_hover() {
+        window.requestActivate()
+        appPage.openScreenshot(1)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "visible", true)
+        appPage.setPreviewZoom(2)
+        for (const name of ["previewCloseButton", "previewPreviousButton", "previewNextButton", "previewZoomInButton", "previewZoomOutButton"]) {
+            const button = findChild(preview, name)
+            verify(button.hoverEnabled)
+            mouseMove(button, button.width / 2, button.height / 2)
+            tryCompare(button, "hovered", true)
+            compare(button.background.color, window.hoverColor)
+        }
+    }
     function test_preview_has_touch_pinch_and_pan_support() {
         appPage.openScreenshot(0)
         const preview = appPage.screenshotPreviewDialog

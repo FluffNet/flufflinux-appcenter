@@ -13,6 +13,9 @@ radius; normal borders are 1 unit and keyboard-focus outlines are 2. Header
 and sidebar separators meet once instead of stacking rectangle outlines, and
 align to physical pixels at fractional scaling. The small application count
 uses native font rendering while retaining the system's chosen font.
+Navigation, categories, action buttons and preview controls use the same hover
+color, with explicit hover support even after touch input. Shared buttons render
+their own text/icons so KDE's background-drawn labels remain visible.
 
 Catalog and Installed scrollbars sit at the outer right edge for the full page
 content height, with a persistent contrasting thumb and a minimum 44-pixel
@@ -20,6 +23,8 @@ drag target. Catalog cards share the available width and spare viewport height,
 keeping consistent gaps without leaving a large empty band below the rows.
 Scrolling retains its normal continuous movement and edge clipping: partially
 visible cards are not hidden, and there is no row snapping.
+Scrollbar thumbs remain directly draggable by touch as well as the mouse;
+KDE's transient-touch setting cannot turn off their interaction.
 
 `tests/integration/StyleSmoke.qml` is a read-only visual check in the real KDE
 session. It captures the catalog, Installed, app and Downloads pages plus native
@@ -30,7 +35,9 @@ or scale. The QML styling tests also cover dark, light and custom palettes.
 `tests/integration/DownloadsSortSmoke.qml` verifies sorting with real installed
 byte counts and captures Installed, empty results, and wide/narrow Downloads.
 Download progress is simulated; its completed card uses already-installed Steam.
-The check never starts transactions, launches apps, or changes desktop settings.
+It also checks app-title navigation/back and clearing finished history while
+preserving an active fixture. The check never starts transactions, launches apps,
+or changes desktop settings.
 It requires Steam to be installed and 0 A.D. to be present in the catalog.
 
 `tests/integration/AppMetadataSmoke.qml` is another read-only VM check: it
@@ -90,7 +97,7 @@ for Discord and AAT, and leaves AAT's page open.
   local metadata shows unavailable sizes, never a fake zero. Installation still
   resolves the current plan normally, so actual transfers can differ from the
   repository's published estimates.
-- Downloads keeps this session's jobs, per-dependency status, progress, and
+- Downloads keeps this session's jobs, overall progress, and
   errors, with each app's icon beside its name (and a themed fallback when
   artwork is unavailable). Cancelled jobs disappear immediately from both Downloads and the app page.
   Cancellation signals Flatpak and closes the worker's input; a 250 ms watchdog
@@ -131,6 +138,10 @@ for Discord and AAT, and leaves AAT's page open.
   rows or introductory text. Completed apps offer Open directly from Downloads,
   using their current installed record; there is no completion text. The action
   disappears if the app is removed or another operation starts for it.
+  Clicking an app's icon or title opens its information page; Back returns to
+  the same Downloads page. Clear History at the top right hides finished entries
+  only, preserving active/pending work, stable cancellation IDs and installation
+  dates. The Downloads title stays centered between the header controls.
   Errors, cancellation and confirmation messages remain visible.
   Queued installs show only “Pending…” in the status area of both views, with
   no progress bar, percentage or transfer figures until their worker starts.
@@ -145,6 +156,9 @@ for Discord and AAT, and leaves AAT's page open.
   “Pending…” without a progress bar. Once its worker starts, it shows
   “Uninstalling…” with activity but no Cancel button, including while finished
   sub-steps are being cleaned up. “Complete” never appears on the app page.
+  Successful removal updates the installed record before completing the job,
+  and discards older in-flight list results, so Open/Uninstall cannot flash back
+  before Install appears.
 - Installed lists user and system applications, with version and installed size.
   Its sorting menu offers name A–Z/Z–A, installation date newest/oldest, and size
   largest/smallest. Sizes sort by exact deployed bytes, not rounded display text;
@@ -256,6 +270,11 @@ Direct worker callers still receive an explicit removal confirmation.
 
 Mouse, touchpad, touch-screen scrolling and screenshot zoom remain independent
 of the installation backend.
+Screenshot thumbnails retain their hover highlight without an extra Preview
+badge. Native touchpad pinches apply incremental zoom at the current focus,
+without interpreting Qt's scene-coordinate translation as a pan. Releasing and
+starting another pinch preserves the transform; touch-screen and mouse handlers
+are unchanged.
 
 ## Tests
 
@@ -264,12 +283,27 @@ On Fluff Linux:
 ```sh
 cargo test
 /usr/lib/qt6/bin/qmltestrunner -input tests/qml -import qml -platform offscreen
+QT_QUICK_CONTROLS_STYLE=org.kde.desktop /usr/lib/qt6/bin/qmltestrunner -input tests/qml -platform offscreen
 c++ -std=c++17 -fPIC tests/native/test_flatpak_sizes.cpp -o target/test-flatpak-sizes $(pkg-config --cflags --libs Qt6Core flatpak)
 target/test-flatpak-sizes
 target/test-flatpak-sizes --installed # Read-only validation against real deployed apps
 c++ -std=c++17 -fPIC tests/native/test_transaction_status.cpp -o target/test-transaction-status $(pkg-config --cflags --libs Qt6Core glib-2.0)
 target/test-transaction-status
 ```
+
+The native-touchpad regression sends Qt gesture events through the production
+preview handler, including repeated releases, incremental updates and changing
+focus points. It does not inject system input or start Flatpak operations:
+
+```sh
+"$(pkg-config --variable=libexecdir Qt6Core)/moc" tests/native/test_pointer_gestures.cpp -o target/test_pointer_gestures.moc
+c++ -std=c++17 -fPIC tests/native/test_pointer_gestures.cpp -Itarget -o target/test-pointer-gestures $(pkg-config --cflags --libs Qt6QuickTest Qt6Quick Qt6Qml Qt6Gui)
+QT_QPA_PLATFORM=offscreen target/test-pointer-gestures -input tests/native/gestures
+```
+
+Known test caveat: with Qt 6.11.2's KDE desktop style, the offscreen Installed-sort
+keyboard test does not dismiss the menu. This also reproduces on the preceding
+release; the default-style keyboard test and real-window sorting smoke check pass.
 
 `target/test-flatpak-sizes com.onepassword.OnePassword` prints the actual local
 sizes and lookup time. `python3 tests/integration/test_local_sizes.py` compares
@@ -332,7 +366,8 @@ target/test-transaction-progress
 
 The manager's cancellation/crash regression uses fake protocol workers, never
 installs or removes apps, and checks the forced-exit deadline, late-progress
-suppression, next-job safety and retention of genuine crash errors:
+suppression, next-job safety, retention of genuine crash errors, and cancellation
+with stable job IDs after clearing history:
 
 ```sh
 "$(pkg-config --variable=libexecdir Qt6Core)/moc" src/flatpak_manager.h -o target/test-cancel-moc.cpp
@@ -343,7 +378,8 @@ QT_QPA_PLATFORM=offscreen target/test-cancel-worker
 The parallel-worker regression uses a temporary installed-list fixture, fake
 protocol workers and isolated history/cache paths. It covers overlapping
 download/removal progress, confirmed pending removals, stale/overlapping review
-tokens, cancellation isolation, and sub-step completion before cleanup ends:
+tokens, cancellation isolation, sub-step completion before cleanup ends, and
+discarding a stale installed list that returns after successful removal:
 
 ```sh
 c++ -std=c++17 -fPIC -pthread tests/native/test_parallel_workers.cpp src/flatpak_manager.cpp src/flatpak_sizes.cpp target/test-cancel-moc.cpp -o target/test-parallel-workers $(pkg-config --cflags --libs Qt6Core Qt6Gui Qt6DBus flatpak)

@@ -102,7 +102,7 @@ ApplicationWindow {
         // again; otherwise an uninstall refreshes nothing (or the prior app).
         if (backend && typeof backend.requestInstallInfo === "function")
             backend.requestInstallInfo(app)
-        if (stack.depth === 1)
+        if (stack.depth === 1 || stack.currentItem.objectName === "downloadsPage")
             stack.push(appPage)
         else
             stack.replace(appPage)
@@ -136,6 +136,11 @@ ApplicationWindow {
         anchors.centerIn: parent; width: Math.min(window.width - 48, 600)
         title: qsTr("Could not open Flatpak")
         modal: true; standardButtons: Dialog.Ok
+        footer: DialogButtonBox {
+            standardButtons: Dialog.Ok
+            delegate: FluffButton {}
+            onAccepted: errorDialog.accept()
+        }
         contentItem: Label { id: inputError; wrapMode: Text.Wrap; textFormat: Text.PlainText }
     }
     Dialog {
@@ -143,9 +148,14 @@ ApplicationWindow {
         anchors.centerIn: parent; width: Math.min(window.width - 48, 520)
         title: qsTr("An operation is still running")
         modal: true; standardButtons: Dialog.Ok
+        footer: DialogButtonBox {
+            standardButtons: Dialog.Ok
+            delegate: FluffButton {}
+            onAccepted: closeDialog.accept()
+        }
         contentItem: ColumnLayout {
             Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: qsTr("Please wait for completion, or cancel the operations before closing App Center. Completed downloads stay in this session’s history.") }
-            Button { text: qsTr("Cancel operations"); onClicked: { backend.cancelAll(); closeDialog.close() } }
+            FluffButton { text: qsTr("Cancel operations"); onClicked: { backend.cancelAll(); closeDialog.close() } }
         }
     }
     DropArea {

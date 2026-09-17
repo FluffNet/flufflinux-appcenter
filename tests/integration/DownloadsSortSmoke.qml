@@ -21,6 +21,7 @@ AppCenter.Main {
         signal inputError(string message)
         function launchApp(app) {}
         function cancelJob(index) {}
+        function clearDownloadHistory() { jobs = jobs.filter(job => job.active) }
     }
     function find(item, name) {
         if (item.objectName === name) return item
@@ -97,13 +98,33 @@ AppCenter.Main {
                 }
                 main.capture("downloads-narrow", 9)
             } else if (main.stage === 9) {
+                const jobs = main.find(stack.currentItem, "downloadJobs")
+                main.find(jobs.itemAt(1), "downloadAppDetailsButton").clicked()
+                main.stage = 10
+            } else if (main.stage === 10) {
+                if (!stack.currentItem.app || stack.currentItem.app.id !== "com.valvesoftware.Steam") {
+                    console.error("DOWNLOADS_SORT_FAIL: app details navigation"); Qt.exit(1); return
+                }
+                main.goBack()
+                main.stage = 11
+            } else if (main.stage === 11) {
+                const clear = main.find(stack.currentItem, "clearDownloadHistoryButton")
+                if (!clear || !clear.enabled) {
+                    console.error("DOWNLOADS_SORT_FAIL: Clear History unavailable"); Qt.exit(1); return
+                }
+                clear.clicked()
+                if (main.fixtureBackend.jobs.length !== 1 || !main.fixtureBackend.jobs[0].active || clear.enabled) {
+                    console.error("DOWNLOADS_SORT_FAIL: Clear History changed an active job"); Qt.exit(1); return
+                }
+                main.capture("history-cleared", 12)
+            } else if (main.stage === 12) {
                 main.showCatalog()
                 main.selectedCategory = "All Apps"
                 main.searchText = "no-such-application-visual-test"
-                main.stage = 10
-            } else if (main.stage === 10) {
-                main.capture("empty", 11)
-            } else if (main.stage === 11) {
+                main.stage = 13
+            } else if (main.stage === 13) {
+                main.capture("empty", 14)
+            } else if (main.stage === 14) {
                 console.info("DOWNLOADS_SORT_PASS")
                 Qt.quit()
             }

@@ -118,6 +118,24 @@ TestCase {
         mainWindow.height = 760
     }
 
+    function test_touch_drag_scrollbar() {
+        mainWindow.requestActivate()
+        const page = findChild(mainWindow, "navigationStack").currentItem
+        const grid = findChild(page, "catalogGrid")
+        const bar = findChild(page, "catalogPageScrollBar")
+        grid.contentY = 0
+        waitForRendering(page)
+        const x = bar.width / 2
+        const startY = bar.contentItem.y + bar.contentItem.height / 2
+        const drag = touchEvent(bar)
+        drag.press(0, bar, x, startY).commit()
+        verify(bar.interactive, "Breeze must not disable this scrollbar when touch input begins")
+        for (let step = 1; step <= 8; ++step)
+            drag.move(0, bar, x, startY + step * 30).commit()
+        verify(grid.contentY > grid.height, "Holding and dragging the thumb must scroll with a touchscreen")
+        drag.release(0, bar, x, startY + 240).commit()
+        grid.contentY = 0
+    }
     function test_back_restores_the_exact_catalog_item_position() {
         const navigation = findChild(mainWindow, "navigationStack")
         verify(navigation !== null)

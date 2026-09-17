@@ -52,10 +52,13 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     });
     connect(&m_installedProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this](int code, QProcess::ExitStatus status) {
-            if (m_installedRefreshPending) {
+            const bool stale = m_installedReadRevision != m_installedRevision;
+            if (m_installedRefreshPending || stale) {
                 m_installedRefreshPending = false;
                 QTimer::singleShot(0, this, &FlatpakManager::refreshInstalled);
             }
+            // A successful removal is newer than any list already in flight.
+            if (stale) { m_installedTimeout.stop(); return; }
             if (!m_installedTimeout.isActive()) return;
             m_installedTimeout.stop(); m_loading = false;
             if (code || status != QProcess::NormalExit) {
@@ -215,6 +218,18 @@ QVariantList FlatpakManager::jobs() const {
         visible.append(job);
     }
     return visible;
+}
+void FlatpakManager::clearDownloadHistory() {
+    bool changed = false;
+    for (auto &entry : m_jobs) {
+        auto job = entry.toMap();
+        if (active(job) || job.value("action") == "uninstall" || job.value("hidden").toBool()) continue;
+        job["hidden"] = true;
+        entry = job;
+        changed = true;
+    }
+    // Never erase queue entries: workers and pending reviews retain their IDs.
+    if (changed) emit jobsChanged();
 }
 QVariantMap FlatpakManager::installRequest(const QVariantMap &app) const {
     const auto id = normalizedId(app.value("id").toString());
@@ -460,6 +475,21 @@ void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &messa
             patchJob(worker.current, {{"hidden", false}});
         if (preparation && !ok && !cancelled) emit inputError(message["error"].toString());
         const bool removing = m_jobs[worker.current].toMap().value("action") == "uninstall";
+        if (ok && removing) {
+            const auto removed = m_jobs[worker.current].toMap();
+            ++m_installedRevision;
+            // Publish the authoritative removal before declaring the job done.
+            // Otherwise the UI briefly offers Open/Uninstall from the old list.
+            for (qsizetype i = m_installed.size(); i-- > 0;) {
+                const auto app = m_installed[i].toMap();
+                if (normalizedId(app.value("id").toString()) == normalizedId(removed.value("id").toString())
+                    && app.value("installation") == removed.value("installation")
+                    && app.value("installedBranch") == removed.value("installedBranch")
+                    && app.value("installedArch") == removed.value("installedArch"))
+                    m_installed.removeAt(i);
+            }
+            emit installedChanged();
+        }
         patchJob(worker.current, {{"active", false}, {"queued", false}, {"failed", !ok && !cancelled}, {"cancelled", cancelled},
             {"progress", ok ? 1 : m_jobs[worker.current].toMap().value("progress")},
             {"status", ok ? (removing ? QString() : tr("Complete")) : cancelled ? tr("Cancelled") : tr("Failed")}, {"error", message["error"].toString()}});
@@ -510,6 +540,7 @@ void FlatpakManager::refreshInstalled() {
     if (m_installedProcess.state() != QProcess::NotRunning) { m_installedRefreshPending = true; return; }
     m_loading = true; m_installedError.clear(); emit installedChanged();
     m_installedTimeout.start(15000);
+    m_installedReadRevision = m_installedRevision;
     m_installedProcess.start("flatpak", {"list", "--app",
         "--columns=application:f,name:f,size,origin:f,installation:f,branch:f,arch:f,description:f,version:f"});
 }

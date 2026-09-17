@@ -7,6 +7,7 @@
 #include <QSocketNotifier>
 #include <QTemporaryDir>
 #include <QFile>
+#include <QDir>
 #include <QThread>
 #include <cassert>
 #include <functional>
@@ -82,6 +83,9 @@ int main(int argc, char **argv) {
                     {"progress", 1}, {"status", "Complete"}});
             });
             QTimer::singleShot(1000, &child, [&] {
+                QDir().mkpath(qEnvironmentVariable("XDG_DATA_HOME"));
+                QFile marker(qEnvironmentVariable("XDG_DATA_HOME") + "/removed-" + id);
+                assert(marker.open(QIODevice::WriteOnly)); marker.close();
                 send({{"type", "result"}, {"success", true}});
                 child.quit();
             });
@@ -94,9 +98,11 @@ int main(int argc, char **argv) {
     qputenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent-appcenter-test-bus");
     script(temporary.filePath("flatpak"),
         "#!/bin/sh\nif [ \"$1\" = list ]; then\n"
-        "printf 'org.example.RemoveA\tRemove A\t1 MB\tflathub\tuser\tstable\tx86_64\tTest A\t1.0\\n'\n"
-        "printf 'org.example.RemoveB\tRemove B\t1 MB\tflathub\tuser\tstable\tx86_64\tTest B\t1.0\\n'\n"
-        "printf 'org.example.RemoveC\tRemove C\t1 MB\tflathub\tuser\tstable\tx86_64\tTest C\t1.0\\n'\nfi\n");
+        "snapshot=$(\n"
+        "[ -e \"$XDG_DATA_HOME/removed-org.example.RemoveA\" ] || printf 'org.example.RemoveA\tRemove A\t1 MB\tflathub\tuser\tstable\tx86_64\tTest A\t1.0\\n'\n"
+        "[ -e \"$XDG_DATA_HOME/removed-org.example.RemoveB\" ] || printf 'org.example.RemoveB\tRemove B\t1 MB\tflathub\tuser\tstable\tx86_64\tTest B\t1.0\\n'\n"
+        "printf 'org.example.RemoveC\tRemove C\t1 MB\tflathub\tuser\tstable\tx86_64\tTest C\t1.0\\n'\n)\n"
+        "sleep 0.5\nprintf '%s\\n' \"$snapshot\"\nfi\n");
     script(temporary.filePath("kbuildsycoca6"), "#!/bin/sh\nexit 0\n");
     qputenv("PATH", temporary.path().toUtf8() + ':' + qgetenv("PATH"));
     QGuiApplication app(argc, argv);
@@ -108,6 +114,16 @@ int main(int argc, char **argv) {
     const auto a = manager.installedApps()[0].toMap();
     const auto b = manager.installedApps()[1].toMap();
     const auto c = manager.installedApps()[2].toMap();
+    bool aRemoved = false;
+    auto noStaleRemovedApp = [&] {
+        const auto current = job(manager, a["id"].toString());
+        if (!current.isEmpty() && !current["active"].toBool() && !current["failed"].toBool()) aRemoved = true;
+        if (!aRemoved) return;
+        for (const auto &entry : manager.installedApps())
+            assert(entry.toMap()["id"] != a["id"]); // Never re-offer Open, even for a single signal.
+    };
+    QObject::connect(&manager, &FlatpakManager::jobsChanged, &manager, noStaleRemovedApp);
+    QObject::connect(&manager, &FlatpakManager::installedChanged, &manager, noStaleRemovedApp);
     const QString download = "org.example.Download";
     manager.installApp({{"id", download}, {"name", "Download"}});
     until([&] { return manager.review().value("kind") == "remote"; });
@@ -125,6 +141,9 @@ int main(int argc, char **argv) {
     until([&] { return job(manager, a["id"].toString()).contains("currentRef")
                        && job(manager, download).contains("currentRef"); });
     assert(job(manager, download)["active"].toBool()); // Removal started before download finished.
+    // Capture an old installed list shortly before A finishes, returning it
+    // after the authoritative result. The manager must discard that stale list.
+    QTimer::singleShot(750, &manager, &FlatpakManager::refreshInstalled);
     manager.uninstallApp(b);
     manager.answerReview(manager.review().value("token").toInt(), true);
     auto pending = job(manager, b["id"].toString());
@@ -141,6 +160,9 @@ int main(int argc, char **argv) {
     assert(!job(manager, a["id"].toString())["active"].toBool());
     assert(job(manager, a["id"].toString())["status"].toString().isEmpty());
     assert(manager.review().value("token").toInt() == cToken); // Other worker's result preserves this prompt.
+    manager.clearDownloadHistory();
+    assert(!job(manager, a["id"].toString()).isEmpty()); // Removal state is not Downloads history.
+    assert(job(manager, download)["active"].toBool());
     const auto bytes = job(manager, download)["receivedBytes"].toLongLong();
     until([&] { return job(manager, download)["receivedBytes"].toLongLong() > bytes; });
     manager.cancelJob(job(manager, download)["index"].toInt());

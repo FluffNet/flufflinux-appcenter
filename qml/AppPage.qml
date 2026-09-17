@@ -263,7 +263,7 @@ Page {
         }
         contentItem: RowLayout {
             anchors.leftMargin: 14; anchors.rightMargin: 24
-            ToolButton {
+            FluffToolButton {
                 objectName: "backButton"
                 text: "←  Back"
                 implicitWidth: 106
@@ -272,13 +272,8 @@ Page {
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
                 palette.buttonText: window.textColor
-                Accessible.name: "Back to app catalog"
-                background: Rectangle {
-                    radius: window.cornerRadius
-                    color: parent.hovered ? window.hoverColor : "transparent"
-                    border.color: parent.activeFocus ? window.accentColor : "transparent"
-                }
-                onClicked: window.showCatalog()
+                Accessible.name: qsTr("Back")
+                onClicked: typeof window.goBack === "function" ? window.goBack() : window.showCatalog()
             }
             Item { Layout.fillWidth: true }
         }
@@ -467,19 +462,6 @@ Page {
                             anchors.centerIn: parent
                             running: screenshotThumbnail.status === Image.Loading
                             color: window.textColor
-                        }
-                        Label {
-                            anchors.right: parent.right
-                            anchors.bottom: parent.bottom
-                            anchors.margins: 12
-                            visible: screenshotButton.hovered || screenshotButton.activeFocus
-                            text: "Preview"
-                            color: "white"
-                            padding: 7
-                            background: Rectangle {
-                                radius: 5
-                                color: Qt.rgba(0, 0, 0, 0.72)
-                            }
                         }
                     }
                     HoverHandler { cursorShape: Qt.PointingHandCursor }
@@ -745,7 +727,7 @@ Page {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 42
 
-                ToolButton {
+                FluffToolButton {
                     objectName: "previewCloseButton"
                     anchors.right: parent.right
                     anchors.verticalCenter: parent.verticalCenter
@@ -774,7 +756,7 @@ Page {
                     Layout.preferredWidth: 46
                     Layout.fillHeight: true
 
-                    ToolButton {
+                    FluffToolButton {
                         objectName: "previewPreviousButton"
                         anchors.centerIn: parent
                         width: 42
@@ -978,43 +960,23 @@ Page {
                             target: null
                             acceptedDevices: PointerDevice.TouchPad
                             rotationAxis.enabled: false
-                            property real lastActiveScale: 1
-                            property point lastActiveTranslation: Qt.point(0, 0)
-                            property point lastCentroidPosition: Qt.point(0, 0)
-
-                            function applyPinch() {
-                                if (!active)
-                                    return
-                                const currentTranslation = activeTranslation
-                                page.applyPreviewPinchStep(
-                                            lastActiveScale,
-                                            activeScale,
-                                            lastCentroidPosition.x,
-                                            lastCentroidPosition.y,
-                                            currentTranslation.x
-                                                - lastActiveTranslation.x,
-                                            currentTranslation.y
-                                                - lastActiveTranslation.y)
-                                lastActiveScale = activeScale
-                                lastActiveTranslation = currentTranslation
-                                lastCentroidPosition = centroid.position
+                            // Native touchpad pinches are zoom-only. Qt can report
+                            // scene-coordinate translation here; applying it as
+                            // a pan makes successive gestures jump. Two-finger
+                            // scrolling/panning remains in the wheel handlers.
+                            xAxis.enabled: false
+                            yAxis.enabled: false
+                            onScaleChanged: function(delta) {
+                                if (!active || !Number.isFinite(delta) || delta <= 0) return
+                                const focus = page.mousePreviewZoomFocus(centroid.position.x, centroid.position.y)
+                                if (Math.abs(delta - 1) > 0.0001)
+                                    page.zoomPreviewBy(delta, focus.x, focus.y)
                             }
-
                             onActiveChanged: {
                                 page.previewPinching = active
-                                if (active) {
-                                    lastActiveScale = activeScale
-                                    lastActiveTranslation = activeTranslation
-                                    lastCentroidPosition = centroid.position
-                                } else {
-                                    lastActiveScale = 1
-                                    lastActiveTranslation = Qt.point(0, 0)
-                                    lastCentroidPosition = Qt.point(0, 0)
+                                if (!active)
                                     page.setPreviewPan(page.previewPanX, page.previewPanY)
-                                }
                             }
-                            onActiveScaleChanged: applyPinch()
-                            onActiveTranslationChanged: applyPinch()
                         }
                         WheelHandler {
                             id: previewTouchpadSwipe
@@ -1070,7 +1032,7 @@ Page {
                     Layout.preferredWidth: 46
                     Layout.fillHeight: true
 
-                    ToolButton {
+                    FluffToolButton {
                         objectName: "previewNextButton"
                         anchors.centerIn: parent
                         width: 42
@@ -1100,7 +1062,7 @@ Page {
                     anchors.centerIn: parent
                     spacing: 6
 
-                    ToolButton {
+                    FluffToolButton {
                         objectName: "previewZoomOutButton"
                         Layout.preferredWidth: 44
                         Layout.preferredHeight: 44
@@ -1119,7 +1081,7 @@ Page {
                         text: Math.round(page.previewZoom * 100) + "%"
                         color: window.textColor
                     }
-                    ToolButton {
+                    FluffToolButton {
                         objectName: "previewZoomInButton"
                         Layout.preferredWidth: 44
                         Layout.preferredHeight: 44

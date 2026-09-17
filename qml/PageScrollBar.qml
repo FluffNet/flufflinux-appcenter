@@ -5,6 +5,9 @@ ScrollBar {
     id: control
     orientation: Qt.Vertical
     policy: ScrollBar.AlwaysOn
+    // Breeze otherwise disables dragging after detecting touchscreen input.
+    interactive: true
+    hoverEnabled: true
     width: 16
     padding: 4
     z: 2

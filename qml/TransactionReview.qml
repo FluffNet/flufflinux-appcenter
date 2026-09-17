@@ -36,16 +36,16 @@ Dialog {
             anchors.right: parent.right; anchors.rightMargin: 16
             anchors.top: parent.top; anchors.topMargin: 8
             spacing: 8
-            Button {
+            FluffButton {
                 objectName: "confirmReviewButton"
                 Layout.minimumHeight: 40
                 text: dialog.plan.removing ? qsTr("Yes") : dialog.plan.kind === "remote" ? qsTr("Trust and add source") : qsTr("Continue")
                 icon.name: dialog.plan.removing ? "" : "dialog-ok-apply"
                 icon.source: dialog.plan.removing ? Qt.resolvedUrl("trash-red.svg") : ""
-                icon.color: dialog.plan.removing ? "transparent" : palette.buttonText
+                icon.color: dialog.plan.removing ? "transparent" : window.textColor
                 onClicked: dialog.accept()
             }
-            Button {
+            FluffButton {
                 id: rejectButton
                 objectName: "rejectReviewButton"
                 Layout.minimumHeight: 40

@@ -37,6 +37,7 @@ public:
     Q_INVOKABLE void answerReview(int token, bool accept);
     Q_INVOKABLE void cancelJob(int index);
     Q_INVOKABLE void cancelAll();
+    Q_INVOKABLE void clearDownloadHistory();
     Q_INVOKABLE void refreshInstalled();
     Q_INVOKABLE void launchApp(QVariantMap app);
 signals:
@@ -84,6 +85,7 @@ private:
     DownloadRate m_downloadRate;
     QList<QStringList> m_cacheCommands;
     int m_iconRevision = 0, m_nextReviewToken = 0;
+    int m_installedRevision = 0, m_installedReadRevision = 0;
     bool m_loading = true, m_stopping = false;
     bool m_refreshingCaches = false, m_cacheRefreshPending = false, m_installedRefreshPending = false;
     QString m_installedError;

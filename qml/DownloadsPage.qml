@@ -22,11 +22,16 @@ Page {
         }
         RowLayout {
             anchors.fill: parent; anchors.margins: 12
-            ToolButton {
-                id: backButton
-                objectName: "downloadsBackButton"
-                text: qsTr("Back"); icon.name: "go-previous"
-                onClicked: window.goBack()
+            Item {
+                Layout.preferredWidth: Math.max(backButton.implicitWidth, clearHistory.implicitWidth)
+                Layout.preferredHeight: Math.max(backButton.implicitHeight, clearHistory.implicitHeight)
+                FluffToolButton {
+                    id: backButton
+                    objectName: "downloadsBackButton"
+                    anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Back"); icon.name: "go-previous"
+                    onClicked: window.goBack()
+                }
             }
             Label {
                 objectName: "downloadsTitle"
@@ -36,8 +41,19 @@ Page {
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight
             }
-            // Balance Back so the title centers on the page, not the remaining space.
-            Item { Layout.preferredWidth: backButton.width }
+            // Equal side columns keep the title centered on the whole page.
+            Item {
+                Layout.preferredWidth: Math.max(backButton.implicitWidth, clearHistory.implicitWidth)
+                Layout.preferredHeight: Math.max(backButton.implicitHeight, clearHistory.implicitHeight)
+                FluffToolButton {
+                    id: clearHistory
+                    objectName: "clearDownloadHistoryButton"
+                    anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
+                    text: qsTr("Clear History")
+                    enabled: window.downloadQueue.jobs.some(function(job) { return !job.active })
+                    onClicked: if (window.backend) window.backend.clearDownloadHistory()
+                }
+            }
         }
     }
     Flickable {
@@ -59,6 +75,10 @@ Page {
                     id: downloadCard
                     required property var modelData
                     readonly property var installedApp: window.findInstalled(modelData)
+                    readonly property var detailsApp: !modelData.id ? null : installedApp
+                        || window.catalog.find(function(app) {
+                            return app.id.replace(/\.desktop$/, "") === modelData.id.replace(/\.desktop$/, "")
+                        }) || Object.assign({summary: "", description: "", screenshots: [], developer: "", category: "", license: "", homepage: ""}, modelData)
                     readonly property var appJob: window.jobForApp(installedApp)
                     readonly property bool canOpen: !modelData.active && !modelData.failed
                         && !modelData.cancelled && !!installedApp && (!appJob || !appJob.active)
@@ -70,15 +90,29 @@ Page {
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: 14
-                            AppIcon {
-                                objectName: "downloadAppIcon"
-                                Layout.preferredWidth: 56; Layout.preferredHeight: 56
-                                Layout.alignment: Qt.AlignVCenter
-                                sourceSize: Qt.size(64, 64)
-                                Accessible.ignored: true
-                                icon: modelData.icon || ""
+                            AbstractButton {
+                                id: detailsButton
+                                objectName: "downloadAppDetailsButton"
+                                Layout.fillWidth: true
+                                hoverEnabled: true
+                                enabled: !!downloadCard.detailsApp
+                                Accessible.name: qsTr("View details for %1").arg(modelData.name)
+                                onClicked: window.openApp(downloadCard.detailsApp)
+                                background: FluffButtonBackground { idleColor: "transparent"; idleBorderColor: "transparent" }
+                                contentItem: RowLayout {
+                                    spacing: 14
+                                    AppIcon {
+                                        objectName: "downloadAppIcon"
+                                        Layout.preferredWidth: 56; Layout.preferredHeight: 56
+                                        Layout.alignment: Qt.AlignVCenter
+                                        sourceSize: Qt.size(64, 64)
+                                        Accessible.ignored: true
+                                        icon: modelData.icon || ""
+                                    }
+                                    Label { objectName: "downloadAppName"; text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 20; font.bold: true; color: window.textColor; Layout.fillWidth: true }
+                                }
+                                HoverHandler { cursorShape: detailsButton.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
                             }
-                            Label { objectName: "downloadAppName"; text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 20; font.bold: true; color: window.textColor; Layout.fillWidth: true }
                             AppActionButton {
                                 objectName: "cancelDownloadButton"
                                 Layout.fillWidth: false

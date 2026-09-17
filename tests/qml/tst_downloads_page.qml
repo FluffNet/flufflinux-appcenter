@@ -19,10 +19,12 @@ TestCase {
         property var installSizes: ({})
         property var launched: null
         property int cancelledIndex: -1
+        property int clearCount: 0
         signal appOpened(var app)
         signal inputError(string message)
         function launchApp(app) { launched = app }
         function cancelJob(index) { cancelledIndex = index }
+        function clearDownloadHistory() { ++clearCount; jobs = jobs.filter(job => job.active) }
     }
     AppCenter.Main { id: main; backend: backend; visible: true }
     readonly property var app: { return {
@@ -56,6 +58,38 @@ TestCase {
         tryCompare(stack(), "busy", false)
         backend.jobs = []; backend.installedApps = []; backend.review = ({})
         backend.launched = null; backend.cancelledIndex = -1
+        backend.clearCount = 0; main.catalog = []
+    }
+    function test_open_details_from_icon_and_title_data() {
+        return [{tag: "icon", object: "downloadAppIcon"}, {tag: "title", object: "downloadAppName"}]
+    }
+    function test_open_details_from_icon_and_title(data) {
+        main.catalog = [Object.assign({}, app, {summary: "App information", description: "Description", screenshots: [], developer: "Developer", category: "Utilities", homepage: "", license: "MIT"})]
+        const downloads = stack().currentItem
+        mouseClick(findChild(card(), data.object))
+        tryCompare(stack(), "busy", false)
+        compare(stack().depth, 3)
+        compare(stack().currentItem.app.id, app.id)
+        compare(stack().currentItem.app.description, "Description")
+        mouseClick(findChild(stack().currentItem, "backButton"))
+        tryCompare(stack(), "busy", false)
+        compare(stack().currentItem, downloads, "Back should return to the same Downloads page")
+        compare(backend.jobs.length, 1)
+    }
+    function test_clear_history_preserves_active_jobs() {
+        const clear = findChild(stack().currentItem, "clearDownloadHistoryButton")
+        verify(clear.visible && !clear.enabled)
+        backend.jobs = [job, Object.assign({}, job, {id: "org.example.Done", index: 4, active: false, status: "Complete"}),
+            Object.assign({}, job, {id: "org.example.Failed", index: 5, active: false, failed: true, status: "Failed"})]
+        verify(clear.enabled)
+        mouseClick(clear)
+        compare(backend.clearCount, 1)
+        compare(backend.jobs.length, 1)
+        compare(backend.jobs[0].index, 3)
+        verify(!clear.enabled)
+        backend.jobs = [Object.assign({}, job, {active: false, status: "Complete"})]
+        mouseClick(clear)
+        compare(findChild(stack().currentItem, "downloadJobs").count, 0)
     }
     function test_simple_progress_data() {
         return [{tag: "wide", width: 1180}, {tag: "narrow", width: 720}]

@@ -17,6 +17,10 @@ TestCase {
         }
         return null
     }
+    function cleanup() {
+        main.showCatalog()
+        tryCompare(findChild(main, "navigationStack"), "busy", false)
+    }
     function test_surfaces_data() {
         return [{tag: "dark", background: "#202326", foreground: "#ffffff"},
                 {tag: "light", background: "#eff0f1", foreground: "#202326"},
@@ -73,5 +77,32 @@ TestCase {
         compare(count.renderType, Text.NativeRendering)
         compare(count.text, "1 application")
         compare(count.font.family, main.font.family)
+    }
+    function test_navigation_hover_uses_shared_color() {
+        main.requestActivate()
+        const stack = findChild(main, "navigationStack")
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        for (const name of ["categoryButton-All Apps", "categoryButton-Games", "installedButton"]) {
+            const button = findVisual(main.contentItem, name)
+            verify(button.hoverEnabled)
+            mouseMove(button, button.width / 2, button.height / 2)
+            tryCompare(button, "hovered", true)
+            compare(button.background.color, main.hoverColor)
+        }
+        main.openApp(main.catalog[0]); tryCompare(stack, "busy", false)
+        const back = findChild(stack.currentItem, "backButton")
+        waitForRendering(back)
+        verify(back.height >= 40)
+        verify(findChild(back, "fluffButtonLabel").visible)
+        mouseMove(main.contentItem, main.width - 10, main.height - 10)
+        mouseMove(back, back.width / 2, back.height / 2)
+        tryCompare(back, "hovered", true)
+        compare(back.background.color, main.hoverColor)
+        main.showDownloads(); tryCompare(stack, "busy", false)
+        const downloadsBack = findChild(stack.currentItem, "downloadsBackButton")
+        mouseMove(downloadsBack, downloadsBack.width / 2, downloadsBack.height / 2)
+        tryCompare(downloadsBack, "hovered", true)
+        compare(downloadsBack.background.color, main.hoverColor)
+        main.showCatalog(); tryCompare(stack, "busy", false)
     }
 }

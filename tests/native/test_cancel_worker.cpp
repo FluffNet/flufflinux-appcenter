@@ -68,5 +68,14 @@ int main(int argc, char **argv) {
     job = manager.jobs().last().toMap();
     assert(job["failed"].toBool() && !job["cancelled"].toBool());
     assert(job["status"] == "The Flatpak worker stopped unexpectedly");
+    manager.installApp({{"id", "org.example.StillActive"}, {"name", "Still active"}});
+    const int activeIndex = manager.jobs().last().toMap()["index"].toInt();
+    manager.clearDownloadHistory();
+    assert(manager.jobs().size() == 1);
+    assert(manager.jobs().first().toMap()["active"].toBool());
+    assert(manager.jobs().first().toMap()["index"].toInt() == activeIndex);
+    manager.cancelJob(activeIndex); // Clearing history must not invalidate cancellation IDs.
+    until([&] { return !manager.busy(); });
+    assert(manager.jobs().isEmpty());
     qInfo("PASS: immediate cancellation, forced worker exit, ignored late progress, safe next worker, genuine crash retained");
 }

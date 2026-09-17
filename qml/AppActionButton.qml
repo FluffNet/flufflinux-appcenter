@@ -14,12 +14,8 @@ Button {
     topPadding: 12; bottomPadding: 12
     font.pixelSize: 18
     icon.width: 24; icon.height: 24
-    background: Rectangle {
+    background: FluffButtonBackground {
         implicitWidth: 176; implicitHeight: 56
-        radius: window.cornerRadius
-        color: (control.hovered || control.down) && control.enabled ? window.hoverColor : window.raisedSurfaceColor
-        border.width: control.activeFocus ? 2 : 1
-        border.color: control.activeFocus ? window.accentColor : window.borderColor
     }
     contentItem: Item {
         implicitWidth: buttonContent.implicitWidth
