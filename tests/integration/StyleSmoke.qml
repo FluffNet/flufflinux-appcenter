@@ -33,19 +33,24 @@ AppCenter.Main {
         let valid = bar.visible && bar.parent === page.contentItem && bar.y === 0
             && bar.height === page.contentItem.height
             && bar.x + bar.width === page.contentItem.width && bar.contentItem.height >= 43
-        let fullCards = 0
+        let renderedCards = 0, clippedCards = 0
         for (let index = 0; index < grid.count; ++index) {
             const card = grid.itemAtIndex(index)
             if (!card) continue
+            if (card.y >= grid.contentY + grid.height || card.y + card.height <= grid.contentY) continue
             const fits = card.y >= grid.contentY - 0.5 && card.y + card.height <= grid.contentY + grid.height + 0.5
-            valid = valid && card.visible === fits && card.enabled === fits
-            if (card.visible) ++fullCards
+            valid = valid && card.visible && card.enabled && Math.abs(card.height - (grid.cellHeight - 16)) < 0.5
+            if (card.visible) ++renderedCards
+            if (!fits) ++clippedCards
         }
-        if (!valid || fullCards < grid.columnCount) {
-            console.error("STYLE_FAIL: full-page scrollbar or whole-card visibility at " + grid.contentY)
+        valid = valid && Math.abs(grid.rowCount * grid.cellHeight - grid.height) < 0.5
+        if (grid.contentY === 0) valid = valid && clippedCards === 0
+        if (grid.contentY === 79) valid = valid && clippedCards > 0 && renderedCards > grid.rowCount * grid.columnCount
+        if (!valid || renderedCards < grid.columnCount) {
+            console.error("STYLE_FAIL: full-page scrollbar, adaptive sizing, or continuous rendering at " + grid.contentY)
             Qt.exit(1); return false
         }
-        console.info("STYLE_SCROLL_PASS: offset=" + grid.contentY + " completeCards=" + fullCards)
+        console.info("STYLE_SCROLL_PASS: offset=" + grid.contentY + " renderedCards=" + renderedCards + " clippedCards=" + clippedCards + " cardHeight=" + (grid.cellHeight - 16))
         return true
     }
     Timer {
@@ -116,7 +121,7 @@ AppCenter.Main {
                 })
             } else if (main.stage === 9) {
                 main.stage = 10
-                console.info("STYLE_ALL_PASS: full-page scrollbar, complete cards at top/middle/bottom, Installed, app, Downloads, and native/Qt count snapshots")
+                console.info("STYLE_ALL_PASS: full-page scrollbar, adaptive cards with continuous rendering at top/middle/bottom, Installed, app, Downloads, and native/Qt count snapshots")
             }
         }
     }

@@ -472,8 +472,11 @@ Page {
                     clip: true
                     model: page.visibleApps
                     readonly property int columnCount: Math.max(1, Math.floor(width / 285))
+                    readonly property int rowCount: Math.max(1, Math.floor(height / 158))
                     cellWidth: width / columnCount
-                    cellHeight: 158
+                    // Share spare viewport height between the rows. This only
+                    // sizes the cards; scrolling and normal edge clipping stay unchanged.
+                    cellHeight: Math.max(158, height / rowCount)
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: PageScrollBar {
                         objectName: "catalogPageScrollBar"
@@ -487,14 +490,8 @@ Page {
                     }
                     delegate: AppCard {
                         required property var modelData
-                        // Keep the full catalog and smooth scrolling, but do
-                        // not draw or activate cards cut by a viewport edge.
-                        readonly property bool fullyInView: y >= catalogGrid.contentY - 0.5
-                            && y + height <= catalogGrid.contentY + catalogGrid.height + 0.5
-                        visible: fullyInView
-                        enabled: fullyInView
                         width: GridView.view.cellWidth - 16
-                        height: 142
+                        height: GridView.view.cellHeight - 16
                         x: 8
                         app: modelData
                         onClicked: window.openApp(app)

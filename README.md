@@ -16,9 +16,10 @@ uses native font rendering while retaining the system's chosen font.
 
 Catalog and Installed scrollbars sit at the outer right edge for the full page
 content height, with a persistent contrasting thumb and a minimum 44-pixel
-drag target. Catalog cards crossing the viewport's top or bottom edge stay
-hidden and non-interactive until the entire card fits; scrolling stays smooth
-and no apps are removed from the catalog.
+drag target. Catalog cards share the available width and spare viewport height,
+keeping consistent gaps without leaving a large empty band below the rows.
+Scrolling retains its normal continuous movement and edge clipping: partially
+visible cards are not hidden, and there is no row snapping.
 
 `tests/integration/StyleSmoke.qml` is a read-only visual check in the real KDE
 session. It captures the catalog, Installed, app and Downloads pages plus native
