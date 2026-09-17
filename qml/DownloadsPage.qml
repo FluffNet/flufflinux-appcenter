@@ -22,9 +22,22 @@ Page {
         }
         RowLayout {
             anchors.fill: parent; anchors.margins: 12
-            ToolButton { text: qsTr("Back"); icon.name: "go-previous"; onClicked: window.goBack() }
-            Label { text: qsTr("Downloads"); color: window.textColor; font.pixelSize: 24; font.bold: true }
-            Item { Layout.fillWidth: true }
+            ToolButton {
+                id: backButton
+                objectName: "downloadsBackButton"
+                text: qsTr("Back"); icon.name: "go-previous"
+                onClicked: window.goBack()
+            }
+            Label {
+                objectName: "downloadsTitle"
+                Layout.fillWidth: true
+                text: qsTr("Downloads"); color: window.textColor
+                font.pixelSize: 24; font.bold: true
+                horizontalAlignment: Text.AlignHCenter
+                elide: Text.ElideRight
+            }
+            // Balance Back so the title centers on the page, not the remaining space.
+            Item { Layout.preferredWidth: backButton.width }
         }
     }
     Flickable {

@@ -172,6 +172,27 @@ TestCase {
         backend.installedApps = []
         main.width = 1180
     }
+    function test_catalog_page_uses_current_installed_version() {
+        const catalogApp = {id: "org.example.InstalledVersion", name: "Installed version test",
+            version: "2.0", summary: "", description: "", icon: "", screenshots: [],
+            category: "", license: "", homepage: "", developer: ""}
+        const installedApp = Object.assign({}, catalogApp,
+            {installation: "user", installedVersion: "1.0", installedSize: "10 MiB"})
+        backend.installedApps = [installedApp]
+        main.openApp(catalogApp)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        const version = findChild(page, "appAvailableVersion")
+        compare(version.text, "1.0", "Opening from the catalog must show the installed version")
+        backend.installedApps = [Object.assign({}, installedApp, {version: "3.0"})]
+        compare(version.text, "1.0", "A newer catalog release must not replace the installed version")
+        backend.installedApps = [Object.assign({}, installedApp, {installedVersion: "1.1"})]
+        compare(stack.currentItem, page)
+        compare(version.text, "1.1", "Refreshing installed metadata must update the same page")
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.installedApps = []
+    }
     function contrastRatio(first, second) {
         function luminance(color) {
             function linear(channel) { return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4) }
@@ -486,6 +507,50 @@ TestCase {
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.jobs = []
     }
+    function test_downloads_title_centered_data() {
+        return [{tag: "wide", width: 1180}, {tag: "narrow", width: 720}]
+    }
+    function test_downloads_title_centered(data) {
+        const previousWidth = main.width
+        main.width = data.width
+        main.showDownloads()
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        waitForRendering(page)
+        const title = findChild(page, "downloadsTitle")
+        const back = findChild(page, "downloadsBackButton")
+        compare(title.text, "Downloads")
+        compare(title.horizontalAlignment, Text.AlignHCenter)
+        fuzzyCompare(title.mapToItem(page, title.width / 2, 0).x, page.width / 2, 1,
+                     "Downloads must be centered on the whole page")
+        verify(back.mapToItem(page, back.width, 0).x <= title.mapToItem(page, 0, 0).x)
+        mouseClick(back)
+        tryCompare(stack, "busy", false)
+        compare(stack.depth, 1, "Back must still return to the catalog")
+        main.width = previousWidth
+    }
+    function verifyProgressHeader(root) {
+        const bar = findChild(root, "overallInstallProgress")
+        const bytes = findChild(root, "downloadBytesLabel")
+        const percentage = findChild(root, "overallPercentageLabel")
+        waitForRendering(root)
+        verify(percentage.visible)
+        compare(percentage.horizontalAlignment, Text.AlignRight)
+        const percentageTop = percentage.mapToItem(bar, 0, 0)
+        verify(percentageTop.y + percentage.height <= 0, "Percentage belongs above the bar")
+        fuzzyCompare(percentageTop.x + percentage.width, bar.width, 1,
+                     "Percentage must align with the bar's right edge")
+        if (bytes.visible) {
+            const bytesTop = bytes.mapToItem(bar, 0, 0)
+            compare(bytes.horizontalAlignment, Text.AlignLeft)
+            fuzzyCompare(bytesTop.x, 0, 1, "Download info must align with the bar's left edge")
+            fuzzyCompare(bytesTop.y, percentageTop.y, 1, "Both labels belong on the same top row")
+            verify(bytesTop.y + bytes.height <= 0, "Wrapped download info must stay above the bar")
+            verify(bytesTop.x + bytes.width + 11 <= percentageTop.x,
+                   "Download info and percentage must not overlap")
+        }
+    }
     function test_unified_download_and_install_progress() {
         const app = {id: "org.example.Stages", name: "Stages", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
         const job = {id: app.id, name: app.name, index: 0, active: true, action: "install", progress: 0.5,
@@ -509,6 +574,7 @@ TestCase {
         compare(findChild(page, "downloadBytesLabel").text, "128.00 MiB / 512.00 MiB (2.30 MiB/s)")
         verify(findChild(page, "downloadBytesLabel").visible)
         verify(!findChild(page, "appJobStatus").visible)
+        verifyProgressHeader(page)
         const deployment = Object.assign({}, job, {downloadProgress: 1, downloadComplete: true, progress: 0.95, downloadedSize: "128.00 MiB", downloadTotalSize: "128.00 MiB",
             phase: "install", installCompleted: 1, installProgress: 0.5})
         backend.jobs = [deployment]
@@ -517,19 +583,16 @@ TestCase {
         compare(findChild(page, "overallPercentageLabel").text, "95%")
         compare(findChild(page, "completedOperationsLabel"), null)
         verify(!findChild(page, "downloadBytesLabel").visible)
+        verifyProgressHeader(page)
         // A dependency deploying before the next pull must not hide the total.
         backend.jobs = [Object.assign({}, job, {phase: "install", downloadSpeed: "0.00 MiB/s"})]
         verify(findChild(page, "downloadBytesLabel").visible)
-        // Totals sit above the bar, right aligned, and wrap in narrow windows.
+        // Download info stays top-left and wraps without displacing the percentage.
         const previousWidth = main.width
         main.width = 720
         waitForRendering(page)
-        const bytes = findChild(page, "downloadBytesLabel")
-        const percentage = findChild(page, "overallPercentageLabel")
-        verify(bytes.y + bytes.height <= bar.y)
-        compare(bytes.horizontalAlignment, Text.AlignRight)
-        verify(Math.abs(bytes.x + bytes.width - (bar.x + bar.width)) <= 1)
-        verify(percentage.x + percentage.width <= percentage.parent.width + 1)
+        verifyProgressHeader(page)
+        captureTouchLayout(page, "progress-header-narrow")
         main.width = previousWidth
         backend.jobs = [deployment]
         main.showDownloads(); tryCompare(stack, "busy", false)
@@ -538,10 +601,13 @@ TestCase {
         compare(findChild(card, "overallInstallProgress").value, 0.95)
         verify(!findChild(card, "downloadBytesLabel").visible)
         verify(!findChild(stack.currentItem, "downloadJobStatus").visible)
+        verifyProgressHeader(card)
         backend.jobs = [Object.assign({}, job, {downloadEstimating: true})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(!findChild(card, "overallInstallProgress").indeterminate)
         compare(findChild(card, "overallPercentageLabel").text, "50%")
+        verifyProgressHeader(card)
+        captureTouchLayout(stack.currentItem, "downloads-progress-header")
         backend.jobs = [Object.assign({}, job, {hasDownload: false, phase: "install"})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(!findChild(card, "downloadBytesLabel").visible)
@@ -550,6 +616,7 @@ TestCase {
         compare(findChild(card, "completedOperationsLabel"), null)
         compare(findChild(card, "downloadBytesLabel").color, main.textColor)
         compare(findChild(card, "overallPercentageLabel").color, main.textColor)
+        verifyProgressHeader(card)
         // Local bundle with an online dependency must show only network bytes.
         backend.jobs = [Object.assign({}, job, {action: "source"})]
         card = findChild(stack.currentItem, "downloadJobProgress")
@@ -589,9 +656,8 @@ TestCase {
         verify(!findChild(stack.currentItem, "totalDownloadSize").visible)
         compare(findChild(stack.currentItem, "completedOperationsLabel"), null)
         compare(label.color, main.textColor)
-        const bar = findChild(stack.currentItem, "overallInstallProgress")
-        verify(label.visible && label.y + label.height <= bar.y)
-        compare(label.horizontalAlignment, Text.AlignRight)
+        verify(label.visible)
+        verifyProgressHeader(stack.currentItem)
         verify(label.contentWidth <= label.width + 1)
         verify(!label.text.includes("·"))
         if (data.tag === "mixed_units") {

@@ -94,9 +94,9 @@ for Discord and AAT, and leaves AAT's page open.
   button; other completed/failed jobs stay. Operations are serialized;
   additional requests wait in the queue.
   A single overall progress bar includes every planned component, with
-  only a plain percentage below (no component-completion count). Progress text
+  a plain percentage above its right edge (no component-completion count). Progress text
   uses the normal foreground color: white in the dark theme, dark in the light
-  theme. Above the bar, right-aligned
+  theme. On the same row above the bar, left-aligned
   `128.00 MiB / 512.00 MiB (2.30 MiB/s)` shows the total received bytes and live speed.
   Each amount switches independently from MiB to GiB at 1,024 MiB, so
   larger transfers read `181.90 MiB / 1.77 GiB (2.11 MiB/s)`.

@@ -105,11 +105,15 @@ AppCenter.Main {
                         }
                         if (bytes.visible && parseFloat(current.downloadSpeed.replace(",", ".")) > 0 && !main.sawDownloadSpeed) {
                             main.sawDownloadSpeed = true
-                            console.info("DOWNLOAD_SPEED_PASS: " + bytes.text + ", above bar and right aligned")
+                            console.info("DOWNLOAD_SPEED_PASS: " + bytes.text + ", above bar and left aligned")
                             stack.currentItem.grabToImage(function(result) {
-                                if (!main.check(bytes.y + bytes.height <= bar.y && bytes.horizontalAlignment === Text.AlignRight
-                                                && Math.abs(bytes.x + bytes.width - bar.x - bar.width) <= 1,
-                                                "Download counter is not above/right-aligned after rendering")) return
+                                const bytesTop = bytes.mapToItem(bar, 0, 0)
+                                const percentageTop = percentage.mapToItem(bar, 0, 0)
+                                if (!main.check(bytesTop.y + bytes.height <= 0 && bytes.horizontalAlignment === Text.AlignLeft
+                                                && Math.abs(bytesTop.x) <= 1
+                                                && percentageTop.y + percentage.height <= 0
+                                                && Math.abs(percentageTop.x + percentage.width - bar.width) <= 1,
+                                                "Download info and percentage are not above the left/right bar edges")) return
                                 result.saveToFile(Qt.resolvedUrl("../../target/" + main.proofPrefix + "-speed-proof.png").toString().replace("file://", ""))
                             })
                         }
