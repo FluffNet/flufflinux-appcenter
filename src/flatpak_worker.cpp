@@ -3,6 +3,7 @@
 // software sources retain their explicit confirmation.
 #include <flatpak.h>
 #include "transaction_status.h"
+#include "download_size.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -27,7 +28,7 @@
 
 namespace {
 QString str(const char *s) { return QString::fromUtf8(s ? s : ""); }
-QString bytes(quint64 size) { return QLocale().formattedDataSize(size); }
+QString bytes(quint64 size) { return downloadSizeText(size); }
 void send(QJsonObject message) {
     static std::mutex outputMutex;
     std::lock_guard<std::mutex> lock(outputMutex);

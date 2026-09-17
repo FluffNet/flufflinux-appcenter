@@ -1,7 +1,7 @@
 #pragma once
 #include <QVariantMap>
 #include <QVariantList>
-#include <QLocale>
+#include "download_size.h"
 
 // One overall estimate: transfer work occupies 90%, confirmed deployment 10%.
 // Flatpak's transfer size is a maximum, not an exact network requirement. Once
@@ -41,15 +41,10 @@ inline QVariantMap transactionStages(const QVariantList &operations, const QStri
     // A pure local bundle uses its import callbacks instead of network work.
     const double transferProgress = weight > 0 ? downloadProgress : total ? localProgress / total : 0;
     const double overall = qMin(0.99, 0.9 * transferProgress + 0.1 * installProgress);
-    const auto sizeText = [](quint64 size) {
-        const bool gigabytes = size >= 1000000000;
-        return QLocale().toString(double(size) / (gigabytes ? 1000000000 : 1000000), 'f', 2)
-            + (gigabytes ? " GB" : " MB");
-    };
     return {{"phase", phase}, {"downloadProgress", downloadProgress},
-            {"downloadEstimating", estimating}, {"receivedSize", QLocale().formattedDataSize(received)},
+            {"downloadEstimating", estimating}, {"receivedSize", downloadSizeText(received)},
             {"receivedBytes", received}, {"downloadTotalBytes", downloadTotal},
-            {"downloadedSize", sizeText(received)}, {"downloadTotalSize", sizeText(downloadTotal)},
+            {"downloadedSize", downloadSizeText(received)}, {"downloadTotalSize", downloadSizeText(downloadTotal)},
             {"hasDownload", downloadTotal > 0}, {"downloadComplete", !pendingDownload}, {"progress", overall},
             {"installCompleted", complete}, {"installTotal", total},
             {"installProgress", installProgress}};

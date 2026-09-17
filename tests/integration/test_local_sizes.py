@@ -15,5 +15,7 @@ for app in ("com.play0ad.zeroad", "com.onepassword.OnePassword", "io.github.mezo
     plan = next(event for event in events if event["type"] == "plan")
     assert actual["appBytes"] == plan["appBytes"], (app, actual, plan)
     assert actual["totalBytes"] == plan["totalBytes"], (app, actual, plan)
+    assert actual["appSize"] == plan["appSize"] == actual["singleAppProgressTotal"], (app, actual, plan)
+    assert actual["totalSize"] == plan["totalSize"], (app, actual, plan)
     assert not any(event["type"] == "operation" for event in events)
     print(f"PASS {app}: {actual['appSize']} / {actual['totalSize']}; local lookup {actual['elapsedMs']} ms", flush=True)

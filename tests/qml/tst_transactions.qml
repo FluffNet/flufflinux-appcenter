@@ -309,7 +309,9 @@ TestCase {
         compare(findChild(page, "downloadPhaseProgress"), null)
         compare(findChild(page, "installPhaseProgress"), null)
         compare(findChild(page, "overallPercentageLabel").text, "50%")
-        compare(findChild(page, "completedOperationsLabel").text, "0/2 Complete")
+        compare(findChild(page, "completedOperationsLabel"), null)
+        compare(findChild(page, "downloadBytesLabel").color, main.textColor)
+        compare(findChild(page, "overallPercentageLabel").color, main.textColor)
         compare(findChild(page, "downloadBytesLabel").text, "128.00 MB / 512.00 MB (2.30 MB/s)")
         verify(findChild(page, "downloadBytesLabel").visible)
         verify(!findChild(page, "appJobStatus").visible)
@@ -319,7 +321,7 @@ TestCase {
         compare(bar.value, 0.95)
         verify(bar.activeStep && !bar.indeterminate)
         compare(findChild(page, "overallPercentageLabel").text, "95%")
-        compare(findChild(page, "completedOperationsLabel").text, "1/2 Complete")
+        compare(findChild(page, "completedOperationsLabel"), null)
         verify(!findChild(page, "downloadBytesLabel").visible)
         // A dependency deploying before the next pull must not hide the total.
         backend.jobs = [Object.assign({}, job, {phase: "install", downloadSpeed: "0.00 MB/s"})]
@@ -351,7 +353,9 @@ TestCase {
         verify(!findChild(card, "downloadBytesLabel").visible)
         verify(findChild(card, "overallInstallProgress").visible)
         verify(findChild(card, "overallInstallProgress").activeStep)
-        compare(findChild(card, "completedOperationsLabel").text, "0/2 Complete")
+        compare(findChild(card, "completedOperationsLabel"), null)
+        compare(findChild(card, "downloadBytesLabel").color, main.textColor)
+        compare(findChild(card, "overallPercentageLabel").color, main.textColor)
         // Local bundle with an online dependency must show only network bytes.
         backend.jobs = [Object.assign({}, job, {action: "source"})]
         card = findChild(stack.currentItem, "downloadJobProgress")
@@ -374,6 +378,7 @@ TestCase {
     }
     function test_download_amount_format(data) {
         const app = {id: "org.example.Format", name: "Download formatting", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
+        backend.installSizes = {"org.example.Format": {state: "ready", appSize: data.total, totalSize: data.total}}
         backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, action: "install", progress: 0.2,
             hasDownload: true, downloadComplete: false, downloadedSize: data.received, downloadTotalSize: data.total,
             downloadSpeed: data.speed, installCompleted: 1, installTotal: 2, phase: "download", operations: [{}]}]
@@ -386,6 +391,10 @@ TestCase {
         let label = findChild(stack.currentItem, "downloadBytesLabel")
         const expected = data.received + " / " + data.total + " (" + data.speed + ")"
         compare(label.text, expected)
+        compare(findChild(stack.currentItem, "appDownloadSize").text, data.total)
+        verify(!findChild(stack.currentItem, "totalDownloadSize").visible)
+        compare(findChild(stack.currentItem, "completedOperationsLabel"), null)
+        compare(label.color, main.textColor)
         const bar = findChild(stack.currentItem, "overallInstallProgress")
         verify(label.visible && label.y + label.height <= bar.y)
         compare(label.horizontalAlignment, Text.AlignRight)
@@ -404,6 +413,45 @@ TestCase {
         main.width = previousWidth
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.jobs = []
+    }
+    function test_progress_foreground_data() {
+        return [{tag: "dark", background: "#202426", foreground: "#ffffff"},
+                {tag: "light", background: "#ffffff", foreground: "#202426"}]
+    }
+    function test_progress_foreground(data) {
+        const previousBackground = main.palette.window
+        const previousForeground = main.palette.windowText
+        const previousPlaceholder = main.palette.placeholderText
+        main.palette.window = data.background
+        main.palette.windowText = data.foreground
+        main.palette.placeholderText = data.tag === "dark" ? "#a0a7ad" : "#757575"
+        const app = {id: "org.example.Units", name: "Consistent download sizes", summary: "App and transfer totals use the same units", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
+        backend.installSizes = {"org.example.Units": {state: "ready", appBytes: 1897842165, totalBytes: 1897842165, appSize: "1.90 GB", totalSize: "1.90 GB"}}
+        backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, action: "install", progress: 0.1,
+            hasDownload: true, downloadComplete: false, downloadedSize: "93.97 MB", downloadTotalSize: "1.90 GB",
+            downloadSpeed: "1.04 MB/s", installCompleted: 0, installTotal: 1, phase: "download", operations: [{}]}]
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const bytes = findChild(stack.currentItem, "downloadBytesLabel")
+        const percentage = findChild(stack.currentItem, "overallPercentageLabel")
+        compare(bytes.color.toString(), data.foreground)
+        compare(percentage.color.toString(), data.foreground)
+        compare(percentage.text, "10%")
+        compare(findChild(stack.currentItem, "completedOperationsLabel"), null)
+        compare(findChild(stack.currentItem, "appDownloadSize").text, backend.jobs[0].downloadTotalSize)
+        verify(!findChild(stack.currentItem, "totalDownloadSize").visible)
+        waitForRendering(stack.currentItem)
+        let captured = false
+        stack.currentItem.grabToImage(function(result) {
+            captured = result.saveToFile(Qt.resolvedUrl("../../target/consistent-progress-" + data.tag + ".png").toString().replace("file://", ""))
+        })
+        tryVerify(function() { return captured })
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.jobs = []
+        main.palette.window = previousBackground
+        main.palette.windowText = previousForeground
+        main.palette.placeholderText = previousPlaceholder
     }
     function test_removals_only_show_in_installed_and_app_view() {
         const app = {id: "org.example.Remove", name: "Remove test", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "",
@@ -530,7 +578,7 @@ TestCase {
                          status: "Installing…", operations: [{name: app.id, progress: 1}]}]
         verify(!findChild(page, "appJobStatus").visible)
         compare(findChild(page, "overallInstallProgress").value, 0.99)
-        compare(findChild(page, "completedOperationsLabel").text, "0/1 Complete")
+        compare(findChild(page, "completedOperationsLabel"), null)
         backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, progress: 0.4,
                          status: "Downloading… 1.50 MiB received", operations: [{name: app.id, progress: 0.4}]}]
         verify(!findChild(page, "appJobStatus").visible)

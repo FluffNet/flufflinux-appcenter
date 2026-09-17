@@ -1,7 +1,7 @@
 #pragma once
 #include <glib.h>
 #include <QCoreApplication>
-#include <QLocale>
+#include "download_size.h"
 #include <QStringList>
 
 // Flatpak exposes a human-readable status, not a download/deploy phase enum.
@@ -34,7 +34,7 @@ inline QString simpleTransactionStatus(const QString &raw, quint64 received, boo
     if (removing) return QCoreApplication::translate("Flatpak", "Uninstalling…");
     if (isDownloadStatus(raw, downloadFormats))
         return received ? QCoreApplication::translate("Flatpak", "Downloading… %1 received")
-                              .arg(QLocale().formattedDataSize(received))
+                              .arg(downloadSizeText(received))
                         : QCoreApplication::translate("Flatpak", "Downloading…");
     // Installation includes preparation, unpacking and deployment. Unknown
     // progress messages get this safe activity label, not raw diagnostics.

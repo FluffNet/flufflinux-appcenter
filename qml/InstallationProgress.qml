@@ -20,7 +20,7 @@ ColumnLayout {
                                 .arg(progress.job ? progress.job.downloadSpeed || "" : "")
         horizontalAlignment: Text.AlignRight
         wrapMode: Text.Wrap
-        color: window.mutedTextColor
+        color: window.textColor
     }
     FluffProgressBar {
         objectName: "overallInstallProgress"
@@ -32,21 +32,12 @@ ColumnLayout {
         activeStep: progress.planned && !progress.removing && progress.job.phase === "install"
         Accessible.name: qsTr("Overall installation progress")
     }
-    RowLayout {
+    Label {
+        objectName: "overallPercentageLabel"
         Layout.fillWidth: true
         visible: progress.planned && !progress.removing
-        spacing: 12
-        Label {
-            objectName: "completedOperationsLabel"
-            text: qsTr("%1/%2 Complete").arg(progress.job ? (progress.job.installCompleted || 0) : 0)
-                                       .arg(progress.job ? (progress.job.installTotal || 0) : 0)
-            color: window.mutedTextColor
-        }
-        Item { Layout.fillWidth: true }
-        Label {
-            objectName: "overallPercentageLabel"
-            text: qsTr("%1%").arg(Math.floor(Math.min(0.99, progress.job ? (progress.job.progress || 0) : 0) * 100 + 0.000001))
-            color: window.mutedTextColor
-        }
+        horizontalAlignment: Text.AlignRight
+        text: qsTr("%1%").arg(Math.floor(Math.min(0.99, progress.job ? (progress.job.progress || 0) : 0) * 100 + 0.000001))
+        color: window.textColor
     }
 }

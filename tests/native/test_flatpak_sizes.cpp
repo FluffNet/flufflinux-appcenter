@@ -1,6 +1,7 @@
 // Standalone, read-only tests. Include the implementation to exercise the
 // metadata calculator with synthetic records, without a second public API.
 #include "../../src/flatpak_sizes.cpp"
+#include "../../src/transaction_progress.h"
 #include <QCoreApplication>
 #include <QElapsedTimer>
 #include <QJsonDocument>
@@ -26,6 +27,14 @@ int main(int argc, char **argv) {
         QElapsedTimer timer; timer.start();
         auto sizes = localFlatpakSizes({{"id", QString::fromUtf8(argv[1])}, {"remote", "flathub"}});
         sizes["elapsedMs"] = timer.elapsed();
+        // Compare the real metadata estimate with a single-operation transfer
+        // total: identical bytes must never switch from GiB to GB across the UI.
+        if (sizes.contains("appBytes")) {
+            const auto progress = transactionStages({QVariantMap{{"action", "install"},
+                {"downloadBytes", sizes["appBytes"]}, {"downloadProgress", 0.5}}}, "download");
+            assert(sizes["appSize"] == progress["downloadTotalSize"]);
+            sizes["singleAppProgressTotal"] = progress["downloadTotalSize"];
+        }
         puts(QJsonDocument::fromVariant(sizes).toJson(QJsonDocument::Compact).constData());
         return sizes["state"] == "ready" ? 0 : 1;
     }

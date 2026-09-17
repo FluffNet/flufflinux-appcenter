@@ -17,9 +17,12 @@ background update services, notifications, settings, or tray components.
   installation (only **App size** when their displayed size text matches, even
   if the underlying byte counts differ slightly). These
   are download estimates from Flatpak's existing local
-  repository metadata, not installed disk usage. Dependencies already available
-  in the user or system installation are excluded. Opening an app reads this
-  metadata directly before showing the page: no network transaction, waiting
+  repository metadata, not installed disk usage. App estimates, dependency sizes
+  and live transfer amounts all use the same decimal MB/GB formatter: an app
+  estimated at `1.90 GB` also reads `1.90 GB`
+  in the progress total, never `1.77 GiB` for the identical byte count.
+  Dependencies already available in the user or system installation are excluded.
+  Opening an app reads this metadata directly before showing the page: no network transaction, waiting
   state, extra size cache, or saved size results. Automatic runtime/locale/driver
   extensions are included; build SDKs and optional debug extensions are not.
   Installed app pages also register their current estimates, so uninstalling
@@ -41,7 +44,9 @@ background update services, notifications, settings, or tray components.
   button; other completed/failed jobs stay. Operations are serialized;
   additional requests wait in the queue.
   A single overall progress bar includes every planned component, with
-  `1/5 Complete` and a plain percentage below. Above the bar, right-aligned
+  only a plain percentage below (no component-completion count). Progress text
+  uses the normal foreground color: white in the dark theme, dark in the light
+  theme. Above the bar, right-aligned
   `128.00 MB / 512.00 MB (2.30 MB/s)` shows the total received bytes and live speed.
   Each amount switches independently to decimal GB at one billion bytes, so
   larger transfers read `190.74 MB / 1.90 GB (2.21 MB/s)`.

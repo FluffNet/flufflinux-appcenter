@@ -4,7 +4,7 @@
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
     QLocale::setDefault(QLocale::English);
-    const auto amount = QLocale().formattedDataSize(1024);
+    const auto amount = downloadSizeText(1024);
     assert(simpleTransactionStatus("Downloading: 1 kB/2 MB (1 kB/s)", 1024, false)
            == "Downloading… " + amount + " received");
     assert(simpleTransactionStatus("Downloading files: 3/50 1 kB", 1024, false)

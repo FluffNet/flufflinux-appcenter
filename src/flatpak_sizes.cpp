@@ -1,5 +1,6 @@
 #include <flatpak.h>
 #include "flatpak_sizes.h"
+#include "download_size.h"
 #include <QDir>
 #include <QFileInfo>
 #include <QHash>
@@ -172,10 +173,10 @@ QVariantMap localFlatpakSizes(const QVariantMap &request) {
         lookup.add(ref, i, true);
         const auto appBytes = flatpak_remote_ref_get_download_size(app);
         QVariantMap result{{"state", lookup.complete ? "ready" : "partial"}, {"appBytes", double(appBytes)},
-            {"appSize", QLocale().formattedDataSize(appBytes)}};
+            {"appSize", downloadSizeText(appBytes)}};
         if (lookup.complete) {
             result["totalBytes"] = double(lookup.total);
-            result["totalSize"] = QLocale().formattedDataSize(lookup.total);
+            result["totalSize"] = downloadSizeText(lookup.total);
         }
         return result;
     }

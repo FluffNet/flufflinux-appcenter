@@ -86,19 +86,19 @@ AppCenter.Main {
                         const percentage = main.find(stack.currentItem, "overallPercentageLabel")
                         if (!main.check(bar && bar.visible && !bar.indeterminate
                                         && Math.abs(bar.value - current.progress) < 0.0001
-                                        && count.text === current.installCompleted + "/" + current.installTotal + " Complete"
+                                        && !count && bytes.color === main.textColor && percentage.color === main.textColor
                                         && bytes.visible === (current.hasDownload && !current.downloadComplete)
                                         && (!bytes.visible || bytes.text === current.downloadedSize + " / " + current.downloadTotalSize + " (" + current.downloadSpeed + ")")
                                         && percentage.text === Math.floor(current.progress * 100 + 0.000001) + "%"
                                         && !main.find(stack.currentItem, "downloadPhaseProgress")
                                         && !main.find(stack.currentItem, "installPhaseProgress"),
-                                        "Unified progress/bytes/count do not match the real backend: " + JSON.stringify({
-                                            value: bar.value, expected: current.progress, count: count.text, expectedCount: current.installCompleted + "/" + current.installTotal,
+                                        "Unified progress/bytes do not match the real backend: " + JSON.stringify({
+                                            value: bar.value, expected: current.progress, countPresent: !!count,
                                             bytesVisible: bytes.visible, hasDownload: current.hasDownload, downloadComplete: current.downloadComplete,
                                             bytesText: bytes.text, speed: current.downloadSpeed, percentage: percentage.text}))) return
                         if (current.phase === "download" && !main.sawDownloadStage) {
                             main.sawDownloadStage = true
-                            console.info("DOWNLOAD_STAGE_PASS: " + percentage.text + ", " + bytes.text + ", " + count.text)
+                            console.info("DOWNLOAD_STAGE_PASS: " + percentage.text + ", " + bytes.text)
                             stack.currentItem.grabToImage(function(result) {
                                 result.saveToFile(Qt.resolvedUrl("../../target/" + main.proofPrefix + "-download-proof.png").toString().replace("file://", ""))
                             })
@@ -117,7 +117,7 @@ AppCenter.Main {
                             if (!main.check(current.progress < 1 && current.installCompleted < current.installTotal,
                                             "Download completion incorrectly finished installation")) return
                             main.sawInstallStage = true
-                            console.info("INSTALL_STAGE_PASS: " + percentage.text + ", " + bytes.text + ", " + count.text + ", bytesVisible=" + bytes.visible)
+                            console.info("INSTALL_STAGE_PASS: " + percentage.text + ", " + bytes.text + ", bytesVisible=" + bytes.visible)
                             stack.currentItem.grabToImage(function(result) {
                                 result.saveToFile(Qt.resolvedUrl("../../target/" + main.proofPrefix + "-install-proof.png").toString().replace("file://", ""))
                             })
@@ -128,7 +128,7 @@ AppCenter.Main {
                                                                "All pulls finished but received/total bytes still differ")) return
                             if (!main.sourceFile && !main.check(current.downloadComplete && !bytes.visible,
                                                                "Download bytes/speed remain after every pull finished")) return
-                            console.info("APP_DEPLOY_STAGE_PASS: " + percentage.text + ", " + count.text + ", bytesVisible=" + bytes.visible)
+                            console.info("APP_DEPLOY_STAGE_PASS: " + percentage.text + ", bytesVisible=" + bytes.visible)
                             stack.currentItem.grabToImage(function(result) {
                                 result.saveToFile(Qt.resolvedUrl("../../target/" + main.proofPrefix + "-app-install-proof.png").toString().replace("file://", ""))
                             })

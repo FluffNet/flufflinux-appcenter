@@ -112,6 +112,7 @@ fn main() {
     println!("cargo:rerun-if-changed=src/transaction_status.h");
     println!("cargo:rerun-if-changed=src/transaction_progress.h");
     println!("cargo:rerun-if-changed=src/download_rate.h");
+    println!("cargo:rerun-if-changed=src/download_size.h");
     println!("cargo:rerun-if-changed=src/flatpak_sizes.cpp");
     println!("cargo:rerun-if-changed=src/flatpak_sizes.h");
 }

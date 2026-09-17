@@ -75,6 +75,8 @@ int main(int argc, char **argv) {
     result = transactionStages({application}, "download");
     assert(result["downloadedSize"].toString() == "190.74 MB");
     assert(result["downloadTotalSize"].toString() == "1.90 GB");
+    assert(result["downloadTotalSize"].toString() == downloadSizeText(application["downloadBytes"].toULongLong()));
+    assert(QLocale().formattedDataSize(1897850000) == "1.77 GiB"); // Same bytes; former app-page units.
     assert(result["downloadTotalBytes"].toULongLong() == 1897850000); // Formatting does not alter accounting.
     application["receivedBytes"] = 1000000000;
     assert(transactionStages({application}, "download")["downloadedSize"].toString() == "1.00 GB");
@@ -105,6 +107,7 @@ int main(int argc, char **argv) {
     QLocale::setDefault(QLocale("de_DE"));
     assert(transactionStages({application}, "download")["downloadedSize"].toString().contains(','));
     assert(transactionStages({application}, "download")["downloadTotalSize"].toString() == "1,90 GB");
+    assert(downloadSizeText(1897850000) == "1,90 GB"); // App estimates use the same localized formatter.
     assert(DownloadRate::display(1500000) == "1,50 MB/s");
     qInfo("PASS: unified weighted progress, aggregate/actual bytes, no early 100%%, dependencies, cached transfers, local bundles and completion");
 }
