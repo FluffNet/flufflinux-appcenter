@@ -26,6 +26,13 @@ bool active(const QVariantMap &job) { return job.value("active").toBool(); }
 }
 
 FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : QObject(parent) {
+    m_downloadRateTimer.setInterval(500);
+    connect(&m_downloadRateTimer, &QTimer::timeout, this, [this] {
+        if (m_current < 0 || m_resultReceived) return;
+        const auto job = m_jobs[m_current].toMap();
+        const auto values = downloadRateValues(job);
+        if (values.value("downloadSpeed") != job.value("downloadSpeed")) patchJob(m_current, values);
+    });
     for (const auto &entry : catalog) {
         const auto app = entry.toMap();
         m_metadata.insert(normalizedId(app.value("id").toString()), app);
@@ -37,6 +44,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     });
     connect(&m_worker, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
+            m_downloadRateTimer.stop();
             patchJob(m_current, {{"active", false}, {"failed", true}, {"status", tr("Could not start Flatpak worker")}});
             m_current = -1;
             QTimer::singleShot(0, this, &FlatpakManager::startNext);
@@ -45,6 +53,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     connect(&m_worker, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this](int, QProcess::ExitStatus) {
             receive();
+            m_downloadRateTimer.stop();
             if (!m_resultReceived) patchJob(m_current, {{"active", false}, {"failed", true},
                 {"status", tr("The Flatpak worker stopped unexpectedly")}, {"error", QString::fromUtf8(m_diagnostics)}});
             m_review.clear(); emit reviewChanged();
@@ -246,7 +255,9 @@ void FlatpakManager::startNext() {
     for (int i = 0; i < m_jobs.size(); ++i) {
         if (!active(m_jobs[i].toMap())) continue;
         m_current = i; m_buffer.clear(); m_diagnostics.clear(); m_resultReceived = false;
-        patchJob(i, {{"status", tr("Preparing…")}});
+        m_downloadRate = DownloadRate{};
+        m_downloadClock.start(); m_downloadRateTimer.start();
+        patchJob(i, {{"status", tr("Preparing…")}, {"downloadSpeed", DownloadRate::display(0)}});
         m_worker.start(QCoreApplication::applicationFilePath(), {"--transaction-worker",
             QString::fromUtf8(QJsonDocument::fromVariant(m_requests[i]).toJson(QJsonDocument::Compact))});
         return;
@@ -261,6 +272,11 @@ void FlatpakManager::receive() {
         const auto doc = QJsonDocument::fromJson(line);
         if (doc.isObject()) handleMessage(doc.object());
     }
+}
+QVariantMap FlatpakManager::downloadRateValues(const QVariantMap &job) {
+    const auto rate = m_downloadRate.sample(m_downloadClock.elapsed(), job.value("receivedBytes").toULongLong(),
+        job.value("phase") == "download" && !job.value("downloadComplete").toBool());
+    return {{"downloadSpeed", DownloadRate::display(rate)}};
 }
 void FlatpakManager::handleMessage(const QJsonObject &message) {
     if (m_current < 0) return;
@@ -317,6 +333,7 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
             }
         }
         auto values = transactionStages(operations, message["phase"].toString());
+        values.insert(downloadRateValues(values));
         values["operations"] = operations;
         // Metadata/transfer estimates can change mid-pull; never move the
         // overall bar backwards. Only a successful result may reach 100%.
@@ -327,6 +344,7 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
     } else if (type == "status") {
         patchJob(m_current, {{"status", message["status"].toString()}});
     } else if (type == "result") {
+        m_downloadRateTimer.stop();
         m_resultReceived = true; m_worker.closeWriteChannel();
         const bool ok = message["success"].toBool(), cancelled = message["cancelled"].toBool();
         const bool preparation = m_requests[m_current].toMap().value("prepareOnly").toBool();

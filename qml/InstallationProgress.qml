@@ -9,6 +9,19 @@ ColumnLayout {
     readonly property bool removing: !!job && job.action === "uninstall"
     visible: !!job && job.active === true && (!removing || job.removalConfirmed === true)
     spacing: 8
+    Label {
+        objectName: "downloadBytesLabel"
+        Layout.fillWidth: true
+        Layout.minimumWidth: 0
+        visible: progress.planned && !progress.removing && progress.job.hasDownload === true
+                 && progress.job.downloadComplete !== true
+        text: qsTr("%1/%2 · %3").arg(progress.job ? progress.job.downloadedSize || "" : "")
+                                .arg(progress.job ? progress.job.downloadTotalSize || "" : "")
+                                .arg(progress.job ? progress.job.downloadSpeed || "" : "")
+        horizontalAlignment: Text.AlignRight
+        wrapMode: Text.Wrap
+        color: window.mutedTextColor
+    }
     FluffProgressBar {
         objectName: "overallInstallProgress"
         Layout.fillWidth: true
@@ -29,18 +42,7 @@ ColumnLayout {
                                        .arg(progress.job ? (progress.job.installTotal || 0) : 0)
             color: window.mutedTextColor
         }
-        Label {
-            objectName: "downloadBytesLabel"
-            Layout.fillWidth: true
-            Layout.minimumWidth: 0
-            visible: !!progress.job && progress.job.hasDownload === true
-            text: qsTr("%1/%2 Downloaded").arg(progress.job ? progress.job.downloadedSize || "" : "")
-                                        .arg(progress.job ? progress.job.downloadTotalSize || "" : "")
-            horizontalAlignment: Text.AlignHCenter
-            wrapMode: Text.Wrap
-            color: window.mutedTextColor
-        }
-        Item { Layout.fillWidth: true; visible: !progress.job || progress.job.hasDownload !== true }
+        Item { Layout.fillWidth: true }
         Label {
             objectName: "overallPercentageLabel"
             text: qsTr("%1%").arg(Math.floor(Math.min(0.99, progress.job ? (progress.job.progress || 0) : 0) * 100 + 0.000001))

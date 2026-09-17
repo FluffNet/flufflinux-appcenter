@@ -38,7 +38,12 @@ background update services, notifications, settings, or tray components.
   button; other completed/failed jobs stay. Operations are serialized;
   additional requests wait in the queue.
   A single overall progress bar includes every planned component, with
-  `1/5 Complete`, `128.00 MB/512.00 MB Downloaded`, and a plain percentage below.
+  `1/5 Complete` and a plain percentage below. Above the bar, right-aligned
+  `128.00 MB/512.00 MB · 2.30 MB/s` shows the total received bytes and live speed.
+  Speed uses a two-second rolling sample of actual network bytes, resets between
+  pulls, and drops to zero during stalls; it never advances the progress bar.
+  The byte/speed line disappears after all downloads finish, while the single
+  overall bar continues through installation.
   The overall estimate weights transfer work at 90% and confirmed deployment at
   10%, never moves backwards, and reaches 100% only on transaction success.
   Flatpak does not expose a deployment percentage: no timer invents progress
@@ -49,8 +54,7 @@ background update services, notifications, settings, or tray components.
   Received bytes are summed across the whole transaction. The initial total is
   Flatpak's maximum download estimate; each completed pull replaces its estimate
   with actual transferred bytes (locale subsets/reused content can reduce it).
-  A finished download can therefore show matching byte counts while the overall
-  bar still waits for installation. Downloads retains component names/statuses
+  Downloads retains component names/statuses
   but no extra component bars; the app page omits redundant activity/name text.
   Errors, cancellation and confirmation messages remain visible.
   Successful installs leave Open/Uninstall actions, not completion text,

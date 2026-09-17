@@ -46,7 +46,7 @@ inline QVariantMap transactionStages(const QVariantList &operations, const QStri
             {"downloadEstimating", estimating}, {"receivedSize", QLocale().formattedDataSize(received)},
             {"receivedBytes", received}, {"downloadTotalBytes", downloadTotal},
             {"downloadedSize", mb(received)}, {"downloadTotalSize", mb(downloadTotal)},
-            {"hasDownload", downloadTotal > 0}, {"progress", overall},
+            {"hasDownload", downloadTotal > 0}, {"downloadComplete", !pendingDownload}, {"progress", overall},
             {"installCompleted", complete}, {"installTotal", total},
             {"installProgress", installProgress}};
 }

@@ -1,4 +1,5 @@
 #include "../../src/transaction_progress.h"
+#include "../../src/download_rate.h"
 #include <QCoreApplication>
 #include <cassert>
 
@@ -10,6 +11,7 @@ int main(int argc, char **argv) {
     QVariantMap application{{"action", "install"}, {"downloadBytes", 100}, {"phase", "waiting"}};
     auto result = transactionStages({runtime, application}, "download");
     assert(result["downloadProgress"].toDouble() == 0.375);
+    assert(!result["downloadComplete"].toBool());
     assert(qAbs(result["progress"].toDouble() - 0.3375) < 1e-9);
     assert(result["receivedBytes"].toULongLong() == 100);
     assert(result["downloadTotalBytes"].toULongLong() == 400);
@@ -19,6 +21,7 @@ int main(int argc, char **argv) {
     assert(result["downloadProgress"].toDouble() == 0.75);
     assert(result["installProgress"].toDouble() == 0); // Pull != installation.
     assert(result["downloadTotalBytes"].toULongLong() == 300); // Actual runtime + pending app estimate.
+    assert(!result["downloadComplete"].toBool()); // Do not hide bytes between dependency pulls.
     runtime["phase"] = "complete";
     application["phase"] = "download"; application["downloadProgress"] = 0.5;
     application["estimating"] = true;
@@ -29,6 +32,7 @@ int main(int argc, char **argv) {
     application["receivedBytes"] = 80;
     result = transactionStages({runtime, application}, "install");
     assert(result["downloadProgress"].toDouble() == 1);
+    assert(result["downloadComplete"].toBool()); // Hide bytes even while deployment continues.
     assert(result["installCompleted"].toInt() == 1); // Even when ALL downloads finish.
     assert(qAbs(result["progress"].toDouble() - 0.95) < 1e-9);
     assert(result["receivedBytes"] == result["downloadTotalBytes"]);
@@ -45,6 +49,7 @@ int main(int argc, char **argv) {
     assert(result["receivedBytes"].toULongLong() == 0); // Bundle import is not network traffic.
     assert(result["downloadTotalBytes"].toULongLong() == 0);
     assert(result["progress"].toDouble() == 0.45);
+    assert(result["downloadComplete"].toBool()); // Pure local import needs no speed label.
     result = transactionStages({runtime, application}, "install");
     assert(result["hasDownload"].toBool()); // A local bundle may still need an online runtime.
     assert(result["receivedBytes"].toULongLong() == 200 && result["downloadTotalBytes"].toULongLong() == 200);
@@ -67,7 +72,27 @@ int main(int argc, char **argv) {
     result = transactionStages({application}, "download");
     assert(result["receivedBytes"].toULongLong() <= result["downloadTotalBytes"].toULongLong());
     assert(transactionStages({}, "preparing")["progress"].toDouble() == 0);
+    DownloadRate rate;
+    assert(rate.sample(0, 0, false) == 0);
+    assert(rate.sample(500, 0, true) == 0);
+    assert(rate.sample(1000, 1000000, true) == 2000000);
+    assert(DownloadRate::display(2000000) == "2.00 MB/s");
+    assert(rate.sample(1500, 2000000, true) == 2000000);
+    rate.sample(2000, 2000000, true);
+    rate.sample(2500, 2000000, true);
+    rate.sample(3000, 2000000, true);
+    assert(rate.sample(3500, 2000000, true) == 0); // Stalled download, no callbacks needed.
+    assert(rate.sample(3600, 2000000, false) == 0); // Deployment cannot count as transfer speed.
+    assert(rate.sample(5000, 2000000, true) == 0); // Next dependency excludes deployment delay.
+    assert(rate.sample(5500, 2500000, true) == 1000000);
+    assert(rate.sample(5500, 2500000, true) == 1000000); // Same monotonic tick, no division by zero.
+    assert(rate.sample(6000, 0, true) == 0); // Counter reset/new transaction.
+    assert(rate.sample(100, 0, true) == 0); // Clock reset.
+    rate = DownloadRate{};
+    assert(rate.sample(100, 9000000, false) == 0); // Local imports ignored.
+    assert(rate.sample(200, 10000000, false) == 0);
     QLocale::setDefault(QLocale("de_DE"));
     assert(transactionStages({application}, "download")["downloadedSize"].toString().contains(','));
+    assert(DownloadRate::display(1500000) == "1,50 MB/s");
     qInfo("PASS: unified weighted progress, aggregate/actual bytes, no early 100%%, dependencies, cached transfers, local bundles and completion");
 }

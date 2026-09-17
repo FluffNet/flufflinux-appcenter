@@ -13,6 +13,7 @@ AppCenter.Main {
     property bool sawDependency: false
     property bool sawProgressUi: false
     property bool sawDownloadStage: false
+    property bool sawDownloadSpeed: false
     property bool sawInstallStage: false
     property bool sawAppInstallStage: false
     property string testId: "org.gnome.Calculator"
@@ -31,6 +32,7 @@ AppCenter.Main {
         return null
     }
     function check(condition, message) {
+        if (failed) return false
         if (condition) return true
         failed = true
         if (backend) backend.cancelAll()
@@ -51,7 +53,7 @@ AppCenter.Main {
             Qt.callLater(function() { main.backend.answerReview(token, true) })
         }
         function onJobsChanged() {
-            if (!main.testApp) return
+            if (main.failed || !main.testApp) return
             const job = main.jobForApp(main.testApp)
             if (!job || !job.active) return
             if (!main.check(job.progress >= main.previousProgress && job.progress < 1,
@@ -85,17 +87,30 @@ AppCenter.Main {
                         if (!main.check(bar && bar.visible && !bar.indeterminate
                                         && Math.abs(bar.value - current.progress) < 0.0001
                                         && count.text === current.installCompleted + "/" + current.installTotal + " Complete"
-                                        && bytes.visible === current.hasDownload
-                                        && (!bytes.visible || bytes.text === current.downloadedSize + "/" + current.downloadTotalSize + " Downloaded")
+                                        && bytes.visible === (current.hasDownload && !current.downloadComplete)
+                                        && (!bytes.visible || bytes.text === current.downloadedSize + "/" + current.downloadTotalSize + " · " + current.downloadSpeed)
                                         && percentage.text === Math.floor(current.progress * 100 + 0.000001) + "%"
                                         && !main.find(stack.currentItem, "downloadPhaseProgress")
                                         && !main.find(stack.currentItem, "installPhaseProgress"),
-                                        "Unified progress/bytes/count do not match the real backend")) return
+                                        "Unified progress/bytes/count do not match the real backend: " + JSON.stringify({
+                                            value: bar.value, expected: current.progress, count: count.text, expectedCount: current.installCompleted + "/" + current.installTotal,
+                                            bytesVisible: bytes.visible, hasDownload: current.hasDownload, downloadComplete: current.downloadComplete,
+                                            bytesText: bytes.text, speed: current.downloadSpeed, percentage: percentage.text}))) return
                         if (current.phase === "download" && !main.sawDownloadStage) {
                             main.sawDownloadStage = true
                             console.info("DOWNLOAD_STAGE_PASS: " + percentage.text + ", " + bytes.text + ", " + count.text)
                             stack.currentItem.grabToImage(function(result) {
                                 result.saveToFile(Qt.resolvedUrl("../../target/" + main.proofPrefix + "-download-proof.png").toString().replace("file://", ""))
+                            })
+                        }
+                        if (bytes.visible && parseFloat(current.downloadSpeed.replace(",", ".")) > 0 && !main.sawDownloadSpeed) {
+                            main.sawDownloadSpeed = true
+                            console.info("DOWNLOAD_SPEED_PASS: " + bytes.text + ", above bar and right aligned")
+                            stack.currentItem.grabToImage(function(result) {
+                                if (!main.check(bytes.y + bytes.height <= bar.y && bytes.horizontalAlignment === Text.AlignRight
+                                                && Math.abs(bytes.x + bytes.width - bar.x - bar.width) <= 1,
+                                                "Download counter is not above/right-aligned after rendering")) return
+                                result.saveToFile(Qt.resolvedUrl("../../target/" + main.proofPrefix + "-speed-proof.png").toString().replace("file://", ""))
                             })
                         }
                         if (current.phase === "install" && !main.sawInstallStage) {
@@ -111,7 +126,9 @@ AppCenter.Main {
                             main.sawAppInstallStage = true
                             if (!main.sourceFile && !main.check(current.receivedBytes === current.downloadTotalBytes,
                                                                "All pulls finished but received/total bytes still differ")) return
-                            console.info("APP_DEPLOY_STAGE_PASS: " + percentage.text + ", " + bytes.text + ", " + count.text)
+                            if (!main.sourceFile && !main.check(current.downloadComplete && !bytes.visible,
+                                                               "Download bytes/speed remain after every pull finished")) return
+                            console.info("APP_DEPLOY_STAGE_PASS: " + percentage.text + ", " + count.text + ", bytesVisible=" + bytes.visible)
                             stack.currentItem.grabToImage(function(result) {
                                 result.saveToFile(Qt.resolvedUrl("../../target/" + main.proofPrefix + "-app-install-proof.png").toString().replace("file://", ""))
                             })

@@ -296,7 +296,7 @@ TestCase {
         const app = {id: "org.example.Stages", name: "Stages", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
         const job = {id: app.id, name: app.name, index: 0, active: true, action: "install", progress: 0.5,
             hasDownload: true, downloadProgress: 0.5, installProgress: 0, installCompleted: 0, installTotal: 2,
-            downloadedSize: "128.00 MB", downloadTotalSize: "512.00 MB",
+            downloadedSize: "128.00 MB", downloadTotalSize: "512.00 MB", downloadSpeed: "2.30 MB/s", downloadComplete: false,
             phase: "download", status: "Downloading…", operations: [{name: "Runtime", phase: "download", progress: 0.5, status: "Downloading…", downloadSize: "2 MiB"}]}
         backend.jobs = [job]
         main.openApp(app)
@@ -310,29 +310,37 @@ TestCase {
         compare(findChild(page, "installPhaseProgress"), null)
         compare(findChild(page, "overallPercentageLabel").text, "50%")
         compare(findChild(page, "completedOperationsLabel").text, "0/2 Complete")
-        compare(findChild(page, "downloadBytesLabel").text, "128.00 MB/512.00 MB Downloaded")
+        compare(findChild(page, "downloadBytesLabel").text, "128.00 MB/512.00 MB · 2.30 MB/s")
+        verify(findChild(page, "downloadBytesLabel").visible)
         verify(!findChild(page, "appJobStatus").visible)
-        const deployment = Object.assign({}, job, {downloadProgress: 1, progress: 0.95, downloadedSize: "128.00 MB", downloadTotalSize: "128.00 MB",
+        const deployment = Object.assign({}, job, {downloadProgress: 1, downloadComplete: true, progress: 0.95, downloadedSize: "128.00 MB", downloadTotalSize: "128.00 MB",
             phase: "install", installCompleted: 1, installProgress: 0.5})
         backend.jobs = [deployment]
         compare(bar.value, 0.95)
         verify(bar.activeStep && !bar.indeterminate)
         compare(findChild(page, "overallPercentageLabel").text, "95%")
         compare(findChild(page, "completedOperationsLabel").text, "1/2 Complete")
-        compare(findChild(page, "downloadBytesLabel").text, "128.00 MB/128.00 MB Downloaded")
-        // Long totals must wrap without pushing the percentage off the page.
+        verify(!findChild(page, "downloadBytesLabel").visible)
+        // A dependency deploying before the next pull must not hide the total.
+        backend.jobs = [Object.assign({}, job, {phase: "install", downloadSpeed: "0.00 MB/s"})]
+        verify(findChild(page, "downloadBytesLabel").visible)
+        // Totals sit above the bar, right aligned, and wrap in narrow windows.
         const previousWidth = main.width
         main.width = 720
         waitForRendering(page)
         const bytes = findChild(page, "downloadBytesLabel")
         const percentage = findChild(page, "overallPercentageLabel")
-        verify(bytes.x + bytes.width <= percentage.x)
+        verify(bytes.y + bytes.height <= bar.y)
+        compare(bytes.horizontalAlignment, Text.AlignRight)
+        verify(Math.abs(bytes.x + bytes.width - (bar.x + bar.width)) <= 1)
         verify(percentage.x + percentage.width <= percentage.parent.width + 1)
         main.width = previousWidth
+        backend.jobs = [deployment]
         main.showDownloads(); tryCompare(stack, "busy", false)
         let card = findChild(stack.currentItem, "downloadJobProgress")
         verify(card.visible)
         compare(findChild(card, "overallInstallProgress").value, 0.95)
+        verify(!findChild(card, "downloadBytesLabel").visible)
         verify(!findChild(stack.currentItem, "downloadJobStatus").visible)
         backend.jobs = [Object.assign({}, job, {downloadEstimating: true})]
         card = findChild(stack.currentItem, "downloadJobProgress")
@@ -345,10 +353,13 @@ TestCase {
         verify(findChild(card, "overallInstallProgress").activeStep)
         compare(findChild(card, "completedOperationsLabel").text, "0/2 Complete")
         // Local bundle with an online dependency must show only network bytes.
-        backend.jobs = [Object.assign({}, deployment, {action: "source"})]
+        backend.jobs = [Object.assign({}, job, {action: "source"})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(findChild(card, "downloadBytesLabel").visible)
-        compare(findChild(card, "downloadBytesLabel").text, "128.00 MB/128.00 MB Downloaded")
+        compare(findChild(card, "downloadBytesLabel").text, "128.00 MB/512.00 MB · 2.30 MB/s")
+        backend.jobs = [Object.assign({}, deployment, {action: "source"})]
+        card = findChild(stack.currentItem, "downloadJobProgress")
+        verify(!findChild(card, "downloadBytesLabel").visible)
         backend.jobs = [Object.assign({}, job, {active: false, progress: 1, status: "Complete"})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(!card.visible)

@@ -3,9 +3,11 @@
 #include <QVariant>
 #include <QProcess>
 #include <QTimer>
+#include <QElapsedTimer>
 #include <QHash>
 #include <QJsonObject>
 #include "install_history.h"
+#include "download_rate.h"
 
 class FlatpakManager final : public QObject {
     Q_OBJECT
@@ -52,6 +54,7 @@ private:
     void receive();
     void handleMessage(const QJsonObject &message);
     void patchJob(int index, const QVariantMap &values);
+    QVariantMap downloadRateValues(const QVariantMap &job);
     void refreshCaches();
     void refreshNextCache();
     QVariantMap installRequest(const QVariantMap &app) const;
@@ -63,7 +66,9 @@ private:
     QHash<QString, QVariantMap> m_sources;
     QHash<QString, QVariantMap> m_metadata;
     QProcess m_worker, m_installedProcess, m_cache;
-    QTimer m_installedTimeout, m_cacheTimeout;
+    QTimer m_installedTimeout, m_cacheTimeout, m_downloadRateTimer;
+    QElapsedTimer m_downloadClock;
+    DownloadRate m_downloadRate;
     QByteArray m_buffer, m_diagnostics;
     QList<QStringList> m_cacheCommands;
     int m_current = -1, m_iconRevision = 0;
