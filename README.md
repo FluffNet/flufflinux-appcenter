@@ -14,6 +14,12 @@ and sidebar separators meet once instead of stacking rectangle outlines, and
 align to physical pixels at fractional scaling. The small application count
 uses native font rendering while retaining the system's chosen font.
 
+Catalog and Installed scrollbars sit at the outer right edge for the full page
+content height, with a persistent contrasting thumb and a minimum 44-pixel
+drag target. Catalog cards crossing the viewport's top or bottom edge stay
+hidden and non-interactive until the entire card fits; scrolling stays smooth
+and no apps are removed from the catalog.
+
 `tests/integration/StyleSmoke.qml` is a read-only visual check in the real KDE
 session. It captures the catalog, Installed, app and Downloads pages plus native
 and Qt-rendered count comparisons in `target/style-*.png`, then leaves the
@@ -21,9 +27,10 @@ catalog open. It does not start transactions or change the desktop theme, font
 or scale. The QML styling tests also cover dark, light and custom palettes.
 
 `tests/integration/AppMetadataSmoke.qml` is another read-only VM check: it
-opens four real catalog apps, verifies their version/developer labels and
+opens five real catalog apps, verifies their version/developer labels and
 successfully loaded artwork, exercises the missing-icon fallback and recovery,
-and captures `target/metadata-*.png`. It leaves 0 A.D.'s page open.
+and captures `target/metadata-*.png`. It also checks installed Size/Version
+for Discord and AAT, and leaves AAT's page open.
 
 ## Install and remove apps
 
@@ -35,6 +42,11 @@ and captures `target/metadata-*.png`. It leaves 0 A.D.'s page open.
   targets. On narrow windows the buttons move below the information, while
   progress keeps its full width. The
   developer's name is displayed without a “By” prefix.
+- The Size/Version stack stays visible after installation, using the deployed
+  app's disk size and installed version, not the catalog's available version or
+  download estimate. Exact local Flatpak bytes use MiB/GiB throughout Installed
+  and app details. Dependency totals remain hidden for installed apps, and
+  unknown installed versions are omitted. No network lookup is needed.
 - App actions match the Downloads button's rounded neutral background, subtle
   border and icon-and-label layout. Install shares its arrow shape, in green;
   Open keeps the play icon and Uninstall the red trash icon. Hover, disabled and
@@ -228,6 +240,7 @@ cargo test
 /usr/lib/qt6/bin/qmltestrunner -input tests/qml -import qml -platform offscreen
 c++ -std=c++17 -fPIC tests/native/test_flatpak_sizes.cpp -o target/test-flatpak-sizes $(pkg-config --cflags --libs Qt6Core flatpak)
 target/test-flatpak-sizes
+target/test-flatpak-sizes --installed # Read-only validation against real deployed apps
 c++ -std=c++17 -fPIC tests/native/test_transaction_status.cpp -o target/test-transaction-status $(pkg-config --cflags --libs Qt6Core glib-2.0)
 target/test-transaction-status
 ```

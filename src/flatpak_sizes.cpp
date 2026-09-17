@@ -148,6 +148,23 @@ struct Lookup {
 };
 }
 
+QString localInstalledFlatpakSize(const QVariantMap &app) {
+    const auto scope = app.value("installation").toString();
+    auto id = app.value("id").toString();
+    if (id.endsWith(".desktop")) id.chop(8);
+    const auto arch = app.value("installedArch").toString();
+    const auto branch = app.value("installedBranch").toString();
+    if (scope.isEmpty() || id.isEmpty() || arch.isEmpty() || branch.isEmpty()) return {};
+    g_autoptr(FlatpakInstallation) installation = scope == "user"
+        ? flatpak_installation_new_user(nullptr, nullptr)
+        : scope == "system" ? flatpak_installation_new_system(nullptr, nullptr)
+        : flatpak_installation_new_system_with_id(scope.toUtf8(), nullptr, nullptr);
+    if (!installation) return {};
+    g_autoptr(FlatpakInstalledRef) ref = flatpak_installation_get_installed_ref(installation,
+        FLATPAK_REF_KIND_APP, id.toUtf8(), arch.toUtf8(), branch.toUtf8(), nullptr, nullptr);
+    return ref ? downloadSizeText(flatpak_installed_ref_get_installed_size(ref)) : QString();
+}
+
 QVariantMap localFlatpakSizes(const QVariantMap &request) {
     Lookup lookup;
     g_autoptr(FlatpakInstallation) user = flatpak_installation_new_user(nullptr, nullptr);

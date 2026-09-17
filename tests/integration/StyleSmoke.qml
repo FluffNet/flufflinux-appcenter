@@ -26,13 +26,36 @@ AppCenter.Main {
             next()
         })
     }
+    function verifyCatalogViewport() {
+        const page = find(contentItem, "navigationStack").currentItem
+        const grid = find(page, "catalogGrid")
+        const bar = find(page, "catalogPageScrollBar")
+        let valid = bar.visible && bar.parent === page.contentItem && bar.y === 0
+            && bar.height === page.contentItem.height
+            && bar.x + bar.width === page.contentItem.width && bar.contentItem.height >= 43
+        let fullCards = 0
+        for (let index = 0; index < grid.count; ++index) {
+            const card = grid.itemAtIndex(index)
+            if (!card) continue
+            const fits = card.y >= grid.contentY - 0.5 && card.y + card.height <= grid.contentY + grid.height + 0.5
+            valid = valid && card.visible === fits && card.enabled === fits
+            if (card.visible) ++fullCards
+        }
+        if (!valid || fullCards < grid.columnCount) {
+            console.error("STYLE_FAIL: full-page scrollbar or whole-card visibility at " + grid.contentY)
+            Qt.exit(1); return false
+        }
+        console.info("STYLE_SCROLL_PASS: offset=" + grid.contentY + " completeCards=" + fullCards)
+        return true
+    }
     Timer {
-        interval: 600; repeat: true; running: main.stage < 8
+        interval: 600; repeat: true; running: main.stage < 10
         onTriggered: {
             if (main.installedLoading) return
             const stack = main.find(main.contentItem, "navigationStack")
             if (stack.busy) return
             if (main.stage === 0) {
+                if (!main.verifyCatalogViewport()) return
                 stack.background = main.snapshotBackground.createObject(stack)
                 const count = main.find(main.contentItem, "catalogCountLabel")
                 console.info("STYLE_FONT: " + count.fontInfo.family + " " + count.fontInfo.pixelSize
@@ -74,8 +97,26 @@ AppCenter.Main {
                     main.showCatalog(); main.selectedCategory = "All Apps"; main.stage = 6
                 })
             } else if (main.stage === 6) {
-                main.stage = 8
-                console.info("STYLE_ALL_PASS: catalog, Installed, app, Downloads, and native/Qt count snapshots")
+                main.find(stack.currentItem, "catalogGrid").contentY = 79
+                main.stage = 7
+            } else if (main.stage === 7) {
+                if (!main.verifyCatalogViewport()) return
+                main.stage = -1
+                main.capture("catalog-scrolled", function() {
+                    const grid = main.find(stack.currentItem, "catalogGrid")
+                    grid.contentY = grid.contentHeight - grid.height
+                    main.stage = 8
+                })
+            } else if (main.stage === 8) {
+                if (!main.verifyCatalogViewport()) return
+                main.stage = -1
+                main.capture("catalog-bottom", function() {
+                    main.find(stack.currentItem, "catalogGrid").positionViewAtBeginning()
+                    main.stage = 9
+                })
+            } else if (main.stage === 9) {
+                main.stage = 10
+                console.info("STYLE_ALL_PASS: full-page scrollbar, complete cards at top/middle/bottom, Installed, app, Downloads, and native/Qt count snapshots")
             }
         }
     }

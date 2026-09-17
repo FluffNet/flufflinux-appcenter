@@ -475,13 +475,24 @@ Page {
                     cellWidth: width / columnCount
                     cellHeight: 158
                     boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {}
+                    ScrollBar.vertical: PageScrollBar {
+                        objectName: "catalogPageScrollBar"
+                        parent: page.contentItem
+                        anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
+                        visible: catalogGrid.visible && size < 1
+                    }
                     NaturalWheelScroll {
                         objectName: "catalogNaturalScroll"
                         scrollTarget: catalogGrid
                     }
                     delegate: AppCard {
                         required property var modelData
+                        // Keep the full catalog and smooth scrolling, but do
+                        // not draw or activate cards cut by a viewport edge.
+                        readonly property bool fullyInView: y >= catalogGrid.contentY - 0.5
+                            && y + height <= catalogGrid.contentY + catalogGrid.height + 0.5
+                        visible: fullyInView
+                        enabled: fullyInView
                         width: GridView.view.cellWidth - 16
                         height: 142
                         x: 8
@@ -498,7 +509,12 @@ Page {
                     clip: true; spacing: 12
                     model: page.installedMatches
                     boundsBehavior: Flickable.StopAtBounds
-                    ScrollBar.vertical: ScrollBar {}
+                    ScrollBar.vertical: PageScrollBar {
+                        objectName: "installedPageScrollBar"
+                        parent: page.contentItem
+                        anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
+                        visible: installedList.visible && size < 1
+                    }
                     NaturalWheelScroll { scrollTarget: installedList }
                     delegate: InstalledRow {
                         required property var modelData

@@ -129,7 +129,7 @@ TestCase {
     }
     function test_installed_touch_actions(data) {
         main.width = data.width
-        const app = {id: "org.example.Touch", name: "Touch test", summary: "An installed app", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "Developer", installation: "user"}
+        const app = {id: "org.example.Touch", name: "Touch test", summary: "An installed app", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "Developer", installation: "user", version: "2.0", installedVersion: "1.0", installedSize: "12.34 MiB"}
         backend.installedApps = [app]
         main.openApp(app)
         const stack = findChild(main, "navigationStack")
@@ -140,6 +140,11 @@ TestCase {
         const uninstall = findChild(page, "uninstallAppButton")
         verify(uninstall.icon.source.toString().endsWith("/qml/trash-red.svg"))
         const info = findChild(page, "appHeroText")
+        verify(findChild(page, "installSizeDetails").visible)
+        compare(findChild(page, "appDownloadSize").text, "12.34 MiB")
+        compare(findChild(page, "appAvailableVersion").text, "1.0")
+        verify(findChild(page, "appAvailableVersion").visible)
+        verify(!findChild(page, "totalDownloadSize").visible)
         for (const button of [open, uninstall]) {
             verify(button.visible && button.width >= 176 && button.height >= 56)
             const point = button.mapToItem(page, 0, 0)
@@ -158,6 +163,11 @@ TestCase {
         compare(backend.requested, "open:" + app.id)
         mouseClick(uninstall)
         compare(backend.requested, "uninstall:" + app.id)
+        backend.installedApps = [Object.assign({}, app, {installedVersion: "", installedSize: ""})]
+        verify(findChild(page, "installSizeDetails").visible)
+        verify(!findChild(page, "appAvailableVersion").visible,
+               "Unknown installed versions must not fall back to the newer catalog release")
+        compare(findChild(page, "appDownloadSize").text, "Unavailable")
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.installedApps = []
         main.width = 1180
@@ -389,7 +399,7 @@ TestCase {
     }
     function test_installed_app_tracks_size_target(data) {
         const app = {id: "org.example.Installed", name: "Installed test", summary: "", description: "", icon: "", screenshots: [], category: "Games", license: "", homepage: "", developer: "",
-                     installation: "user", installedBranch: "stable", installedArch: "x86_64", installedSize: "10 MB", installedVersion: "1.0"}
+                     installation: "user", installedBranch: "stable", installedArch: "x86_64", installedSize: "10 MiB", installedVersion: "1.0", version: "2.0"}
         const stack = findChild(main, "navigationStack")
         backend.installSizes = ({})
         backend.sizeRequested = ""
@@ -405,7 +415,10 @@ TestCase {
         compare(backend.sizeRequested, app.id)
         compare(backend.sizeRequestCount, before + 1)
         const page = stack.currentItem
-        verify(!findChild(page, "installSizeDetails").visible)
+        verify(findChild(page, "installSizeDetails").visible)
+        compare(findChild(page, "appDownloadSize").text, "10 MiB")
+        compare(findChild(page, "appAvailableVersion").text, "1.0")
+        verify(!findChild(page, "totalDownloadSize").visible)
         // The manager refreshes the tracked app's sizes before it publishes
         // the new installed list. The same page must reveal those fresh values.
         backend.installSizes = {"org.example.Installed": {state: "ready", appSize: "2 MiB", totalSize: "2 MiB"}}
@@ -413,6 +426,7 @@ TestCase {
         compare(stack.currentItem, page)
         verify(findChild(page, "appDownloadSize").visible)
         compare(findChild(page, "appDownloadSize").text, "2 MiB")
+        compare(findChild(page, "appAvailableVersion").text, "2.0")
         verify(!findChild(page, "totalDownloadSize").visible)
         verify(findChild(page, "installAppButton").visible)
         // Icon/list notifications must not introduce additional size reads.
@@ -808,6 +822,10 @@ TestCase {
         compare(main.downloadQueue.jobs.length, 1)
         verify(!findChild(page, "overallPercentageLabel").visible)
         verify(findChild(page, "openAppButton").visible)
+        verify(findChild(page, "installSizeDetails").visible)
+        compare(findChild(page, "appDownloadSize").text, "20 MB")
+        compare(findChild(page, "appAvailableVersion").text, "1.2")
+        verify(!findChild(page, "totalDownloadSize").visible)
         compare(main.downloadQueue.jobs[0].status, "Complete")
         const uninstall = findChild(page, "uninstallAppButton")
         verify(uninstall.visible)

@@ -23,6 +23,38 @@ void record(Lookup &lookup, const QString &ref, quint64 size, const char *metada
 
 int main(int argc, char **argv) {
     QCoreApplication application(argc, argv);
+    if (argc == 2 && QString::fromUtf8(argv[1]) == "--installed") {
+        QElapsedTimer timer; timer.start();
+        QVariantList checked;
+        auto verifyInstallation = [&](FlatpakInstallation *installation, const QString &scope) {
+            g_autoptr(GPtrArray) refs = flatpak_installation_list_installed_refs_by_kind(installation, FLATPAK_REF_KIND_APP, nullptr, nullptr);
+            for (guint i = 0; refs && i < refs->len; ++i) {
+                auto ref = FLATPAK_INSTALLED_REF(g_ptr_array_index(refs, i));
+                const auto id = text(flatpak_ref_get_name(FLATPAK_REF(ref)));
+                QVariantMap app{{"id", id}, {"installation", scope},
+                    {"installedArch", text(flatpak_ref_get_arch(FLATPAK_REF(ref)))},
+                    {"installedBranch", text(flatpak_ref_get_branch(FLATPAK_REF(ref)))}};
+                const auto bytes = flatpak_installed_ref_get_installed_size(ref);
+                const auto size = localInstalledFlatpakSize(app);
+                assert(!size.isEmpty() && size == downloadSizeText(bytes));
+                app["id"] = id + ".desktop";
+                assert(localInstalledFlatpakSize(app) == size);
+                app["installedBranch"] = "appcenter-nonexistent-test-branch";
+                assert(localInstalledFlatpakSize(app).isEmpty());
+                checked.append(QVariantMap{{"id", id}, {"scope", scope}, {"bytes", double(bytes)}, {"size", size}});
+            }
+        };
+        g_autoptr(FlatpakInstallation) user = flatpak_installation_new_user(nullptr, nullptr);
+        if (user) verifyInstallation(user, "user");
+        g_autoptr(GPtrArray) systems = flatpak_get_system_installations(nullptr, nullptr);
+        for (guint i = 0; systems && i < systems->len; ++i) {
+            auto installation = FLATPAK_INSTALLATION(g_ptr_array_index(systems, i));
+            const auto id = text(flatpak_installation_get_id(installation));
+            verifyInstallation(installation, id == "default" ? "system" : id);
+        }
+        puts(QJsonDocument::fromVariant(QVariantMap{{"apps", checked}, {"elapsedMs", timer.elapsed()}}).toJson(QJsonDocument::Compact).constData());
+        return 0;
+    }
     if (argc > 1) {
         QElapsedTimer timer; timer.start();
         auto sizes = localFlatpakSizes({{"id", QString::fromUtf8(argv[1])}, {"remote", "flathub"}});
@@ -39,6 +71,8 @@ int main(int argc, char **argv) {
         return sizes["state"] == "ready" ? 0 : 1;
     }
     const QString app = "app/org.example.App/x86_64/stable";
+    assert(localInstalledFlatpakSize({}).isEmpty());
+    assert(localInstalledFlatpakSize({{"id", "org.example.App"}, {"installation", "user"}}).isEmpty());
     const QString runtime = "runtime/org.example.Platform/x86_64/1";
     const QString locale = "runtime/org.example.App.Locale/x86_64/stable";
     Lookup lookup;
