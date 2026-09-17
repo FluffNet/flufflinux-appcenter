@@ -498,12 +498,12 @@ Page {
                         id: websiteLink
                         objectName: "appWebsiteLink"
                         text: app ? app.homepage : ""
-                        // The value column fills the row, but only the URL is
-                        // clickable/focusable. Long URLs still fit the column.
-                        implicitWidth: contentItem.implicitWidth
+                        // Fit the URL plus a small focus/click-target inset,
+                        // while keeping long URLs within the value column.
+                        implicitWidth: contentItem.implicitWidth + leftPadding + rightPadding
                         width: Math.min(parent.width, implicitWidth)
                         flat: true
-                        leftPadding: 0; rightPadding: 0; topPadding: 0; bottomPadding: 0
+                        leftPadding: 4; rightPadding: 4; topPadding: 4; bottomPadding: 4
                         contentItem: Label {
                             text: parent.text
                             color: window.accentColor

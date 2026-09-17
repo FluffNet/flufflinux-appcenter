@@ -129,10 +129,13 @@ TestCase {
         compare(appSize.color, main.textColor)
         const website = findChild(page, "appWebsiteLink")
         compare(website.contentItem.horizontalAlignment, Text.AlignLeft)
-        compare(website.leftPadding, 0)
+        compare(website.leftPadding, 4)
+        compare(website.rightPadding, 4)
+        compare(website.topPadding, 4)
+        compare(website.bottomPadding, 4)
         compare(website.contentItem.text, app.homepage)
-        verify(Math.abs(website.width - website.contentItem.implicitWidth) < 1,
-               "Website focus/click target must fit the URL text")
+        verify(Math.abs(website.width - website.contentItem.implicitWidth - 8) < 1,
+               "Website focus/click target must fit the URL plus 4px on each side")
         verify(website.width < website.parent.width / 2)
         backend.installSizes = {"org.example.Size": {state: "unavailable"}}
         verify(totalSize.visible && totalCaption.visible)

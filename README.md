@@ -58,8 +58,8 @@ background update services, notifications, settings, or tray components.
 - Installed lists user and system applications, with version and installed size.
   Open an app, view its information, or uninstall it from its row or app page.
   App details omit the technical installation/scope/branch/architecture row.
-  The website link and its focus/click target fit the URL, bounded by the available
-  value-column width for long addresses.
+  The website link and its focus/click target fit the URL with 4px padding on each
+  side, bounded by the available value-column width for long addresses.
 - Uninstall asks **“Uninstall [app]?”**, with a short paragraph explaining app/data
   removal and compact **Yes / No** buttons. System-wide removals explain their
   all-users scope in the paragraph instead of the heading.

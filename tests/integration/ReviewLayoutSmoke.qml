@@ -9,6 +9,7 @@ AppCenter.Main {
     property string testId: "com.anydesk.Anydesk"
     property string scope: "user"
     property bool reviewOnAppPage: true
+    property bool skipReview: false
     property string phase: "start"
     property var testApp: null
     property bool failed: false
@@ -40,8 +41,8 @@ AppCenter.Main {
                 main.testApp = main.installedApps.find(app => String(app.id).replace(/\.desktop$/, "") === main.testId && app.installation === main.scope)
                 if (!main.check(!!main.testApp, "Expected installed app missing: " + JSON.stringify(main.installedApps) + " " + main.installedError)) return
                 main.selectedCategory = "Installed"
-                if (main.reviewOnAppPage) main.openApp(main.testApp)
-                main.phase = "openReview"
+                if (main.reviewOnAppPage || main.skipReview) main.openApp(main.testApp)
+                main.phase = main.skipReview ? "website" : "openReview"
             } else if (main.phase === "openReview") {
                 main.backend.uninstallApp(main.testApp)
                 main.phase = "review"
@@ -79,14 +80,20 @@ AppCenter.Main {
                     if (!main.check(!!date && date.visible && date.text === main.testApp.installedDate
                                     && date.text.includes(":"), "Installed date/time missing")) return
                     console.info("INSTALL_DATE_DISPLAY: " + date.text)
+                } else {
+                    if (!main.check(!main.find(stack.currentItem, "appInstalledDateValue").visible,
+                                    "Unrecorded installation date must stay hidden")) return
                 }
-                if (!main.check(Math.abs(link.width - link.contentItem.implicitWidth) < 1
+                if (!main.check(Math.abs(link.width - link.contentItem.implicitWidth - 8) < 1
+                                && link.leftPadding === 4 && link.rightPadding === 4
+                                && link.topPadding === 4 && link.bottomPadding === 4
                                 && link.width < link.parent.width,
                                 "Website control still stretches beyond the URL")) return
                 const scroll = main.find(stack.currentItem, "detailsFlickable")
                 scroll.contentY = Math.max(0, scroll.contentHeight - scroll.height)
                 link.forceActiveFocus(Qt.TabFocusReason)
-                console.info("REVIEW_LAYOUT_ALL_PASS: removal declined; focused website width=" + link.width + ", column=" + link.parent.width)
+                console.info("REVIEW_LAYOUT_ALL_PASS: " + (main.skipReview ? "read-only app details" : "removal declined")
+                             + "; focused website width=" + link.width + ", column=" + link.parent.width)
                 main.phase = "done" // Remain visible for the website screenshot.
             }
         }
