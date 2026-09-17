@@ -42,6 +42,35 @@ TestCase {
         return [{tag: "user", message: "If you proceed, Calculator and its app data will be removed."},
                 {tag: "system", message: "If you proceed, Calculator will be removed for all users, and its app data for this account will be deleted."}]
     }
+    function test_version_beside_size_data() {
+        return [{tag: "with-version", version: "0.28.0", total: "1.77 GiB", width: 1180},
+                {tag: "dependencies", version: "1.0", total: "2.35 GiB", width: 1180},
+                {tag: "narrow", version: "2026.09.17", total: "2.35 GiB", width: 720},
+                {tag: "unknown", version: "", total: "1.77 GiB", width: 1180}]
+    }
+    function test_version_beside_size(data) {
+        main.width = data.width
+        const app = {id: "org.example.Version", name: "Version test", version: data.version, summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "Developer"}
+        backend.installSizes = {[app.id]: {state: "ready", appSize: "1.77 GiB", totalSize: data.total}}
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        const size = findChild(page, "appDownloadSize")
+        const version = findChild(page, "appAvailableVersion")
+        compare(size.text, "1.77 GiB")
+        compare(version.text, data.version)
+        compare(version.visible, data.version.length > 0)
+        waitForRendering(page)
+        if (version.visible) {
+            const position = version.mapToItem(page, version.width, 0)
+            verify(position.x <= page.width - 24, "Version must fit the page")
+            if (data.width > 720) compare(version.mapToItem(page, 0, 0).y, size.mapToItem(page, 0, 0).y)
+        }
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        main.width = 1180
+        backend.installSizes = ({})
+    }
     function test_simple_uninstall_confirmation(data) {
         const dialog = findChild(main, "transactionReview")
         const plan = {token: 41, title: "Uninstall Calculator?", kind: "transaction", removing: true,

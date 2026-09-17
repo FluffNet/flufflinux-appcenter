@@ -29,10 +29,29 @@ ColumnLayout {
         visible: !actions.installed
         columns: 2; columnSpacing: 16; rowSpacing: 4
         Label { text: qsTr("App size:"); color: window.mutedTextColor }
-        Label {
-            objectName: "appDownloadSize"
+        Flow {
+            id: sizeAndVersion
             Layout.fillWidth: true
-            text: actions.sizeText("appSize"); color: window.textColor; font.bold: true
+            Layout.minimumWidth: appSizeValue.implicitWidth
+            spacing: 20
+            Label {
+                id: appSizeValue
+                objectName: "appDownloadSize"
+                text: actions.sizeText("appSize"); color: window.textColor; font.bold: true
+            }
+            Row {
+                id: versionRow
+                objectName: "appVersionDetails"
+                visible: !!(actions.app && actions.app.version)
+                spacing: 8
+                Label { id: versionCaption; text: qsTr("Version:"); color: window.mutedTextColor }
+                Label {
+                    objectName: "appAvailableVersion"
+                    width: Math.min(implicitWidth, Math.max(1, sizeAndVersion.width - versionCaption.width - versionRow.spacing))
+                    text: actions.app && actions.app.version || ""
+                    textFormat: Text.PlainText; wrapMode: Text.WrapAnywhere; color: window.textColor; font.bold: true
+                }
+            }
         }
         Label {
             objectName: "totalDownloadSizeLabel"

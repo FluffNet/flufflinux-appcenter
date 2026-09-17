@@ -96,6 +96,22 @@ TestCase {
         compare(loadingSpinner.color, window.textColor)
     }
 
+    function test_hero_artwork_and_developer_label() {
+        const artwork = Qt.resolvedUrl("../../assets/flufflinux-appcenter.svg").toString()
+        appPage.app = Object.assign({}, window.previewApp, {icon: artwork})
+        const logo = findChild(appPage, "appHeroIcon")
+        tryCompare(logo, "status", Image.Ready)
+        verify(logo.paintedWidth > 0 && logo.paintedHeight > 0)
+        compare(findChild(appPage, "appDeveloper").text, "FluffNet")
+        appPage.app = Object.assign({}, window.previewApp, {icon: "file:///missing-appcenter-logo.png", developer: ""})
+        tryCompare(logo, "loadFailed", true)
+        compare(logo.source.toString(), "image://icon/application-x-executable")
+        verify(!findChild(appPage, "appDeveloper").visible)
+        appPage.app = Object.assign({}, window.previewApp, {icon: artwork})
+        tryCompare(logo, "status", Image.Ready)
+        compare(logo.loadFailed, false)
+    }
+
     function test_no_screenshot_hides_the_strip_and_cannot_open_preview() {
         appPage.app = appWithScreenshots([])
         const screenshotList = findChild(appPage, "screenshotList")

@@ -314,19 +314,12 @@ Page {
                         Layout.preferredWidth: 112
                         Layout.preferredHeight: 112
 
-                        Image {
+                        AppIcon {
                             id: heroIcon
+                            objectName: "appHeroIcon"
                             anchors.fill: parent
                             sourceSize: Qt.size(112, 112)
-                            fillMode: Image.PreserveAspectFit
-                            asynchronous: true
-                            source: {
-                                if (typeof window.iconSource === "function") return window.iconSource(app && app.icon)
-                                if (!app || !app.icon) return "image://icon/application-x-executable"
-                                if (app.icon.indexOf("/") >= 0 || app.icon.indexOf("://") >= 0)
-                                    return app.icon.indexOf("://") >= 0 ? app.icon : "file://" + app.icon
-                                return "image://icon/" + app.icon
-                            }
+                            icon: app && app.icon || ""
                         }
                         LoadingSpinner {
                             objectName: "heroIconLoadingSpinner"
@@ -339,7 +332,7 @@ Page {
                         Layout.fillWidth: true; spacing: 7
                         Label { Layout.fillWidth: true; text: app ? app.name : ""; color: window.textColor; font.pixelSize: 34; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
                         Label { Layout.fillWidth: true; text: app ? app.summary : ""; color: window.mutedTextColor; font.pixelSize: 17; wrapMode: Text.WordWrap }
-                        Label { text: app && app.developer ? "By " + app.developer : ""; visible: text.length > 0; color: window.accentColor; font.weight: Font.DemiBold }
+                        Label { objectName: "appDeveloper"; text: app && app.developer || ""; textFormat: Text.PlainText; visible: text.length > 0; color: window.accentColor; font.weight: Font.DemiBold }
                         AppActions { app: page.app }
                     }
                 }

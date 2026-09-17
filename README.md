@@ -20,8 +20,21 @@ and Qt-rendered count comparisons in `target/style-*.png`, then leaves the
 catalog open. It does not start transactions or change the desktop theme, font
 or scale. The QML styling tests also cover dark, light and custom palettes.
 
+`tests/integration/AppMetadataSmoke.qml` is another read-only VM check: it
+opens four real catalog apps, verifies their version/developer labels and
+successfully loaded artwork, exercises the missing-icon fallback and recovery,
+and captures `target/metadata-*.png`. It leaves 0 A.D.'s page open.
+
 ## Install and remove apps
 
+- App pages show the published version beside the download size, read from the
+  same local catalog (no additional network request). Unknown versions are
+  omitted, and the version wraps below the size when space is limited. The
+  developer's name is displayed without a “By” prefix.
+- Catalog artwork uses Flatpak's stable `active` deployment path, not the
+  disposable snapshot directory. A catalog refresh can no longer leave an
+  already-open page pointing at deleted icons. Missing artwork falls back to
+  the themed application icon on app pages, catalog cards, Installed and Downloads.
 - Install from an app's information page. New apps, dependencies and software
   sources are installed **for the current user**, without administrator prompts.
   App Center's system-wide default-handler registration is separate from where

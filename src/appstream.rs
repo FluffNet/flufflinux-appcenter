@@ -14,6 +14,7 @@ pub struct App {
     pub developer: String,
     pub license: String,
     pub homepage: String,
+    pub version: String,
     pub screenshots: Vec<String>,
     pub flatpak_ref: String,
     pub remote: String,
@@ -55,6 +56,14 @@ pub fn load_catalog() -> Vec<App> {
 
 fn collect_files(directory: &Path, depth: u8, files: &mut Vec<PathBuf>) {
     if depth > 5 {
+        return;
+    }
+    // Flatpak replaces/prunes deployment-hash directories during refreshes.
+    // Read only the active snapshot and retain the symlink in icon paths so
+    // an already-open catalog can still load artwork after a later refresh.
+    let active = directory.join("active");
+    if active.join("appstream.xml.gz").is_file() || active.join("appstream.xml").is_file() {
+        collect_files(&active, depth + 1, files);
         return;
     }
     let Ok(entries) = fs::read_dir(directory) else {
@@ -111,6 +120,7 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         .unwrap_or_default();
     let license = base_text(xml, "project_license").unwrap_or_default();
     let homepage = tagged_text(xml, "url", "homepage").unwrap_or_default();
+    let version = release_version(xml);
     let mut seen_screenshots = HashSet::new();
     let screenshots = blocks(xml, "screenshot")
         .into_iter()
@@ -129,6 +139,7 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         developer,
         license,
         homepage,
+        version,
         screenshots,
         flatpak_ref,
         remote,
@@ -164,6 +175,7 @@ fn merge(current: &mut App, incoming: &App) {
     fill!(developer);
     fill!(license);
     fill!(homepage);
+    fill!(version);
     fill!(flatpak_ref);
     fill!(remote);
     if current.screenshots.is_empty() {
@@ -211,6 +223,47 @@ fn preferred_icon(xml: &str, catalog_path: &Path) -> String {
         }
     }
     base_text(xml, "icon").unwrap_or_else(|| "application-x-executable".into())
+}
+
+fn attribute(tag: &str, name: &str) -> Option<String> {
+    let mut rest = &tag[tag.find(char::is_whitespace)?..];
+    loop {
+        rest = rest.trim_start();
+        let equals = rest.find('=')?;
+        let key = rest[..equals].trim();
+        rest = rest[equals + 1..].trim_start();
+        let quote = rest.chars().next()?;
+        if quote != '\'' && quote != '"' {
+            return None;
+        }
+        rest = &rest[1..];
+        let end = rest.find(quote)?;
+        if key == name {
+            return Some(clean_markup(&rest[..end]));
+        }
+        rest = &rest[end + 1..];
+    }
+}
+
+fn release_version(xml: &str) -> String {
+    let Some(releases) = element(xml, "releases") else {
+        return String::new();
+    };
+    // Collection metadata publishes the current release first. Read opening
+    // tags as releases may be self-closing when no release notes are present.
+    releases
+        .match_indices("<release")
+        .filter(|(offset, _)| {
+            releases
+                .as_bytes()
+                .get(offset + 8)
+                .is_some_and(u8::is_ascii_whitespace)
+        })
+        .find_map(|(offset, _)| {
+            let rest = &releases[offset..];
+            attribute(&rest[..=rest.find('>')?], "version").filter(|value| !value.is_empty())
+        })
+        .unwrap_or_default()
 }
 
 fn blocks<'a>(input: &'a str, tag: &str) -> Vec<&'a str> {
@@ -348,13 +401,14 @@ pub fn to_json(apps: &[App]) -> String {
         let search_haystack =
             format!("{search_name} {search_summary} {search_description} {search_metadata}");
         output.push_str(&format!(
-            "{{\"id\":{},\"name\":{},\"summary\":{},\"description\":{},\"icon\":{},\"category\":{},\"developer\":{},\"license\":{},\"homepage\":{},\"screenshots\":[{}],\"searchName\":{},\"searchSummary\":{},\"searchDescription\":{},\"searchMetadata\":{},\"searchHaystack\":{},\"flatpakRef\":{},\"remote\":{}}}",
+            "{{\"id\":{},\"name\":{},\"summary\":{},\"description\":{},\"icon\":{},\"category\":{},\"developer\":{},\"license\":{},\"homepage\":{},\"screenshots\":[{}],\"searchName\":{},\"searchSummary\":{},\"searchDescription\":{},\"searchMetadata\":{},\"searchHaystack\":{},\"flatpakRef\":{},\"remote\":{},\"version\":{}}}",
             escape_json(&app.id), escape_json(&app.name), escape_json(&app.summary),
             escape_json(&app.description), escape_json(&app.icon), escape_json(&app.category),
             escape_json(&app.developer), escape_json(&app.license), escape_json(&app.homepage), screenshots,
             escape_json(&search_name), escape_json(&search_summary),
             escape_json(&search_description), escape_json(&search_metadata),
-            escape_json(&search_haystack), escape_json(&app.flatpak_ref), escape_json(&app.remote)
+            escape_json(&search_haystack), escape_json(&app.flatpak_ref), escape_json(&app.remote),
+            escape_json(&app.version)
         ));
     }
     output.push(']');
@@ -364,6 +418,66 @@ pub fn to_json(apps: &[App]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn reads_published_version_and_handles_missing_or_self_closing_releases() {
+        let prefix = "<component type='desktop-application'><id>org.example.Version</id><name>Version</name>";
+        for (releases, expected) in [
+            ("<releases><release timestamp='200' type='stable' version='0.28.0'><description>Latest</description></release><release version='0.27.1'/></releases>", "0.28.0"),
+            ("<releases><release type='development' version = \"2.0-beta1\" /></releases>", "2.0-beta1"),
+            ("<releases><release x-version='wrong' version='1.0&amp;patch'/></releases>", "1.0&patch"),
+            ("<releases><release timestamp='200'/></releases>", ""),
+            ("", ""),
+        ] {
+            let app = parse_component(&format!("{prefix}{releases}</component>"), Path::new("/tmp/appstream.xml")).unwrap();
+            assert_eq!(app.version, expected);
+            assert!(to_json(&[app]).contains(&format!("\"version\":{}", escape_json(expected))));
+        }
+    }
+
+    #[test]
+    fn active_catalog_icons_survive_deployment_replacement() {
+        use std::os::unix::fs::symlink;
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root =
+            std::env::temp_dir().join(format!("fluff-appstream-{}-{unique}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
+        }
+        let _cleanup = Cleanup(root.clone());
+        let xml = "<component type='desktop-application'><id>org.example.Icon</id><name>Icon</name><icon type='cached'>org.example.Icon.png</icon><releases><release version='1.0'/></releases></component>";
+        for deployment in ["old", "new"] {
+            fs::create_dir_all(root.join(deployment).join("icons/128x128")).unwrap();
+            fs::write(root.join(deployment).join("appstream.xml"), xml).unwrap();
+            fs::write(
+                root.join(deployment)
+                    .join("icons/128x128/org.example.Icon.png"),
+                deployment,
+            )
+            .unwrap();
+        }
+        symlink("old", root.join("active")).unwrap();
+        let mut files = Vec::new();
+        collect_files(&root, 0, &mut files);
+        assert_eq!(files, vec![root.join("active/appstream.xml")]);
+        let app = parse_component(xml, &files[0]).unwrap();
+        assert_eq!(
+            Path::new(&app.icon),
+            root.join("active/icons/128x128/org.example.Icon.png")
+        );
+        assert_eq!(fs::read_to_string(&app.icon).unwrap(), "old");
+        fs::remove_file(root.join("active")).unwrap();
+        symlink("new", root.join("active")).unwrap();
+        fs::remove_dir_all(root.join("old")).unwrap();
+        // Reuse the original in-memory app, just as opening details later does.
+        assert_eq!(fs::read_to_string(&app.icon).unwrap(), "new");
+    }
     #[test]
     fn parses_a_desktop_component() {
         let xml = r#"<component type="desktop-application"><id>org.fluff.Test</id><name>Test &amp; App</name><summary>Small test</summary><categories><category>Utility</category></categories></component>"#;

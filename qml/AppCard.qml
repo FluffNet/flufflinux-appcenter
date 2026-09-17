@@ -21,19 +21,11 @@ AbstractButton {
         Item {
             Layout.preferredWidth: 64; Layout.preferredHeight: 64; Layout.alignment: Qt.AlignTop
 
-            Image {
+            AppIcon {
                 id: appIcon
                 anchors.fill: parent
                 sourceSize: Qt.size(64, 64)
-                fillMode: Image.PreserveAspectFit
-                asynchronous: true
-                source: {
-                    if (typeof window.iconSource === "function") return window.iconSource(app.icon)
-                    if (!app.icon) return "image://icon/application-x-executable"
-                    if (app.icon.indexOf("/") >= 0 || app.icon.indexOf("://") >= 0)
-                        return app.icon.indexOf("://") >= 0 ? app.icon : "file://" + app.icon
-                    return "image://icon/" + app.icon
-                }
+                icon: app.icon || ""
             }
             LoadingSpinner {
                 anchors.centerIn: parent

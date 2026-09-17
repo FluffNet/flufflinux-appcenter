@@ -21,16 +21,10 @@ AbstractButton {
     }
     contentItem: RowLayout {
         spacing: 16
-        Image {
+        AppIcon {
             Layout.preferredWidth: 56; Layout.preferredHeight: 56
             sourceSize: Qt.size(64, 64)
-            fillMode: Image.PreserveAspectFit
-            asynchronous: true
-            source: typeof window.iconSource === "function" ? window.iconSource(app.icon)
-                    : !app.icon ? "image://icon/application-x-executable"
-                    : app.icon.indexOf("://") >= 0 ? app.icon
-                    : app.icon.indexOf("/") >= 0 ? "file://" + app.icon
-                    : "image://icon/" + app.icon
+            icon: app.icon || ""
         }
         ColumnLayout {
             Layout.fillWidth: true
