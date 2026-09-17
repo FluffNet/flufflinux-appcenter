@@ -12,11 +12,14 @@ AppCenter.Main {
     property bool sawApp: false
     property bool sawDependency: false
     property bool sawProgressUi: false
-    property bool sawAppProgressImage: false
     property bool sawDownloadStage: false
     property bool sawInstallStage: false
     property bool sawAppInstallStage: false
     property string testId: "org.gnome.Calculator"
+    property string sourceFile: ""
+    property bool expectNoDownload: false
+    property string proofPrefix: "unified"
+    property real previousProgress: 0
     property bool keepOpen: false
 
     function find(item, name) {
@@ -37,10 +40,27 @@ AppCenter.Main {
     }
     Connections {
         target: main.backend
+        function onReviewChanged() {
+            const review = main.backend.review
+            if (!review.token || !main.sourceFile) return
+            // Only approve the explicit test bundle, never an unknown remote
+            // or an uninstall prompt. Production trust prompts stay intact.
+            if (!main.check(review.kind === "bundle" && review.message.endsWith(main.sourceFile.replace("file://", "")),
+                            "Unexpected source trust request during bundle test")) return
+            const token = review.token
+            Qt.callLater(function() { main.backend.answerReview(token, true) })
+        }
         function onJobsChanged() {
             if (!main.testApp) return
             const job = main.jobForApp(main.testApp)
             if (!job || !job.active) return
+            if (!main.check(job.progress >= main.previousProgress && job.progress < 1,
+                            "Overall progress moved backwards or completed before the result")) return
+            main.previousProgress = job.progress
+            if (!main.check((job.receivedBytes || 0) <= (job.downloadTotalBytes || 0),
+                            "Received bytes exceed the transaction download total")) return
+            if (main.expectNoDownload && !main.check(!job.hasDownload && !job.receivedBytes && !job.downloadTotalBytes,
+                                                    "Local-only bundle unexpectedly counted network bytes")) return
             if (!main.check(job.icon === main.testApp.icon, "Active download lost its catalog icon")) return
             for (const op of (job.operations || [])) {
                 if (!main.check(!/delta parts|loose fetched|objects fetched/.test(op.status),
@@ -58,48 +78,46 @@ AppCenter.Main {
                         if (!current || !current.active) return
                         const stack = main.find(main.contentItem, "navigationStack")
                         const label = main.find(stack.currentItem, "appJobStatus")
-                        const download = main.find(stack.currentItem, "downloadPhaseProgress")
-                        const install = main.find(stack.currentItem, "installPhaseProgress")
-                        if (!main.check(download && install && install.visible
-                                        && Math.abs(download.value - current.downloadProgress) < 0.0001
-                                        && Math.abs(install.value - current.installProgress) < 0.0001,
-                                        "Separate progress bars do not match the real backend")) return
+                        const bar = main.find(stack.currentItem, "overallInstallProgress")
+                        const bytes = main.find(stack.currentItem, "downloadBytesLabel")
+                        const count = main.find(stack.currentItem, "completedOperationsLabel")
+                        const percentage = main.find(stack.currentItem, "overallPercentageLabel")
+                        if (!main.check(bar && bar.visible && !bar.indeterminate
+                                        && Math.abs(bar.value - current.progress) < 0.0001
+                                        && count.text === current.installCompleted + "/" + current.installTotal + " Complete"
+                                        && bytes.visible === current.hasDownload
+                                        && (!bytes.visible || bytes.text === current.downloadedSize + "/" + current.downloadTotalSize + " Downloaded")
+                                        && percentage.text === Math.floor(current.progress * 100 + 0.000001) + "%"
+                                        && !main.find(stack.currentItem, "downloadPhaseProgress")
+                                        && !main.find(stack.currentItem, "installPhaseProgress"),
+                                        "Unified progress/bytes/count do not match the real backend")) return
                         if (current.phase === "download" && !main.sawDownloadStage) {
                             main.sawDownloadStage = true
-                            console.info("DOWNLOAD_STAGE_PASS: " + current.downloadProgress + ", installed=" + current.installCompleted + "/" + current.installTotal)
+                            console.info("DOWNLOAD_STAGE_PASS: " + percentage.text + ", " + bytes.text + ", " + count.text)
                             stack.currentItem.grabToImage(function(result) {
-                                result.saveToFile(Qt.resolvedUrl("../../target/download-stage-proof.png").toString().replace("file://", ""))
+                                result.saveToFile(Qt.resolvedUrl("../../target/" + main.proofPrefix + "-download-proof.png").toString().replace("file://", ""))
                             })
                         }
                         if (current.phase === "install" && !main.sawInstallStage) {
-                            if (!main.check(install.activeStep && current.installCompleted < current.installTotal,
+                            if (!main.check(current.progress < 1 && current.installCompleted < current.installTotal,
                                             "Download completion incorrectly finished installation")) return
                             main.sawInstallStage = true
-                            console.info("INSTALL_STAGE_PASS: " + current.downloadProgress + ", installed=" + current.installCompleted + "/" + current.installTotal)
+                            console.info("INSTALL_STAGE_PASS: " + percentage.text + ", " + bytes.text + ", " + count.text + ", bytesVisible=" + bytes.visible)
                             stack.currentItem.grabToImage(function(result) {
-                                result.saveToFile(Qt.resolvedUrl("../../target/install-stage-proof.png").toString().replace("file://", ""))
+                                result.saveToFile(Qt.resolvedUrl("../../target/" + main.proofPrefix + "-install-proof.png").toString().replace("file://", ""))
                             })
                         }
                         if (current.phase === "install" && current.currentRef.startsWith("app/") && !main.sawAppInstallStage) {
                             main.sawAppInstallStage = true
-                            console.info("APP_DEPLOY_STAGE_PASS: download=" + current.downloadProgress + ", installed=" + current.installCompleted + "/" + current.installTotal)
+                            if (!main.sourceFile && !main.check(current.receivedBytes === current.downloadTotalBytes,
+                                                               "All pulls finished but received/total bytes still differ")) return
+                            console.info("APP_DEPLOY_STAGE_PASS: " + percentage.text + ", " + bytes.text + ", " + count.text)
                             stack.currentItem.grabToImage(function(result) {
-                                result.saveToFile(Qt.resolvedUrl("../../target/install-app-stage-proof.png").toString().replace("file://", ""))
+                                result.saveToFile(Qt.resolvedUrl("../../target/" + main.proofPrefix + "-app-install-proof.png").toString().replace("file://", ""))
                             })
                         }
-                        if (main.check(label && label.visible && label.text === current.status,
-                                       "Current component/status did not reach the app page")) {
-                            if (!main.sawProgressUi) stack.currentItem.grabToImage(function(result) {
-                                result.saveToFile(Qt.resolvedUrl("../../target/install-progress-proof.png").toString().replace("file://", ""))
-                            })
-                            if (!main.sawAppProgressImage && current.currentRef.startsWith("app/")
-                                    && (current.status === "Installing…" || current.status.startsWith("Downloading…"))) {
-                                main.sawAppProgressImage = true
-                                console.info("INSTALL_STATUS_PASS: " + current.status)
-                                stack.currentItem.grabToImage(function(result) {
-                                    result.saveToFile(Qt.resolvedUrl("../../target/install-app-progress-proof.png").toString().replace("file://", ""))
-                                })
-                            }
+                        if (main.check(label && !label.visible,
+                                       "Redundant component/status text remains on the app page")) {
                             main.sawProgressUi = true
                         }
                     })
@@ -117,7 +135,17 @@ AppCenter.Main {
                 main.testApp = main.catalog.find(app => app.id === main.testId)
                 if (!main.check(!!main.testApp && !main.findInstalled(main.testApp),
                                 "Refusing missing/pre-installed test app")) return
-                main.openApp(main.testApp)
+                if (main.sourceFile) {
+                    main.backend.openSource(main.sourceFile)
+                    main.phase = "source"
+                } else {
+                    main.openApp(main.testApp)
+                    main.phase = "install"
+                }
+            } else if (main.phase === "source" && !main.backend.busy) {
+                if (!main.check(stack.currentItem.app && stack.currentItem.app.id === main.testId,
+                                "Local source did not open the app page")) return
+                main.previousProgress = 0
                 main.phase = "install"
             } else if (main.phase === "install") {
                 main.phase = "waiting"
@@ -126,13 +154,14 @@ AppCenter.Main {
                 const job = main.jobForApp(main.testApp)
                 if (!main.check(job && !job.failed && job.progress === 1 && main.findInstalled(main.testApp),
                                 "Real installation did not finish successfully")) return
-                if (!main.check(main.sawApp && main.sawProgressUi && main.sawAppProgressImage && (main.sawDependency || !job.operations.some(op => op.dependency)),
+                if (!main.check(main.sawApp && main.sawProgressUi && (main.sawDependency || !job.operations.some(op => op.dependency)),
                                 "Missing per-component progress")) return
-                if (!main.check(main.sawDownloadStage && main.sawInstallStage && main.sawAppInstallStage
+                if (!main.check((main.sawDownloadStage || !job.hasDownload) && main.sawInstallStage && main.sawAppInstallStage
                                 && job.installCompleted === job.installTotal && job.downloadProgress === 1,
-                                "Missing separate real download/install stages")) return
+                                "Missing real download/install stages in the unified bar")) return
                 if (!main.check(!main.find(stack.currentItem, "appJobStatus").visible
                                 && !main.find(stack.currentItem, "appInstallProgress").visible
+                                && main.find(stack.currentItem, "openAppButton").visible
                                 && main.find(stack.currentItem, "uninstallAppButton").visible,
                                 "Completion still leaves status/progress instead of installed actions")) return
                 const installed = main.findInstalled(main.testApp)

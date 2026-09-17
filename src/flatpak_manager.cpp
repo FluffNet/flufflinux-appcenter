@@ -301,7 +301,6 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
         auto job = m_jobs[m_current].toMap();
         auto operations = job.value("operations").toList();
         auto status = message["status"].toString();
-        double weighted = 0, weight = 0;
         for (auto &entry : operations) {
             auto op = entry.toMap();
             if (op.value("ref").toString() == message["ref"].toString()) {
@@ -316,12 +315,12 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
                 if (job.value("action") != "uninstall" && op.value("dependency").toBool())
                     status = tr("Dependency: %1\n%2").arg(op.value("name").toString(), status);
             }
-            const double size = qMax(1.0, op.value("downloadBytes").toDouble());
-            weighted += size * op.value("progress").toDouble(); weight += size;
         }
         auto values = transactionStages(operations, message["phase"].toString());
         values["operations"] = operations;
-        values["progress"] = weight > 0 ? qMin(0.99, weighted / weight) : 0;
+        // Metadata/transfer estimates can change mid-pull; never move the
+        // overall bar backwards. Only a successful result may reach 100%.
+        values["progress"] = qMax(job.value("progress").toDouble(), values.value("progress").toDouble());
         values["status"] = status;
         values["currentRef"] = message["ref"].toString();
         patchJob(m_current, values);
@@ -368,7 +367,7 @@ void FlatpakManager::cancelJob(int index) {
     if (index < 0 || index >= m_jobs.size() || !active(m_jobs[index].toMap())) return;
     if (index == m_current) {
         m_worker.write("{\"cancel\":true}\n");
-        patchJob(index, {{"status", tr("Cancelling…")}});
+        patchJob(index, {{"status", tr("Cancelling…")}, {"cancelling", true}});
         m_review.clear(); emit reviewChanged();
     } else patchJob(index, {{"active", false}, {"cancelled", true}, {"status", tr("Cancelled")}});
 }

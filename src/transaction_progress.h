@@ -3,12 +3,14 @@
 #include <QVariantList>
 #include <QLocale>
 
-// Transfer percentage and deployment completion are different signals.
-// Flatpak can finish a pull at 100% while still installing that component.
-// Keep actual completed operations for installation; never invent a timed %.
+// One overall estimate: transfer work occupies 90%, confirmed deployment 10%.
+// Flatpak's transfer size is a maximum, not an exact network requirement. Once
+// a pull finishes, replace that component's estimate with its actual bytes.
+// Keep transfer and deployment signals separate internally; never advance a
+// percentage on a timer, or treat a finished pull as an installed component.
 inline QVariantMap transactionStages(const QVariantList &operations, const QString &phase) {
-    double downloaded = 0, weight = 0;
-    quint64 received = 0;
+    double downloaded = 0, weight = 0, localProgress = 0;
+    quint64 received = 0, downloadTotal = 0;
     int complete = 0, total = 0;
     bool pendingDownload = false, estimating = false;
     for (const auto &entry : operations) {
@@ -16,9 +18,17 @@ inline QVariantMap transactionStages(const QVariantList &operations, const QStri
         if (op.value("action") == "uninstall") continue;
         ++total;
         if (op.value("phase") == "complete") ++complete;
-        received += op.value("receivedBytes").toULongLong();
         // Local bundles have no download of their own; dependencies still do.
-        if (op.value("action") == "install-bundle") continue;
+        if (op.value("action") == "install-bundle") {
+            localProgress += op.value("phase") == "complete" ? 1
+                : qBound(0.0, op.value("progress").toDouble(), 0.99);
+            continue;
+        }
+        const auto transferred = op.value("receivedBytes").toULongLong();
+        received += transferred;
+        const bool pullFinished = op.value("downloadProgress").toDouble() >= 1;
+        downloadTotal += pullFinished ? transferred
+            : qMax(transferred, op.value("downloadBytes").toULongLong());
         const double size = qMax(1.0, op.value("downloadBytes").toDouble());
         const double progress = qBound(0.0, op.value("downloadProgress").toDouble(), 1.0);
         downloaded += size * progress;
@@ -27,8 +37,16 @@ inline QVariantMap transactionStages(const QVariantList &operations, const QStri
         estimating |= op.value("phase") == "download" && op.value("estimating").toBool();
     }
     const double downloadProgress = weight > 0 ? qMin(pendingDownload ? 0.99 : 1.0, downloaded / weight) : 1;
-    return {{"phase", phase}, {"hasDownload", weight > 0}, {"downloadProgress", downloadProgress},
+    const double installProgress = total ? double(complete) / total : 0;
+    // A pure local bundle uses its import callbacks instead of network work.
+    const double transferProgress = weight > 0 ? downloadProgress : total ? localProgress / total : 0;
+    const double overall = qMin(0.99, 0.9 * transferProgress + 0.1 * installProgress);
+    const auto mb = [](quint64 size) { return QLocale().toString(double(size) / 1000000, 'f', 2) + " MB"; };
+    return {{"phase", phase}, {"downloadProgress", downloadProgress},
             {"downloadEstimating", estimating}, {"receivedSize", QLocale().formattedDataSize(received)},
+            {"receivedBytes", received}, {"downloadTotalBytes", downloadTotal},
+            {"downloadedSize", mb(received)}, {"downloadTotalSize", mb(downloadTotal)},
+            {"hasDownload", downloadTotal > 0}, {"progress", overall},
             {"installCompleted", complete}, {"installTotal", total},
-            {"installProgress", total ? double(complete) / total : 0}};
+            {"installProgress", installProgress}};
 }

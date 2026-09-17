@@ -75,7 +75,10 @@ Page {
                             }
                         }
                         Label {
+                            objectName: "downloadJobStatus"
                             Layout.fillWidth: true
+                            visible: !modelData.active || !(modelData.operations || []).length || modelData.cancelling === true
+                                     || (window.backend.review && window.backend.review.jobIndex === modelData.index)
                             text: modelData.status
                             textFormat: Text.PlainText; wrapMode: Text.Wrap
                             color: modelData.failed ? window.accentColor : window.mutedTextColor
@@ -105,12 +108,6 @@ Page {
                                     Label { text: modelData.downloadSize; color: window.mutedTextColor }
                                 }
                                 Label { Layout.fillWidth: true; text: modelData.status; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.mutedTextColor }
-                                FluffProgressBar {
-                                    Layout.fillWidth: true
-                                    visible: modelData.phase === "download" || modelData.phase === "install"
-                                    value: modelData.phase === "download" ? (modelData.downloadProgress || 0) : 0
-                                    indeterminate: modelData.phase === "install" || modelData.estimating === true
-                                }
                                 Rectangle { Layout.fillWidth: true; height: 1; color: window.borderColor }
                             }
                         }

@@ -37,18 +37,23 @@ background update services, notifications, settings, or tray components.
   cancellation finishes. Cancelling the only job also hides the Downloads
   button; other completed/failed jobs stay. Operations are serialized;
   additional requests wait in the queue.
-  Separate download and installation bars include every planned component.
-  Download uses Flatpak's estimated transfer progress, weighted by each component's
-  published size; installation counts completed components and animates while
-  deploying one (Flatpak provides no deployment percentage). Dependencies may
-  download and install in turn, so these stages can overlap. A finished download
-  never marks installation complete. The status below uses simple
-  download/install labels, without repeating the app name or exposing internal
-  delta/object counters. Dependency names remain visible and actual errors are
-  still reported. Its received-byte count is for the current component, not the
-  whole transaction. Published estimates can exceed actual transfers, notably
-  for locale subsets and reused
-  content. Successful installs leave Open/Uninstall actions, not completion text,
+  A single overall progress bar includes every planned component, with
+  `1/5 Complete`, `128.00 MB/512.00 MB Downloaded`, and a plain percentage below.
+  The overall estimate weights transfer work at 90% and confirmed deployment at
+  10%, never moves backwards, and reaches 100% only on transaction success.
+  Flatpak does not expose a deployment percentage: no timer invents progress
+  while it deploys a component. The unfinished section shows activity during
+  deployment, including local bundles without fine-grained import callbacks;
+  their file bytes are never counted as network downloads. Online dependencies
+  of a bundle still appear in the download total.
+  Received bytes are summed across the whole transaction. The initial total is
+  Flatpak's maximum download estimate; each completed pull replaces its estimate
+  with actual transferred bytes (locale subsets/reused content can reduce it).
+  A finished download can therefore show matching byte counts while the overall
+  bar still waits for installation. Downloads retains component names/statuses
+  but no extra component bars; the app page omits redundant activity/name text.
+  Errors, cancellation and confirmation messages remain visible.
+  Successful installs leave Open/Uninstall actions, not completion text,
   on the app page; their completed Downloads history remains available.
 - Removals never appear in Downloads or its badge. Their progress/errors are
   shown in the Installed row and app view only; successful removal leaves no
@@ -207,9 +212,10 @@ the record on successful uninstall, so reinstalling records a new date.
 
 `FLUFF_APP_CENTER_QML="$PWD/tests/integration/InstallProgressSmoke.qml" target/release/flufflinux-appcenter`
 is a VM-only, real-worker UI test: it installs the absent Calculator app, checks
-component progress, separate download/deployment bars and completion cleanup,
-checks dates in both views, and captures `target/install-*-proof.png` and
-`target/download-stage-proof.png`. It leaves that test app installed for restart/date
+component progress, one monotonic overall bar, aggregate bytes, counts and completion
+cleanup, checks dates in both views, and captures `target/unified-*-proof.png` and
+`target/install-*-proof.png`. Its optional `sourceFile` property tests a local
+bundle through the same app page. It leaves that test app installed for restart/date
 verification; remove only that test installation afterward. Native persistence
 tests run independently with:
 

@@ -57,6 +57,7 @@ ColumnLayout {
             onClicked: window.installApp(actions.app)
         }
         Button {
+            objectName: "openAppButton"
             visible: !!actions.installed && !actions.running
             text: qsTr("Open")
             icon.name: "media-playback-start"
@@ -82,6 +83,7 @@ ColumnLayout {
         Item { Layout.fillWidth: true }
     }
     InstallationProgress {
+        id: installationProgress
         objectName: "appInstallProgress"
         Layout.fillWidth: true
         job: actions.job
@@ -89,7 +91,11 @@ ColumnLayout {
     Label {
         objectName: "appJobStatus"
         Layout.fillWidth: true
-        visible: !!actions.job && (actions.running || actions.job.failed === true)
+        // The unified bar already gives all normal install/download details.
+        // Keep errors, cancellation, source trust and removal messages visible.
+        visible: !!actions.job && (actions.job.failed === true || (actions.running
+                 && (actions.removing || !installationProgress.planned || actions.job.cancelling === true
+                     || (window.backend.review && window.backend.review.jobIndex === actions.job.index))))
         text: actions.awaitingRemovalConfirmation ? qsTr("Waiting for confirmation")
               : actions.job ? actions.job.status + (actions.job.error ? "\n" + actions.job.error : "") : ""
         textFormat: Text.PlainText; wrapMode: Text.Wrap

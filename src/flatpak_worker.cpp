@@ -205,10 +205,11 @@ void progressChanged(FlatpakTransactionProgress *progress, gpointer data) {
     g_autofree char *status = flatpak_transaction_progress_get_status(progress);
     const auto raw = str(status);
     const auto percent = flatpak_transaction_progress_get_progress(progress) / 100.0;
+    const bool bundle = flatpak_transaction_operation_get_operation_type(op) == FLATPAK_TRANSACTION_OPERATION_INSTALL_BUNDLE;
     const bool downloading = isDownloadStatus(raw);
     // In Flatpak 1.18 a non-download 100% callback marks end of pull,
     // NOT end of deployment. Only operation-done completes installation.
-    const auto phase = w->removing ? "uninstall" : downloading ? "download" : percent >= 1 ? "install" : "preparing";
+    const auto phase = w->removing ? "uninstall" : bundle ? "install" : downloading ? "download" : percent >= 1 ? "install" : "preparing";
     w->operationUpdate(str(flatpak_transaction_operation_get_ref(op)),
                        QString::fromLatin1(phase) == "preparing" ? QCoreApplication::translate("Flatpak", "Preparing…")
                            : simpleTransactionStatus(raw, flatpak_transaction_progress_get_bytes_transferred(progress), w->removing),
@@ -220,6 +221,9 @@ void newOperation(FlatpakTransaction *tx, FlatpakTransactionOperation *op,
                   FlatpakTransactionProgress *progress, gpointer data) {
     auto &w = *static_cast<Worker *>(data);
     const bool bundle = flatpak_transaction_operation_get_operation_type(op) == FLATPAK_TRANSACTION_OPERATION_INSTALL_BUNDLE;
+    // Sample once more at operation-done: very fast/cached pulls can finish
+    // between throttled changed signals. Keep the final byte count, not zero.
+    g_object_set_data_full(G_OBJECT(op), "appcenter-progress", g_object_ref(progress), g_object_unref);
     w.operationUpdate(str(flatpak_transaction_operation_get_ref(op)),
         w.removing ? QCoreApplication::translate("Flatpak", "Uninstalling…")
                    : bundle ? QCoreApplication::translate("Flatpak", "Installing…") : QCoreApplication::translate("Flatpak", "Preparing…"), 0,
@@ -230,8 +234,10 @@ void newOperation(FlatpakTransaction *tx, FlatpakTransactionOperation *op,
 void operationDone(FlatpakTransaction *, FlatpakTransactionOperation *op, const char *,
                    FlatpakTransactionResult, gpointer data) {
     auto &w = *static_cast<Worker *>(data);
+    auto progress = static_cast<FlatpakTransactionProgress *>(g_object_get_data(G_OBJECT(op), "appcenter-progress"));
     w.operationUpdate(str(flatpak_transaction_operation_get_ref(op)),
-                       QCoreApplication::translate("Flatpak", "Complete"), 1, "complete", 1);
+                       QCoreApplication::translate("Flatpak", "Complete"), 1, "complete", 1,
+                       progress ? flatpak_transaction_progress_get_bytes_transferred(progress) : 0);
 }
 gboolean operationError(FlatpakTransaction *, FlatpakTransactionOperation *op,
                         const GError *error, FlatpakTransactionErrorDetails, gpointer data) {

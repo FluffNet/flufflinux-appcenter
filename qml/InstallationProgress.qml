@@ -3,45 +3,48 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 ColumnLayout {
-    id: stages
+    id: progress
     property var job: null
     readonly property bool planned: !!job && (job.operations || []).length > 0
     readonly property bool removing: !!job && job.action === "uninstall"
-    readonly property bool downloadVisible: planned && !removing && job.hasDownload !== false
-    readonly property real downloadValue: job ? (job.downloadProgress || 0) : 0
-    readonly property int installedCount: job ? (job.installCompleted || 0) : 0
-    readonly property int installCount: job ? (job.installTotal || 0) : 0
     visible: !!job && job.active === true && (!removing || job.removalConfirmed === true)
     spacing: 8
-    Label {
-        objectName: "downloadPhaseLabel"
-        Layout.fillWidth: true
-        visible: stages.downloadVisible
-        text: stages.job && stages.job.downloadEstimating ? qsTr("Downloading…")
-              : qsTr("Download: %1%").arg(Math.floor(stages.downloadValue * 100))
-        color: window.mutedTextColor; wrapMode: Text.Wrap
-    }
     FluffProgressBar {
-        objectName: "downloadPhaseProgress"
+        objectName: "overallInstallProgress"
         Layout.fillWidth: true
-        visible: stages.downloadVisible
-        value: stages.downloadValue
-        indeterminate: !!stages.job && stages.job.downloadEstimating === true
+        value: progress.job ? (progress.job.progress || 0) : 0
+        indeterminate: !progress.planned || progress.removing
+        // Show activity in the unfinished section without inventing percentage
+        // updates when Flatpak supplies no fine-grained deployment callbacks.
+        activeStep: progress.planned && !progress.removing && progress.job.phase === "install"
+        Accessible.name: qsTr("Overall installation progress")
     }
-    Label {
-        objectName: "installPhaseLabel"
+    RowLayout {
         Layout.fillWidth: true
-        visible: stages.planned && !stages.removing
-        text: qsTr("Installation: %1 of %2 completed").arg(stages.installedCount).arg(stages.installCount)
-        color: window.mutedTextColor; wrapMode: Text.Wrap
-    }
-    FluffProgressBar {
-        objectName: "installPhaseProgress"
-        Layout.fillWidth: true
-        value: stages.job ? (stages.job.installProgress || 0) : 0
-        // Deployment has no percentage callback. Preserve completed steps,
-        // animating only the unfinished portion while Flatpak is installing.
-        activeStep: !!stages.job && stages.job.phase === "install"
-        indeterminate: !stages.planned || stages.removing
+        visible: progress.planned && !progress.removing
+        spacing: 12
+        Label {
+            objectName: "completedOperationsLabel"
+            text: qsTr("%1/%2 Complete").arg(progress.job ? (progress.job.installCompleted || 0) : 0)
+                                       .arg(progress.job ? (progress.job.installTotal || 0) : 0)
+            color: window.mutedTextColor
+        }
+        Label {
+            objectName: "downloadBytesLabel"
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            visible: !!progress.job && progress.job.hasDownload === true
+            text: qsTr("%1/%2 Downloaded").arg(progress.job ? progress.job.downloadedSize || "" : "")
+                                        .arg(progress.job ? progress.job.downloadTotalSize || "" : "")
+            horizontalAlignment: Text.AlignHCenter
+            wrapMode: Text.Wrap
+            color: window.mutedTextColor
+        }
+        Item { Layout.fillWidth: true; visible: !progress.job || progress.job.hasDownload !== true }
+        Label {
+            objectName: "overallPercentageLabel"
+            text: qsTr("%1%").arg(Math.floor(Math.min(0.99, progress.job ? (progress.job.progress || 0) : 0) * 100 + 0.000001))
+            color: window.mutedTextColor
+        }
     }
 }
