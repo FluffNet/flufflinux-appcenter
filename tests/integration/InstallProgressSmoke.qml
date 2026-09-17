@@ -13,6 +13,9 @@ AppCenter.Main {
     property bool sawDependency: false
     property bool sawProgressUi: false
     property bool sawAppProgressImage: false
+    property bool sawDownloadStage: false
+    property bool sawInstallStage: false
+    property bool sawAppInstallStage: false
     property string testId: "org.gnome.Calculator"
     property bool keepOpen: false
 
@@ -55,6 +58,35 @@ AppCenter.Main {
                         if (!current || !current.active) return
                         const stack = main.find(main.contentItem, "navigationStack")
                         const label = main.find(stack.currentItem, "appJobStatus")
+                        const download = main.find(stack.currentItem, "downloadPhaseProgress")
+                        const install = main.find(stack.currentItem, "installPhaseProgress")
+                        if (!main.check(download && install && install.visible
+                                        && Math.abs(download.value - current.downloadProgress) < 0.0001
+                                        && Math.abs(install.value - current.installProgress) < 0.0001,
+                                        "Separate progress bars do not match the real backend")) return
+                        if (current.phase === "download" && !main.sawDownloadStage) {
+                            main.sawDownloadStage = true
+                            console.info("DOWNLOAD_STAGE_PASS: " + current.downloadProgress + ", installed=" + current.installCompleted + "/" + current.installTotal)
+                            stack.currentItem.grabToImage(function(result) {
+                                result.saveToFile(Qt.resolvedUrl("../../target/download-stage-proof.png").toString().replace("file://", ""))
+                            })
+                        }
+                        if (current.phase === "install" && !main.sawInstallStage) {
+                            if (!main.check(install.activeStep && current.installCompleted < current.installTotal,
+                                            "Download completion incorrectly finished installation")) return
+                            main.sawInstallStage = true
+                            console.info("INSTALL_STAGE_PASS: " + current.downloadProgress + ", installed=" + current.installCompleted + "/" + current.installTotal)
+                            stack.currentItem.grabToImage(function(result) {
+                                result.saveToFile(Qt.resolvedUrl("../../target/install-stage-proof.png").toString().replace("file://", ""))
+                            })
+                        }
+                        if (current.phase === "install" && current.currentRef.startsWith("app/") && !main.sawAppInstallStage) {
+                            main.sawAppInstallStage = true
+                            console.info("APP_DEPLOY_STAGE_PASS: download=" + current.downloadProgress + ", installed=" + current.installCompleted + "/" + current.installTotal)
+                            stack.currentItem.grabToImage(function(result) {
+                                result.saveToFile(Qt.resolvedUrl("../../target/install-app-stage-proof.png").toString().replace("file://", ""))
+                            })
+                        }
                         if (main.check(label && label.visible && label.text === current.status,
                                        "Current component/status did not reach the app page")) {
                             if (!main.sawProgressUi) stack.currentItem.grabToImage(function(result) {
@@ -96,6 +128,9 @@ AppCenter.Main {
                                 "Real installation did not finish successfully")) return
                 if (!main.check(main.sawApp && main.sawProgressUi && main.sawAppProgressImage && (main.sawDependency || !job.operations.some(op => op.dependency)),
                                 "Missing per-component progress")) return
+                if (!main.check(main.sawDownloadStage && main.sawInstallStage && main.sawAppInstallStage
+                                && job.installCompleted === job.installTotal && job.downloadProgress === 1,
+                                "Missing separate real download/install stages")) return
                 if (!main.check(!main.find(stack.currentItem, "appJobStatus").visible
                                 && !main.find(stack.currentItem, "appInstallProgress").visible
                                 && main.find(stack.currentItem, "uninstallAppButton").visible,

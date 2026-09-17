@@ -18,18 +18,24 @@ inline QStringList flatpakDownloadFormats() {
     return formats;
 }
 
-inline QString simpleTransactionStatus(const QString &raw, quint64 received, bool removing,
-                                       const QStringList &downloadFormats = flatpakDownloadFormats()) {
-    if (removing) return QCoreApplication::translate("Flatpak", "Uninstalling…");
+inline bool isDownloadStatus(const QString &raw, const QStringList &downloadFormats = flatpakDownloadFormats()) {
     for (const auto &format : downloadFormats) {
         const auto placeholder = format.indexOf('%');
         const auto prefix = format.left(placeholder).trimmed();
         if (placeholder > 0 && !prefix.isEmpty() && raw.startsWith(prefix)) {
-            return received ? QCoreApplication::translate("Flatpak", "Downloading… %1 received")
-                                  .arg(QLocale().formattedDataSize(received))
-                            : QCoreApplication::translate("Flatpak", "Downloading…");
+            return true;
         }
     }
+    return false;
+}
+
+inline QString simpleTransactionStatus(const QString &raw, quint64 received, bool removing,
+                                       const QStringList &downloadFormats = flatpakDownloadFormats()) {
+    if (removing) return QCoreApplication::translate("Flatpak", "Uninstalling…");
+    if (isDownloadStatus(raw, downloadFormats))
+        return received ? QCoreApplication::translate("Flatpak", "Downloading… %1 received")
+                              .arg(QLocale().formattedDataSize(received))
+                        : QCoreApplication::translate("Flatpak", "Downloading…");
     // Installation includes preparation, unpacking and deployment. Unknown
     // progress messages get this safe activity label, not raw diagnostics.
     // Actual failures arrive separately through operation-error/result.

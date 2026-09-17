@@ -9,6 +9,8 @@
 #include <QSaveFile>
 #include <QStandardPaths>
 #include <QDebug>
+#include <QLocale>
+#include <QTimeZone>
 #include <utility>
 
 // Observed successful installations, not guessed filesystem dates. Separate
@@ -18,6 +20,14 @@ public:
     explicit InstallHistory(QString path = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation)
                             + "/installation-dates.json") : m_path(std::move(path)) { reload(); }
     static QString key(const QString &scope, const QString &ref) { return scope + ":" + ref; }
+    static QString displayDate(const QString &value, const QLocale &locale = QLocale::system(),
+                               const QTimeZone &zone = QTimeZone::systemTimeZone()) {
+        const auto timestamp = QDateTime::fromString(value, Qt::ISODateWithMs);
+        if (!timestamp.isValid()) return {};
+        // Keep UTC in storage; use the system's date order, clock format and
+        // timezone only for display. ShortFormat excludes the long weekday.
+        return locale.toString(timestamp.toTimeZone(zone), QLocale::ShortFormat);
+    }
     void reload() {
         QFile file(m_path);
         m_dates = file.open(QIODevice::ReadOnly)

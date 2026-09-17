@@ -39,5 +39,27 @@ int main(int argc, char **argv) {
     invalid.close();
     assert(InstallHistory(invalid.fileName()).date("user", ref).isEmpty());
     assert(!InstallHistory(invalid.fileName() + "/impossible.json").installed("user", ref));
+    assert(InstallHistory::displayDate("not a date").isEmpty());
+    for (const auto &localeName : {"en_US", "en_GB", "de_DE", "pl_PL", "he_IL", "ar_EG"}) {
+        const QLocale locale(localeName);
+        for (const auto &zoneName : {"Europe/Warsaw", "America/New_York", "Asia/Tokyo"}) {
+            const QTimeZone zone(zoneName);
+            assert(zone.isValid());
+            // Include a daylight-saving boundary as well as a date rollover.
+            for (const auto &utc : {first, QDateTime::fromString("2026-10-25T01:30:00.000Z", Qt::ISODateWithMs)}) {
+                const auto local = utc.toTimeZone(zone);
+                const auto displayed = InstallHistory::displayDate(utc.toString(Qt::ISODateWithMs), locale, zone);
+                assert(displayed == locale.toString(local, QLocale::ShortFormat));
+                assert(displayed.contains(locale.toString(local.time(), QLocale::ShortFormat)));
+                assert(!displayed.contains(locale.dayName(local.date().dayOfWeek(), QLocale::LongFormat)));
+            }
+        }
+    }
+    // Check Qt's supported locale patterns, not just the machine's locale.
+    for (const auto &locale : QLocale::matchingLocales(QLocale::AnyLanguage, QLocale::AnyScript, QLocale::AnyTerritory))
+        assert(!locale.dateTimeFormat(QLocale::ShortFormat).contains("ddd"));
+    assert(InstallHistory::displayDate(first.toString(Qt::ISODateWithMs))
+           == QLocale::system().toString(first.toTimeZone(QTimeZone::systemTimeZone()), QLocale::ShortFormat));
     puts("PASS: dates persist, missing dates stay absent, scopes/refs isolated, removal clears date, reinstall records a new date");
+    puts("PASS: localized installation date/time, system timezone, DST/date rollover, no weekday in supported short formats");
 }

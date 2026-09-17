@@ -80,18 +80,10 @@ Page {
                             textFormat: Text.PlainText; wrapMode: Text.Wrap
                             color: modelData.failed ? window.accentColor : window.mutedTextColor
                         }
-                        Label {
+                        InstallationProgress {
+                            objectName: "downloadJobProgress"
                             Layout.fillWidth: true
-                            visible: modelData.active && (modelData.operations || []).length > 0
-                            text: qsTr("Overall installation progress: %1%").arg(Math.round(modelData.progress * 100))
-                            color: window.mutedTextColor; wrapMode: Text.Wrap
-                        }
-                        FluffProgressBar {
-                            Layout.fillWidth: true
-                            visible: modelData.active
-                            value: modelData.progress
-                            indeterminate: modelData.active && !(modelData.operations || []).length
-                            palette.highlight: window.accentColor
+                            job: modelData
                         }
                         Label {
                             Layout.fillWidth: true; visible: !!modelData.error
@@ -113,7 +105,12 @@ Page {
                                     Label { text: modelData.downloadSize; color: window.mutedTextColor }
                                 }
                                 Label { Layout.fillWidth: true; text: modelData.status; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.mutedTextColor }
-                                FluffProgressBar { Layout.fillWidth: true; visible: modelData.progress > 0 && modelData.progress < 1; value: modelData.progress }
+                                FluffProgressBar {
+                                    Layout.fillWidth: true
+                                    visible: modelData.phase === "download" || modelData.phase === "install"
+                                    value: modelData.phase === "download" ? (modelData.downloadProgress || 0) : 0
+                                    indeterminate: modelData.phase === "install" || modelData.estimating === true
+                                }
                                 Rectangle { Layout.fillWidth: true; height: 1; color: window.borderColor }
                             }
                         }

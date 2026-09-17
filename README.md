@@ -37,7 +37,12 @@ background update services, notifications, settings, or tray components.
   cancellation finishes. Cancelling the only job also hides the Downloads
   button; other completed/failed jobs stay. Operations are serialized;
   additional requests wait in the queue.
-  The overall bar includes every planned component; the status below uses simple
+  Separate download and installation bars include every planned component.
+  Download uses Flatpak's estimated transfer progress, weighted by each component's
+  published size; installation counts completed components and animates while
+  deploying one (Flatpak provides no deployment percentage). Dependencies may
+  download and install in turn, so these stages can overlap. A finished download
+  never marks installation complete. The status below uses simple
   download/install labels, without repeating the app name or exposing internal
   delta/object counters. Dependency names remain visible and actual errors are
   still reported. Its received-byte count is for the current component, not the
@@ -50,7 +55,12 @@ background update services, notifications, settings, or tray components.
   lingering completion text on the app page.
 - Installed lists user and system applications, with version and installed size.
   Open an app, view its information, or uninstall it from its row or app page.
-- Uninstall asks a compact **Yes / No** question naming the app and data deletion.
+  App details omit the technical installation/scope/branch/architecture row.
+  The website link and its focus/click target fit the URL, bounded by the available
+  value-column width for long addresses.
+- Uninstall asks **“Uninstall [app]?”**, with a short paragraph explaining app/data
+  removal and compact **Yes / No** buttons. System-wide removals explain their
+  all-users scope in the paragraph instead of the heading.
   Yes force-stops all of that app's running sandboxes for the current user,
   verifies they have exited, and deletes **the current user's sandbox directory**
   at `~/.var/app/APP_ID`, then resets that app's portal permissions. This deletion
@@ -189,20 +199,29 @@ the testing VM only; it never removes existing apps. Screenshots are saved in
 
 Installation dates are saved locally after successful App Center installations,
 separately from Downloads history. Installed and app details show the date in the
-user's locale; existing apps without a record have no date row. App Center removes
+system's locale and timezone, including the time but not the weekday; existing
+apps without a record have no date row. App Center removes
 the record on successful uninstall, so reinstalling records a new date.
 
 `FLUFF_APP_CENTER_QML="$PWD/tests/integration/InstallProgressSmoke.qml" target/release/flufflinux-appcenter`
 is a VM-only, real-worker UI test: it installs the absent Calculator app, checks
-component progress and completion cleanup, checks dates in both views, and captures
-`target/install-*-proof.png`. It leaves that test app installed for restart/date
+component progress, separate download/deployment bars and completion cleanup,
+checks dates in both views, and captures `target/install-*-proof.png` and
+`target/download-stage-proof.png`. It leaves that test app installed for restart/date
 verification; remove only that test installation afterward. Native persistence
 tests run independently with:
 
 ```sh
 c++ -std=c++17 -fPIC tests/native/test_install_history.cpp -o target/test-install-history $(pkg-config --cflags --libs Qt6Core)
 target/test-install-history
+c++ -std=c++17 -fPIC tests/native/test_transaction_progress.cpp -o target/test-transaction-progress $(pkg-config --cflags --libs Qt6Core)
+target/test-transaction-progress
 ```
+
+`tests/integration/ReviewLayoutSmoke.qml` is a non-destructive VM check for the
+short uninstall title/paragraph, URL-sized website control and recorded local
+date/time. It requires the configured app to be installed, pauses for a real
+dialog screenshot, always answers **No**, and leaves its app details open.
 
 After `InstallProgressSmoke.qml` exits, run
 `FLUFF_APP_CENTER_QML="$PWD/tests/integration/UninstallSizesSmoke.qml" target/release/flufflinux-appcenter`

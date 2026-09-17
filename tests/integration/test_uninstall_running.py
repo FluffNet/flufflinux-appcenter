@@ -75,7 +75,8 @@ def main():
             assert app in transactions.installed() and marker.exists()
         events = transactions.run(remove)
         review = next(e for e in events if e["type"] == "review")
-        assert review["title"] == "Uninstall Calculator and delete its data?"
+        assert review["title"] == "Uninstall Calculator?"
+        assert review["message"] == "If you proceed, Calculator and its app data will be removed."
         assert not review.get("message"), "Removal prompt still contains technical details"
         assert any(e.get("status") == "Closing Calculator…" for e in events)
         wait_for(lambda: app not in instances().values())

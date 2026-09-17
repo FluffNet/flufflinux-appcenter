@@ -9,7 +9,7 @@ Dialog {
     property var plan: ({})
     anchors.centerIn: parent
     width: Math.min(window.width - 48, plan.removing ? 480 : 740)
-    height: Math.min(window.height - 64, (plan.removing ? 12 : body.implicitHeight + 48) + header.implicitHeight + footer.implicitHeight)
+    height: Math.min(window.height - 64, body.implicitHeight + 48 + header.implicitHeight + footer.implicitHeight)
     modal: true
     padding: 20
     background: Rectangle {
@@ -66,14 +66,13 @@ Dialog {
         }
     }
     contentItem: ScrollView {
-        visible: !dialog.plan.removing
         contentWidth: availableWidth
         clip: true
         ColumnLayout {
             id: body
             width: parent.width
             spacing: 14
-            Label { Layout.fillWidth: true; text: dialog.plan.message || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap }
+            Label { objectName: "reviewMessage"; Layout.fillWidth: true; text: dialog.plan.message || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.textColor }
             Repeater {
                 objectName: "reviewOperations"
                 model: dialog.plan.removing ? [] : dialog.plan.operations || []

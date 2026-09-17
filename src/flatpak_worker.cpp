@@ -86,8 +86,12 @@ struct Worker {
         g_cancellable_cancel(cancel);
         replies.notify_all();
     }
-    void operationUpdate(const QString &ref, const QString &status, double progress) {
-        send({{"type", "operation"}, {"ref", ref}, {"status", status}, {"progress", progress}});
+    void operationUpdate(const QString &ref, const QString &status, double progress,
+                         const QString &phase, double downloadProgress = 0,
+                         quint64 received = 0, bool estimating = false) {
+        send({{"type", "operation"}, {"ref", ref}, {"status", status}, {"progress", progress},
+              {"phase", phase}, {"downloadProgress", downloadProgress},
+              {"receivedBytes", double(received)}, {"estimating", estimating}});
     }
 };
 
@@ -137,7 +141,8 @@ QJsonObject operationInfo(FlatpakTransactionOperation *op) {
         {"action", str(flatpak_transaction_operation_type_to_string(kind))},
         {"downloadBytes", double(download)}, {"downloadSize", bytes(download)},
         {"installedSize", bytes(flatpak_transaction_operation_get_installed_size(op))},
-        {"progress", 0}, {"status", QCoreApplication::translate("Flatpak", "Waiting")}};
+        {"progress", 0}, {"phase", "waiting"}, {"downloadProgress", 0},
+        {"status", QCoreApplication::translate("Flatpak", "Waiting")}};
 }
 
 gboolean ready(FlatpakTransaction *tx, gpointer data) {
@@ -170,9 +175,10 @@ gboolean ready(FlatpakTransaction *tx, gpointer data) {
     if (!w.removing) return !g_cancellable_is_cancelled(w.cancel);
     if (!w.ask({{"kind", "transaction"}, {"operations", w.operations},
         {"appId", w.appId}, {"removing", w.removing}, {"downloadSize", bytes(total)},
-        {"title", (w.systemRemoval
-            ? QCoreApplication::translate("Flatpak", "Uninstall %1 for all users and delete your app data?")
-            : QCoreApplication::translate("Flatpak", "Uninstall %1 and delete its data?")).arg(w.appName)}})) return false;
+        {"title", QCoreApplication::translate("Flatpak", "Uninstall %1?").arg(w.appName)},
+        {"message", (w.systemRemoval
+            ? QCoreApplication::translate("Flatpak", "If you proceed, %1 will be removed for all users, and its app data for this account will be deleted.")
+            : QCoreApplication::translate("Flatpak", "If you proceed, %1 and its app data will be removed.")).arg(w.appName)}})) return false;
     return forceStopApp(w);
 }
 
@@ -197,16 +203,27 @@ void progressChanged(FlatpakTransactionProgress *progress, gpointer data) {
     auto op = flatpak_transaction_get_current_operation(tx);
     if (!op) return;
     g_autofree char *status = flatpak_transaction_progress_get_status(progress);
+    const auto raw = str(status);
+    const auto percent = flatpak_transaction_progress_get_progress(progress) / 100.0;
+    const bool downloading = isDownloadStatus(raw);
+    // In Flatpak 1.18 a non-download 100% callback marks end of pull,
+    // NOT end of deployment. Only operation-done completes installation.
+    const auto phase = w->removing ? "uninstall" : downloading ? "download" : percent >= 1 ? "install" : "preparing";
     w->operationUpdate(str(flatpak_transaction_operation_get_ref(op)),
-                       simpleTransactionStatus(str(status), flatpak_transaction_progress_get_bytes_transferred(progress), w->removing),
-                       flatpak_transaction_progress_get_progress(progress) / 100.0);
+                       QString::fromLatin1(phase) == "preparing" ? QCoreApplication::translate("Flatpak", "Preparing…")
+                           : simpleTransactionStatus(raw, flatpak_transaction_progress_get_bytes_transferred(progress), w->removing),
+                       qMin(0.99, percent), phase, downloading ? qMin(0.99, percent) : percent >= 1 ? 1 : 0,
+                       flatpak_transaction_progress_get_bytes_transferred(progress),
+                       flatpak_transaction_progress_get_is_estimating(progress));
 }
 void newOperation(FlatpakTransaction *tx, FlatpakTransactionOperation *op,
                   FlatpakTransactionProgress *progress, gpointer data) {
     auto &w = *static_cast<Worker *>(data);
+    const bool bundle = flatpak_transaction_operation_get_operation_type(op) == FLATPAK_TRANSACTION_OPERATION_INSTALL_BUNDLE;
     w.operationUpdate(str(flatpak_transaction_operation_get_ref(op)),
         w.removing ? QCoreApplication::translate("Flatpak", "Uninstalling…")
-                   : QCoreApplication::translate("Flatpak", "Installing…"), 0);
+                   : bundle ? QCoreApplication::translate("Flatpak", "Installing…") : QCoreApplication::translate("Flatpak", "Preparing…"), 0,
+        w.removing ? "uninstall" : bundle ? "install" : "preparing");
     flatpak_transaction_progress_set_update_frequency(progress, 100);
     g_signal_connect(progress, "changed", G_CALLBACK(progressChanged), tx);
 }
@@ -214,14 +231,14 @@ void operationDone(FlatpakTransaction *, FlatpakTransactionOperation *op, const 
                    FlatpakTransactionResult, gpointer data) {
     auto &w = *static_cast<Worker *>(data);
     w.operationUpdate(str(flatpak_transaction_operation_get_ref(op)),
-                       QCoreApplication::translate("Flatpak", "Complete"), 1);
+                       QCoreApplication::translate("Flatpak", "Complete"), 1, "complete", 1);
 }
 gboolean operationError(FlatpakTransaction *, FlatpakTransactionOperation *op,
                         const GError *error, FlatpakTransactionErrorDetails, gpointer data) {
     auto &w = *static_cast<Worker *>(data);
     w.hadOperationError = true;
     w.problem = str(error->message);
-    w.operationUpdate(str(flatpak_transaction_operation_get_ref(op)), w.problem, 0);
+    w.operationUpdate(str(flatpak_transaction_operation_get_ref(op)), w.problem, 0, "failed");
     return false; // Never silently mark a partially failed transaction successful.
 }
 

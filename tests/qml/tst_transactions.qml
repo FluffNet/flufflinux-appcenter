@@ -38,10 +38,14 @@ TestCase {
         main.requestActivate()
         waitForRendering(main.contentItem)
     }
-    function test_simple_uninstall_confirmation() {
+    function test_simple_uninstall_confirmation_data() {
+        return [{tag: "user", message: "If you proceed, Calculator and its app data will be removed."},
+                {tag: "system", message: "If you proceed, Calculator will be removed for all users, and its app data for this account will be deleted."}]
+    }
+    function test_simple_uninstall_confirmation(data) {
         const dialog = findChild(main, "transactionReview")
-        const plan = {token: 41, title: "Uninstall Calculator and delete its data?", kind: "transaction", removing: true,
-                      message: "Technical details must not appear", operations: [{name: "org.example.Test", ref: "app/org.example.Test/x86_64/stable", action: "uninstall"}]}
+        const plan = {token: 41, title: "Uninstall Calculator?", kind: "transaction", removing: true,
+                      message: data.message, operations: [{name: "org.example.Test", ref: "app/org.example.Test/x86_64/stable", action: "uninstall"}]}
         backend.review = plan
         tryCompare(dialog, "opened", true)
         waitForRendering(dialog.footer)
@@ -54,9 +58,16 @@ TestCase {
         compare(no.text, "No")
         compare(no.icon.name, "dialog-cancel")
         verify(no.activeFocus)
-        verify(!dialog.contentItem.visible)
+        verify(dialog.contentItem.visible)
+        const message = findChild(dialog.contentItem, "reviewMessage")
+        compare(message.text, data.message)
+        compare(message.textFormat, Text.PlainText)
+        verify(message.visible && message.height >= message.implicitHeight)
+        verify(!message.text.includes("your"))
         compare(findChild(dialog.contentItem, "reviewOperations").count, 0)
         verify(dialog.width <= 480 && dialog.height < 260, "Removal prompt must stay compact")
+        const messagePosition = message.mapToItem(dialog.contentItem, 0, 0)
+        verify(messagePosition.y + message.height <= dialog.contentItem.height, "Paragraph must fit above the buttons")
         const point = no.mapToItem(dialog.footer, 0, 0)
         verify(point.x >= 0 && point.x + no.width <= dialog.footer.width)
         verify(point.y >= 0 && point.y + no.height <= dialog.footer.height)
@@ -120,6 +131,9 @@ TestCase {
         compare(website.contentItem.horizontalAlignment, Text.AlignLeft)
         compare(website.leftPadding, 0)
         compare(website.contentItem.text, app.homepage)
+        verify(Math.abs(website.width - website.contentItem.implicitWidth) < 1,
+               "Website focus/click target must fit the URL text")
+        verify(website.width < website.parent.width / 2)
         backend.installSizes = {"org.example.Size": {state: "unavailable"}}
         verify(totalSize.visible && totalCaption.visible)
         compare(totalSize.text, "Unavailable")
@@ -129,6 +143,24 @@ TestCase {
         compare(totalSize.text, "Unavailable")
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.installSizes = ({})
+    }
+    function test_long_website_fits_narrow_window() {
+        const previousWidth = main.width
+        main.width = 720
+        const app = {id: "org.example.Website", name: "Website test", summary: "", description: "", category: "", license: "", developer: "", icon: "", screenshots: [],
+                     homepage: "https://example.org/" + "long-path/".repeat(40)}
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const website = findChild(stack.currentItem, "appWebsiteLink")
+        verify(website.width > 0 && website.width <= website.parent.width)
+        verify(website.width < website.contentItem.implicitWidth)
+        const point = website.mapToItem(stack.currentItem, 0, 0)
+        verify(point.x + website.width <= stack.currentItem.width)
+        website.forceActiveFocus()
+        verify(website.activeFocus)
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        main.width = previousWidth
     }
     function test_installed_app_tracks_size_target_data() {
         return [{tag: "fresh-session", priorApp: false}, {tag: "different-app-viewed-first", priorApp: true}]
@@ -218,6 +250,45 @@ TestCase {
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.jobs = []
     }
+    function test_separate_download_and_install_progress() {
+        const app = {id: "org.example.Stages", name: "Stages", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
+        const job = {id: app.id, name: app.name, index: 0, active: true, action: "install", progress: 0.5,
+            hasDownload: true, downloadProgress: 0.5, installProgress: 0, installCompleted: 0, installTotal: 2,
+            phase: "download", status: "Downloading…", operations: [{name: "Runtime", phase: "download", progress: 0.5, status: "Downloading…", downloadSize: "2 MiB"}]}
+        backend.jobs = [job]
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        const download = findChild(page, "downloadPhaseProgress")
+        const install = findChild(page, "installPhaseProgress")
+        verify(download.visible && install.visible)
+        compare(download.value, 0.5); compare(install.value, 0)
+        verify(!install.activeStep)
+        compare(findChild(page, "downloadPhaseLabel").text, "Download: 50%")
+        compare(findChild(page, "installPhaseLabel").text, "Installation: 0 of 2 completed")
+        backend.jobs = [Object.assign({}, job, {downloadProgress: 1, phase: "install", installCompleted: 1, installProgress: 0.5})]
+        compare(download.value, 1); compare(install.value, 0.5)
+        verify(install.activeStep && !install.indeterminate)
+        compare(findChild(page, "installPhaseLabel").text, "Installation: 1 of 2 completed")
+        main.showDownloads(); tryCompare(stack, "busy", false)
+        let card = findChild(stack.currentItem, "downloadJobProgress")
+        verify(card.visible)
+        compare(findChild(card, "downloadPhaseProgress").value, 1)
+        compare(findChild(card, "installPhaseProgress").value, 0.5)
+        backend.jobs = [Object.assign({}, job, {downloadEstimating: true})]
+        card = findChild(stack.currentItem, "downloadJobProgress")
+        verify(findChild(card, "downloadPhaseProgress").indeterminate)
+        compare(findChild(card, "downloadPhaseLabel").text, "Downloading…")
+        backend.jobs = [Object.assign({}, job, {hasDownload: false, phase: "install"})]
+        card = findChild(stack.currentItem, "downloadJobProgress")
+        verify(!findChild(card, "downloadPhaseProgress").visible)
+        backend.jobs = [Object.assign({}, job, {active: false, progress: 1, status: "Complete"})]
+        card = findChild(stack.currentItem, "downloadJobProgress")
+        verify(!card.visible)
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.jobs = []
+    }
     function test_removals_only_show_in_installed_and_app_view() {
         const app = {id: "org.example.Remove", name: "Remove test", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "",
                      installedSize: "10 MB", installedVersion: "1.0", installation: "user", installedBranch: "stable", installedArch: "x86_64"}
@@ -284,17 +355,21 @@ TestCase {
         compare(backend.requested, "install:org.example.Test")
         verify(!findChild(main, "transactionReview").visible)
         backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, progress: 0.35,
+                         downloadProgress: 0.35, installProgress: 0, installTotal: 1, installCompleted: 0,
                          status: "Downloading", operations: [{name: "org.example.Runtime", progress: 0.35}]}]
         verify(findChild(page, "appInstallProgress").visible)
-        compare(findChild(page, "appInstallProgress").value, 0.35)
-        verify(findChild(page, "appOverallProgress").visible)
-        compare(findChild(page, "appOverallProgress").text, "Overall installation progress: 35%")
+        compare(findChild(page, "downloadPhaseProgress").value, 0.35)
+        verify(findChild(page, "downloadPhaseLabel").visible)
+        compare(findChild(page, "downloadPhaseLabel").text, "Download: 35%")
         verify(findChild(page, "appJobStatus").visible)
         verify(!install.visible)
         backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, progress: 0.99,
+                         downloadProgress: 1, installProgress: 0, phase: "install", installTotal: 1, installCompleted: 0,
                          status: "Installing…", operations: [{name: app.id, progress: 1}]}]
         compare(findChild(page, "appJobStatus").text, "Installing…")
-        compare(findChild(page, "appInstallProgress").value, 0.99)
+        compare(findChild(page, "downloadPhaseProgress").value, 1)
+        compare(findChild(page, "installPhaseProgress").value, 0)
+        verify(findChild(page, "installPhaseProgress").activeStep)
         backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, progress: 0.4,
                          status: "Downloading… 1.50 MiB received", operations: [{name: app.id, progress: 0.4}]}]
         compare(findChild(page, "appJobStatus").text, "Downloading… 1.50 MiB received")
@@ -318,7 +393,7 @@ TestCase {
         verify(!findChild(page, "appJobStatus").visible)
         verify(!findChild(page, "appInstallProgress").visible)
         compare(main.downloadQueue.jobs.length, 1)
-        verify(!findChild(page, "appOverallProgress").visible)
+        verify(!findChild(page, "downloadPhaseLabel").visible)
         compare(main.downloadQueue.jobs[0].status, "Complete")
         const uninstall = findChild(page, "uninstallAppButton")
         verify(uninstall.visible)

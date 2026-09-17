@@ -482,8 +482,6 @@ Page {
                     text: app && app.installedDate || ""; color: window.textColor
                     visible: text.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap
                 }
-                Label { text: qsTr("Installation"); color: window.mutedTextColor; visible: !!(app && app.installation) }
-                Label { text: app && app.installation ? app.installation + " · " + app.installedBranch + " · " + app.installedArch : ""; color: window.textColor; visible: text.length > 0 }
                 Label { text: "Category"; color: window.mutedTextColor }
                 Label { text: app ? app.category : ""; color: window.textColor; Layout.fillWidth: true }
                 Label { text: "AppStream ID"; color: window.mutedTextColor }
@@ -491,22 +489,33 @@ Page {
                 Label { text: "License"; color: window.mutedTextColor; visible: app && app.license }
                 Label { text: app ? app.license : ""; color: window.textColor; Layout.fillWidth: true; visible: text.length > 0 }
                 Label { text: "Website"; color: window.mutedTextColor; visible: app && app.homepage }
-                Button {
-                    objectName: "appWebsiteLink"
-                    text: app ? app.homepage : ""; visible: text.length > 0; Layout.fillWidth: true
-                    flat: true
-                    leftPadding: 0; rightPadding: 0; topPadding: 0; bottomPadding: 0
-                    contentItem: Label {
-                        text: parent.text
-                        color: window.accentColor
-                        font: parent.font
-                        horizontalAlignment: Text.AlignLeft
-                        verticalAlignment: Text.AlignVCenter
-                        elide: Text.ElideRight
+                Item {
+                    Layout.fillWidth: true
+                    implicitWidth: websiteLink.implicitWidth
+                    implicitHeight: websiteLink.implicitHeight
+                    visible: websiteLink.text.length > 0
+                    Button {
+                        id: websiteLink
+                        objectName: "appWebsiteLink"
+                        text: app ? app.homepage : ""
+                        // The value column fills the row, but only the URL is
+                        // clickable/focusable. Long URLs still fit the column.
+                        implicitWidth: contentItem.implicitWidth
+                        width: Math.min(parent.width, implicitWidth)
+                        flat: true
+                        leftPadding: 0; rightPadding: 0; topPadding: 0; bottomPadding: 0
+                        contentItem: Label {
+                            text: parent.text
+                            color: window.accentColor
+                            font: parent.font
+                            horizontalAlignment: Text.AlignLeft
+                            verticalAlignment: Text.AlignVCenter
+                            elide: Text.ElideRight
+                        }
+                        palette.buttonText: window.accentColor
+                        font.weight: Font.DemiBold
+                        onClicked: Qt.openUrlExternally(text)
                     }
-                    palette.buttonText: window.accentColor
-                    font.weight: Font.DemiBold
-                    onClicked: Qt.openUrlExternally(text)
                 }
             }
         }

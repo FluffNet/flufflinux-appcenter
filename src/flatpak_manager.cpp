@@ -1,5 +1,6 @@
 #include <flatpak.h>
 #include "flatpak_manager.h"
+#include "transaction_progress.h"
 #include "flatpak_sizes.h"
 #include <QCoreApplication>
 #include <QDBusConnection>
@@ -92,7 +93,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                     const auto date = m_installHistory.date(c[4].trimmed(), ref);
                     if (!date.isEmpty()) {
                         app["installedAt"] = date;
-                        app["installedDate"] = QLocale().toString(QDateTime::fromString(date, Qt::ISODateWithMs).toLocalTime().date(), QLocale::LongFormat);
+                        app["installedDate"] = InstallHistory::displayDate(date);
                     }
                     apps.append(app);
                 }
@@ -274,7 +275,10 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
         }
     } else if (type == "plan") {
         const auto id = message["appId"].toString();
-        patchJob(m_current, {{"operations", message["operations"].toArray().toVariantList()}});
+        const auto operations = message["operations"].toArray().toVariantList();
+        auto values = transactionStages(operations, "preparing");
+        values["operations"] = operations;
+        patchJob(m_current, values);
         const auto request = m_requests[m_current].toMap();
         if (request.value("prepareOnly").toBool() && !id.isEmpty()) {
             m_sources[id] = request;
@@ -300,7 +304,12 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
         for (auto &entry : operations) {
             auto op = entry.toMap();
             if (op.value("ref").toString() == message["ref"].toString()) {
-                op["status"] = message["status"].toString(); op["progress"] = message["progress"].toDouble(); entry = op;
+                op["status"] = message["status"].toString(); op["progress"] = message["progress"].toDouble();
+                op["phase"] = message["phase"].toString();
+                op["downloadProgress"] = qMax(op.value("downloadProgress").toDouble(), message["downloadProgress"].toDouble());
+                op["receivedBytes"] = qMax(op.value("receivedBytes").toDouble(), message["receivedBytes"].toDouble());
+                op["estimating"] = message["estimating"].toBool();
+                entry = op;
                 // Dependency identity is useful, but the app name is already
                 // the page/card heading. The worker supplies clean status text.
                 if (job.value("action") != "uninstall" && op.value("dependency").toBool())
@@ -309,8 +318,12 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
             const double size = qMax(1.0, op.value("downloadBytes").toDouble());
             weighted += size * op.value("progress").toDouble(); weight += size;
         }
-        patchJob(m_current, {{"operations", operations}, {"progress", weight > 0 ? qMin(0.99, weighted / weight) : 0},
-            {"status", status}, {"currentRef", message["ref"].toString()}});
+        auto values = transactionStages(operations, message["phase"].toString());
+        values["operations"] = operations;
+        values["progress"] = weight > 0 ? qMin(0.99, weighted / weight) : 0;
+        values["status"] = status;
+        values["currentRef"] = message["ref"].toString();
+        patchJob(m_current, values);
     } else if (type == "status") {
         patchJob(m_current, {{"status", message["status"].toString()}});
     } else if (type == "result") {
