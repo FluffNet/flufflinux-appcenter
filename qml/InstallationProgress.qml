@@ -7,8 +7,9 @@ ColumnLayout {
     property var job: null
     readonly property bool planned: !!job && (job.operations || []).length > 0
     readonly property bool removing: !!job && job.action === "uninstall"
-    visible: !!job && job.active === true
-             && (!removing || (job.removalConfirmed === true && job.queued !== true))
+    // A queued operation has not started: only its Pending status is shown.
+    visible: !!job && job.active === true && job.queued !== true
+             && (!removing || job.removalConfirmed === true)
     spacing: 8
     RowLayout {
         Layout.fillWidth: true

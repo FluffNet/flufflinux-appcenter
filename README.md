@@ -132,6 +132,9 @@ for Discord and AAT, and leaves AAT's page open.
   using their current installed record; there is no completion text. The action
   disappears if the app is removed or another operation starts for it.
   Errors, cancellation and confirmation messages remain visible.
+  Queued installs show only “Pending…” in the status area of both views, with
+  no progress bar, percentage or transfer figures until their worker starts.
+  Pending installs can still be cancelled.
   Successful installs leave Open/Uninstall actions, not completion text,
   on the app page; their completed Downloads history remains available.
 - Removals never appear in Downloads or its badge. Their progress/errors are

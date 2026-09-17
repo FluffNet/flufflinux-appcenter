@@ -551,6 +551,50 @@ TestCase {
                    "Download info and percentage must not overlap")
         }
     }
+    function test_pending_has_only_status_in_both_views_data() {
+        return [{tag: "install-unplanned", action: "install", operations: []},
+                {tag: "install-planned", action: "install", operations: [{name: "Runtime"}]},
+                {tag: "source-unplanned", action: "source", operations: []},
+                {tag: "source-planned", action: "source", operations: [{name: "Runtime"}]}]
+    }
+    function verifyPendingProgressHidden(root) {
+        for (const name of ["overallInstallProgress", "downloadBytesLabel", "overallPercentageLabel"])
+            verify(!findChild(root, name).visible, name + " must not appear while queued")
+    }
+    function test_pending_has_only_status_in_both_views(data) {
+        const app = {id: "org.example.Pending", name: "Pending app", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
+        const queued = {id: app.id, name: app.name, index: 3, active: true, queued: true,
+            action: data.action, status: "Queued", operations: data.operations, progress: 0.4,
+            hasDownload: true, downloadComplete: false, downloadedSize: "128.00 MiB",
+            downloadTotalSize: "512.00 MiB", downloadSpeed: "2.30 MiB/s"}
+        const started = Object.assign({}, queued, {queued: false, status: "Preparing…"})
+        backend.jobs = [queued]
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        let page = stack.currentItem
+        verifyPendingProgressHidden(page)
+        verify(findChild(page, "appJobStatus").visible)
+        compare(findChild(page, "appJobStatus").text, "Pending…")
+        verify(findChild(page, "cancelAppButton").visible, "Queued installs remain cancellable")
+        backend.jobs = [started]
+        verify(findChild(page, "overallInstallProgress").visible, "Progress appears only once work starts")
+        backend.jobs = [queued]
+        main.showDownloads(); tryCompare(stack, "busy", false)
+        page = stack.currentItem
+        verifyPendingProgressHidden(page)
+        verify(findChild(page, "downloadJobStatus").visible)
+        compare(findChild(page, "downloadJobStatus").text, "Pending…")
+        mouseClick(findChild(page, "cancelDownloadButton"))
+        compare(backend.requested, "cancel:3")
+        backend.jobs = [started]
+        verify(findChild(page, "overallInstallProgress").visible)
+        backend.jobs = [Object.assign({}, started, {active: false, status: "Complete"})]
+        verifyPendingProgressHidden(page)
+        verify(!findChild(page, "downloadJobStatus").visible)
+        backend.jobs = []
+        main.showCatalog(); tryCompare(stack, "busy", false)
+    }
     function test_unified_download_and_install_progress() {
         const app = {id: "org.example.Stages", name: "Stages", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
         const job = {id: app.id, name: app.name, index: 0, active: true, action: "install", progress: 0.5,

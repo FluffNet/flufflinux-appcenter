@@ -123,6 +123,8 @@ TestCase {
         backend.jobs = [Object.assign({}, job, {queued: true, status: "Queued"})]
         compare(findChild(card(), "downloadJobStatus").text, "Pending…")
         verify(findChild(card(), "downloadJobStatus").visible)
+        verify(!findChild(card(), "downloadJobProgress").visible)
+        verify(!findChild(card(), "overallInstallProgress").visible)
         backend.jobs = [Object.assign({}, job, {cancelling: true, status: "Complete"})]
         compare(findChild(card(), "downloadJobStatus").text, "Cancelling…")
         verify(visibleText(card()).indexOf("Complete") < 0)
