@@ -55,6 +55,7 @@ struct Worker {
     QString appName;
     QString problem;
     bool removing = false;
+    bool removalConfirmed = false;
     bool systemRemoval = false;
     bool hadOperationError = false;
     bool declined = false;
@@ -179,7 +180,7 @@ gboolean ready(FlatpakTransaction *tx, gpointer data) {
     // newly opened file/link. Opening a source is not consent to install it.
     if (w.estimateOnly || w.prepareOnly) return false;
     if (!w.removing) return !g_cancellable_is_cancelled(w.cancel);
-    if (!w.ask({{"kind", "transaction"}, {"operations", w.operations},
+    if (!w.removalConfirmed && !w.ask({{"kind", "transaction"}, {"operations", w.operations},
         {"appId", w.appId}, {"removing", w.removing}, {"downloadSize", bytes(total)},
         {"title", QCoreApplication::translate("Flatpak", "Uninstall %1?").arg(w.appName)},
         {"message", (w.systemRemoval
@@ -378,6 +379,9 @@ bool execute(const QJsonObject &request, Worker &w) {
     g_autoptr(GError) error = nullptr;
     const auto scope = request["installation"].toString("user");
     w.removing = request["action"].toString() == "uninstall";
+    // The manager can obtain consent before this worker gets its queue slot.
+    // Direct worker callers still receive the normal confirmation prompt.
+    w.removalConfirmed = w.removing && request["removalConfirmed"].toBool();
     w.estimateOnly = request["estimateOnly"].toBool();
     w.prepareOnly = request["prepareOnly"].toBool();
     if (w.estimateOnly && request["action"].toString() != "install") {

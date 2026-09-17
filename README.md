@@ -89,10 +89,13 @@ for Discord and AAT, and leaves AAT's page open.
   artwork is unavailable). Cancelled jobs disappear immediately from both Downloads and the app page.
   Cancellation signals Flatpak and closes the worker's input; a 250 ms watchdog
   stops that dedicated worker if it fails to exit. Late progress cannot revive
-  the cancelled job, and a retry waits for worker exit/refresh before starting.
+  the cancelled job, and a retry waits for its worker to exit before starting.
   Cancelling the only job also hides the Downloads
-  button; other completed/failed jobs stay. Operations are serialized;
-  additional requests wait in the queue.
+  button; other completed/failed jobs stay. Install/download work and removal
+  have separate workers, so an app can be removed while another downloads.
+  Each worker processes its own queue serially; Flatpak retains its normal
+  installation/repository locking around shared changes. Cancellation and
+  progress are isolated per worker, and confirmations have unique tokens.
   A single overall progress bar includes every planned component, with
   a plain percentage above its right edge (no component-completion count). Progress text
   uses the normal foreground color: white in the dark theme, dark in the light
@@ -126,8 +129,11 @@ for Discord and AAT, and leaves AAT's page open.
 - Removals never appear in Downloads or its badge. Their progress/errors are
   shown in the Installed row and app view only; successful removal leaves no
   lingering completion text on the app page. Before Yes, both views show only
-  “Waiting for confirmation”, without a progress bar. After Yes, removal progress
-  appears without a Cancel button; install/download cancellation is unchanged.
+  “Waiting for confirmation”, without a progress bar. Confirmation is offered
+  immediately, even while a worker is busy. After Yes, a queued removal shows
+  “Pending…” without a progress bar. Once its worker starts, it shows
+  “Uninstalling…” with activity but no Cancel button, including while finished
+  sub-steps are being cleaned up. “Complete” never appears on the app page.
 - Installed lists user and system applications, with version and installed size.
   Open an app, view its information, or uninstall it from its row or app page.
   App details omit the technical installation/scope/branch/architecture row.
@@ -221,13 +227,16 @@ configuration prefix.
 
 Rust reads/normalizes AppStream metadata. QML renders the Breeze light/dark
 interface. The C++ Qt bridge exposes an asynchronous manager; an unprivileged
-child process runs libflatpak transactions and emits structured progress. It
+child process per install/removal lane runs libflatpak transactions and emits structured progress. It
 resolves file/link preparation at `ready-pre-auth` and stops before deployment.
 App-page sizes instead use local-only libflatpak metadata queries, without
 starting that worker or storing a separate cache.
 Actual installation proceeds directly after the app-page Install action;
 uninstall and software-source trust requests wait for the GUI's confirmation.
 The worker never interpolates file names, app IDs or URLs into shell commands.
+Removal consent is bound to the manager's exact installed app/scope/branch;
+the worker revalidates that reference before force-stopping or removing it.
+Direct worker callers still receive an explicit removal confirmation.
 
 Mouse, touchpad, touch-screen scrolling and screenshot zoom remain independent
 of the installation backend.
@@ -314,6 +323,22 @@ suppression, next-job safety and retention of genuine crash errors:
 c++ -std=c++17 -fPIC -pthread tests/native/test_cancel_worker.cpp src/flatpak_manager.cpp src/flatpak_sizes.cpp target/test-cancel-moc.cpp -o target/test-cancel-worker $(pkg-config --cflags --libs Qt6Core Qt6Gui Qt6DBus flatpak)
 QT_QPA_PLATFORM=offscreen target/test-cancel-worker
 ```
+
+The parallel-worker regression uses a temporary installed-list fixture, fake
+protocol workers and isolated history/cache paths. It covers overlapping
+download/removal progress, confirmed pending removals, stale/overlapping review
+tokens, cancellation isolation, and sub-step completion before cleanup ends:
+
+```sh
+c++ -std=c++17 -fPIC -pthread tests/native/test_parallel_workers.cpp src/flatpak_manager.cpp src/flatpak_sizes.cpp target/test-cancel-moc.cpp -o target/test-parallel-workers $(pkg-config --cflags --libs Qt6Core Qt6Gui Qt6DBus flatpak)
+QT_QPA_PLATFORM=offscreen target/test-parallel-workers
+```
+
+`tests/integration/ParallelRemovalSmoke.qml` is an opt-in live VM check: it
+requires 2048 and 0 A.D. to be absent, installs only 2048, then removes it during
+a 0 A.D. download. It verifies received bytes continue increasing, cancels the
+download, and checks both test apps are absent. Compare installed refs before
+and after the run; do not run it while a user's transaction is active.
 
 `tests/integration/ReviewLayoutSmoke.qml` is a non-destructive VM check for the
 short uninstall title/paragraph, URL-sized website control and recorded local

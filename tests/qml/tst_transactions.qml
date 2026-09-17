@@ -750,7 +750,7 @@ TestCase {
         const row = list.itemAtIndex(0)
         verify(findChild(row, "installedRemovalProgress").visible)
         compare(findChild(row, "installedRemovalProgress").value, 0.3)
-        compare(findChild(row, "installedRemovalStatus").text, "Removing…")
+        compare(findChild(row, "installedRemovalStatus").text, "Uninstalling…")
         verify(!findChild(row, "uninstallButton").enabled)
         verify(!main.downloadQueue.buttonVisible)
         compare(main.downloadQueue.activeCount, 0)
@@ -760,7 +760,7 @@ TestCase {
         compare(main.downloadQueue.progress, 0.5)
         main.openApp(app); tryCompare(stack, "busy", false)
         verify(findChild(stack.currentItem, "appInstallProgress").visible)
-        compare(findChild(stack.currentItem, "appJobStatus").text, "Removing…")
+        compare(findChild(stack.currentItem, "appJobStatus").text, "Uninstalling…")
         backend.jobs = [Object.assign({}, removal, {active: false, failed: true, status: "Failed", error: "Removal failed"}), download]
         verify(findChild(stack.currentItem, "appJobStatus").visible)
         verify(!main.downloadQueue.hasError) // Removal errors stay with the app.
@@ -821,11 +821,21 @@ TestCase {
         backend.jobs = []
         verify(findChild(page, "uninstallAppButton").visible)
         verify(!findChild(page, "appJobStatus").visible)
-        // A later Yes explicitly starts progress, never a Cancel action.
-        backend.jobs = [Object.assign({}, removal, {removalConfirmed: true, status: "Uninstalling…"})]
-        verify(findChild(page, "appInstallProgress").visible)
+        // Confirming a queued removal shows Pending, not a running animation.
+        backend.jobs = [Object.assign({}, removal, {removalConfirmed: true, queued: true, status: "Pending…"})]
+        verify(!findChild(page, "appInstallProgress").visible)
         verify(!findChild(page, "cancelAppButton").visible)
-        compare(findChild(page, "appJobStatus").text, "Uninstalling…")
+        compare(findChild(page, "appJobStatus").text, "Pending…")
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        compare(findChild(row, "installedRemovalStatus").text, "Pending…")
+        verify(!findChild(row, "installedRemovalProgress").visible)
+        main.openApp(app); tryCompare(stack, "busy", false)
+        const runningPage = stack.currentItem
+        // A finished sub-step must not claim the whole removal is complete.
+        backend.jobs = [Object.assign({}, removal, {removalConfirmed: true, queued: false, status: "Complete", progress: 0.99})]
+        verify(findChild(runningPage, "appInstallProgress").visible)
+        verify(!findChild(runningPage, "cancelAppButton").visible)
+        compare(findChild(runningPage, "appJobStatus").text, "Uninstalling…")
         main.showCatalog(); tryCompare(stack, "busy", false)
         verify(findChild(row, "installedRemovalProgress").visible)
         verify(findChild(row, "installedRemovalProgress").indeterminate)

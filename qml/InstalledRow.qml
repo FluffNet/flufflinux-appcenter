@@ -8,6 +8,7 @@ AbstractButton {
     readonly property var job: typeof window.jobForApp === "function" ? window.jobForApp(app) : null
     readonly property bool removing: !!job && job.action === "uninstall" && job.active === true
     readonly property bool awaitingRemovalConfirmation: removing && job.removalConfirmed !== true
+    readonly property bool removalPending: removing && job.removalConfirmed === true && job.queued === true
     readonly property bool removalFailed: !!job && job.action === "uninstall" && job.failed === true
     height: Math.max(108, contentItem.implicitHeight + topPadding + bottomPadding)
     padding: 16
@@ -75,6 +76,8 @@ AbstractButton {
                 Layout.fillWidth: true
                 visible: row.removing || row.removalFailed
                 text: row.awaitingRemovalConfirmation ? qsTr("Waiting for confirmation")
+                      : row.removalPending ? qsTr("Pending…")
+                      : row.removing && !row.removalFailed ? qsTr("Uninstalling…")
                       : row.job ? row.job.status + (row.job.error ? "\n" + row.job.error : "") : ""
                 textFormat: Text.PlainText; wrapMode: Text.Wrap
                 color: row.removalFailed ? window.accentColor : window.mutedTextColor
@@ -82,9 +85,9 @@ AbstractButton {
             FluffProgressBar {
                 objectName: "installedRemovalProgress"
                 Layout.fillWidth: true
-                visible: row.removing && !row.awaitingRemovalConfirmation
+                visible: row.removing && !row.awaitingRemovalConfirmation && !row.removalPending
                 value: row.job ? row.job.progress : 0
-                indeterminate: row.removing && row.job.progress <= 0
+                indeterminate: row.removing
                 palette.highlight: window.accentColor
             }
         }

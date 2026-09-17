@@ -26,63 +26,19 @@ bool active(const QVariantMap &job) { return job.value("active").toBool(); }
 }
 
 FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : QObject(parent) {
-    m_cancelTimeout.setSingleShot(true);
-    connect(&m_cancelTimeout, &QTimer::timeout, this, [this] {
-        if (m_current >= 0 && m_jobs[m_current].toMap().value("cancelling").toBool()
-            && m_worker.state() != QProcess::NotRunning) {
-            // The cooperative request must not leave an OSTree pull running
-            // indefinitely. Kill only this transaction's dedicated worker.
-            qWarning("Flatpak cancellation timed out; stopping the transaction worker");
-            m_worker.kill();
-        }
-    });
+    connectWorker(m_installWorker);
+    connectWorker(m_removalWorker);
     m_downloadRateTimer.setInterval(500);
     connect(&m_downloadRateTimer, &QTimer::timeout, this, [this] {
-        if (m_current < 0 || m_resultReceived) return;
-        const auto job = m_jobs[m_current].toMap();
+        if (m_installWorker.current < 0 || m_installWorker.resultReceived) return;
+        const auto job = m_jobs[m_installWorker.current].toMap();
         const auto values = downloadRateValues(job);
-        if (values.value("downloadSpeed") != job.value("downloadSpeed")) patchJob(m_current, values);
+        if (values.value("downloadSpeed") != job.value("downloadSpeed")) patchJob(m_installWorker.current, values);
     });
     for (const auto &entry : catalog) {
         const auto app = entry.toMap();
         m_metadata.insert(normalizedId(app.value("id").toString()), app);
     }
-    connect(&m_worker, &QProcess::readyReadStandardOutput, this, &FlatpakManager::receive);
-    connect(&m_worker, &QProcess::readyReadStandardError, this, [this] {
-        m_diagnostics += m_worker.readAllStandardError();
-        m_diagnostics = m_diagnostics.right(8192);
-    });
-    connect(&m_worker, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
-        if (error == QProcess::FailedToStart) {
-            m_cancelTimeout.stop();
-            m_downloadRateTimer.stop();
-            patchJob(m_current, {{"active", false}, {"failed", true}, {"status", tr("Could not start Flatpak worker")}});
-            m_current = -1;
-            QTimer::singleShot(0, this, &FlatpakManager::startNext);
-        }
-    });
-    connect(&m_worker, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
-        [this](int, QProcess::ExitStatus) {
-            receive();
-            m_cancelTimeout.stop();
-            m_downloadRateTimer.stop();
-            if (!m_resultReceived) {
-                const bool cancelled = m_current >= 0 && m_jobs[m_current].toMap().value("cancelling").toBool();
-                patchJob(m_current, {{"active", false}, {"failed", !cancelled}, {"cancelled", cancelled},
-                    {"status", cancelled ? QString() : tr("The Flatpak worker stopped unexpectedly")},
-                    {"error", cancelled ? QString() : QString::fromUtf8(m_diagnostics)}});
-            }
-            m_review.clear(); emit reviewChanged();
-            const bool preparation = m_current >= 0 && m_requests[m_current].toMap().value("prepareOnly").toBool();
-            m_current = -1;
-            if (preparation) QTimer::singleShot(0, this, &FlatpakManager::startNext);
-            else {
-                // Dependencies may now be installed (or removed). Never reuse
-                // stale totals after another transaction changes the machine.
-                if (!m_sizeApp.isEmpty()) requestInstallInfo(m_sizeApp);
-                refreshCaches();
-            }
-        });
     m_installedTimeout.setSingleShot(true);
     connect(&m_installedTimeout, &QTimer::timeout, this, [this] {
         m_installedError = tr("Reading installed Flatpaks timed out.");
@@ -96,6 +52,10 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     });
     connect(&m_installedProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this](int code, QProcess::ExitStatus status) {
+            if (m_installedRefreshPending) {
+                m_installedRefreshPending = false;
+                QTimer::singleShot(0, this, &FlatpakManager::refreshInstalled);
+            }
             if (!m_installedTimeout.isActive()) return;
             m_installedTimeout.stop(); m_loading = false;
             if (code || status != QProcess::NormalExit) {
@@ -144,13 +104,96 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
         QStringLiteral("org.kde.KIconLoader"), QStringLiteral("iconChanged"), this, SLOT(refreshThemeIcons(int)));
     QTimer::singleShot(0, this, &FlatpakManager::refreshInstalled);
 }
+void FlatpakManager::connectWorker(WorkerState &worker) {
+    worker.cancelTimeout.setSingleShot(true);
+    connect(&worker.cancelTimeout, &QTimer::timeout, this, [this, &worker] {
+        if (worker.current >= 0 && m_jobs[worker.current].toMap().value("cancelling").toBool()
+            && worker.process.state() != QProcess::NotRunning) {
+            qWarning("Flatpak cancellation timed out; stopping the transaction worker");
+            worker.process.kill();
+        }
+    });
+    connect(&worker.process, &QProcess::readyReadStandardOutput, this, [this, &worker] { receive(worker); });
+    connect(&worker.process, &QProcess::readyReadStandardError, this, [&worker] {
+        worker.diagnostics += worker.process.readAllStandardError();
+        worker.diagnostics = worker.diagnostics.right(8192);
+    });
+    connect(&worker.process, &QProcess::errorOccurred, this, [this, &worker](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart) return;
+        worker.cancelTimeout.stop();
+        if (&worker == &m_installWorker) m_downloadRateTimer.stop();
+        patchJob(worker.current, {{"active", false}, {"queued", false}, {"failed", true},
+            {"status", tr("Could not start Flatpak worker")}});
+        clearReviewsForJob(worker.current);
+        worker.current = -1;
+        QTimer::singleShot(0, this, &FlatpakManager::startNext);
+    });
+    connect(&worker.process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+        [this, &worker](int, QProcess::ExitStatus) {
+            receive(worker);
+            worker.cancelTimeout.stop();
+            if (&worker == &m_installWorker) m_downloadRateTimer.stop();
+            const int index = worker.current;
+            if (index < 0) return;
+            if (!worker.resultReceived) {
+                const bool cancelled = m_jobs[index].toMap().value("cancelling").toBool();
+                patchJob(index, {{"active", false}, {"queued", false}, {"failed", !cancelled}, {"cancelled", cancelled},
+                    {"status", cancelled ? QString() : tr("The Flatpak worker stopped unexpectedly")},
+                    {"error", cancelled ? QString() : QString::fromUtf8(worker.diagnostics)}});
+            }
+            clearReviewsForJob(index);
+            const bool preparation = m_requests[index].toMap().value("prepareOnly").toBool();
+            worker.current = -1;
+            if (!preparation && !m_stopping) {
+                if (!m_sizeApp.isEmpty()) requestInstallInfo(m_sizeApp);
+                refreshCaches();
+            }
+            QTimer::singleShot(0, this, &FlatpakManager::startNext);
+        });
+}
+FlatpakManager::WorkerState *FlatpakManager::workerForJob(int index) {
+    for (auto worker : {&m_installWorker, &m_removalWorker})
+        if (worker->current == index) return worker;
+    return nullptr;
+}
+void FlatpakManager::queueReview(QVariantMap review, int index) {
+    review["workerToken"] = review.value("token");
+    review["token"] = ++m_nextReviewToken;
+    review["jobIndex"] = index;
+    m_pendingReviews.append(review);
+    showNextReview();
+}
+void FlatpakManager::showNextReview() {
+    if (m_stopping || !m_review.isEmpty()) return;
+    while (!m_pendingReviews.isEmpty()) {
+        auto review = m_pendingReviews.takeFirst().toMap();
+        const int index = review.value("jobIndex").toInt();
+        if (index < 0 || index >= m_jobs.size() || !active(m_jobs[index].toMap())) continue;
+        m_review = review;
+        emit reviewChanged();
+        return;
+    }
+}
+void FlatpakManager::clearReviewsForJob(int index) {
+    for (int i = m_pendingReviews.size() - 1; i >= 0; --i)
+        if (m_pendingReviews[i].toMap().value("jobIndex").toInt() == index) m_pendingReviews.removeAt(i);
+    if (!m_review.isEmpty() && m_review.value("jobIndex").toInt() == index) {
+        m_review.clear();
+        emit reviewChanged();
+    }
+    // Let a dialog's close handler finish before opening the next one.
+    QTimer::singleShot(0, this, &FlatpakManager::showNextReview);
+}
 FlatpakManager::~FlatpakManager() {
     m_stopping = true;
     cancelAll();
-    m_worker.closeWriteChannel();
-    // Normal UI close is prevented while busy. This only covers forced shutdown.
-    if (!m_worker.waitForFinished(3000) && m_worker.state() != QProcess::NotRunning) {
-        m_worker.terminate(); m_worker.waitForFinished(1000);
+    // Normal UI close is prevented while busy. Cover both workers on forced shutdown.
+    for (auto worker : {&m_installWorker, &m_removalWorker}) {
+        worker->process.closeWriteChannel();
+        if (!worker->process.waitForFinished(3000) && worker->process.state() != QProcess::NotRunning) {
+            worker->process.kill();
+            worker->process.waitForFinished(1000);
+        }
     }
     for (auto process : {&m_installedProcess, &m_cache}) {
         if (process->state() != QProcess::NotRunning) { process->kill(); process->waitForFinished(1000); }
@@ -195,7 +238,8 @@ void FlatpakManager::requestInstallInfo(QVariantMap app) {
 }
 bool FlatpakManager::busy() const {
     for (const auto &job : m_jobs) if (active(job.toMap())) return true;
-    return m_worker.state() != QProcess::NotRunning || m_refreshingCaches;
+    return m_installWorker.process.state() != QProcess::NotRunning
+        || m_removalWorker.process.state() != QProcess::NotRunning || m_refreshingCaches;
 }
 QVariantMap FlatpakManager::metadata(const QString &id) const {
     auto app = m_metadata.value(id);
@@ -217,11 +261,22 @@ void FlatpakManager::enqueue(QVariantMap request) {
         if (active(job) && ((!id.isEmpty() && job.value("id") == id)
             || (id.isEmpty() && job.value("source") == request.value("source")))) return;
     }
-    request["active"] = true; request["failed"] = false; request["progress"] = 0;
+    request["active"] = true; request["failed"] = false; request["progress"] = 0; request["queued"] = true;
     if (request.value("action") == "uninstall") request["removalConfirmed"] = false;
     request["status"] = tr("Queued"); request["operations"] = QVariantList{};
     request["index"] = m_jobs.size();
-    m_requests.append(request); m_jobs.append(request); emit jobsChanged(); startNext();
+    m_requests.append(request); m_jobs.append(request); emit jobsChanged();
+    if (request.value("action") == "uninstall") {
+        const bool system = request.value("installation") != "user";
+        queueReview({{"localRemoval", true}, {"kind", "transaction"}, {"removing", true},
+            {"appId", id}, {"operations", QVariantList{}},
+            {"title", tr("Uninstall %1?").arg(request.value("name").toString())},
+            {"message", (system
+                ? tr("If you proceed, %1 will be removed for all users, and its app data for this account will be deleted.")
+                : tr("If you proceed, %1 and its app data will be removed.")).arg(request.value("name").toString())}},
+            request.value("index").toInt());
+    }
+    startNext();
 }
 void FlatpakManager::installApp(QVariantMap app) {
     const auto id = normalizedId(app.value("id").toString());
@@ -268,26 +323,33 @@ void FlatpakManager::openSource(QString source) {
         {"installation", "user"}, {"prepareOnly", true}, {"hidden", true}});
 }
 void FlatpakManager::startNext() {
-    if (m_stopping || m_current >= 0 || m_worker.state() != QProcess::NotRunning || m_refreshingCaches) return;
+    if (m_stopping) return;
     for (int i = 0; i < m_jobs.size(); ++i) {
-        if (!active(m_jobs[i].toMap())) continue;
-        m_current = i; m_buffer.clear(); m_diagnostics.clear(); m_resultReceived = false;
-        m_downloadRate = DownloadRate{};
-        m_downloadClock.start(); m_downloadRateTimer.start();
-        patchJob(i, {{"status", tr("Preparing…")}, {"downloadSpeed", DownloadRate::display(0)}});
-        m_worker.start(QCoreApplication::applicationFilePath(), {"--transaction-worker",
+        const auto job = m_jobs[i].toMap();
+        if (!active(job)) continue;
+        const bool removing = job.value("action") == "uninstall";
+        if (removing && !job.value("removalConfirmed").toBool()) continue;
+        auto &worker = removing ? m_removalWorker : m_installWorker;
+        if (worker.current >= 0 || worker.process.state() != QProcess::NotRunning) continue;
+        worker.current = i; worker.buffer.clear(); worker.diagnostics.clear(); worker.resultReceived = false;
+        if (!removing) {
+            m_downloadRate = DownloadRate{};
+            m_downloadClock.start(); m_downloadRateTimer.start();
+        }
+        patchJob(i, {{"queued", false}, {"status", removing ? tr("Uninstalling…") : tr("Preparing…")},
+            {"downloadSpeed", DownloadRate::display(0)}});
+        worker.process.start(QCoreApplication::applicationFilePath(), {"--transaction-worker",
             QString::fromUtf8(QJsonDocument::fromVariant(m_requests[i]).toJson(QJsonDocument::Compact))});
-        return;
     }
     emit jobsChanged();
 }
-void FlatpakManager::receive() {
-    m_buffer += m_worker.readAllStandardOutput();
-    while (m_buffer.contains('\n')) {
-        const auto end = m_buffer.indexOf('\n');
-        const auto line = m_buffer.left(end); m_buffer.remove(0, end + 1);
+void FlatpakManager::receive(WorkerState &worker) {
+    worker.buffer += worker.process.readAllStandardOutput();
+    while (worker.buffer.contains('\n')) {
+        const auto end = worker.buffer.indexOf('\n');
+        const auto line = worker.buffer.left(end); worker.buffer.remove(0, end + 1);
         const auto doc = QJsonDocument::fromJson(line);
-        if (doc.isObject()) handleMessage(doc.object());
+        if (doc.isObject()) handleMessage(worker, doc.object());
     }
 }
 QVariantMap FlatpakManager::downloadRateValues(const QVariantMap &job) {
@@ -295,27 +357,31 @@ QVariantMap FlatpakManager::downloadRateValues(const QVariantMap &job) {
         job.value("phase") == "download" && !job.value("downloadComplete").toBool());
     return {{"downloadSpeed", DownloadRate::display(rate)}};
 }
-void FlatpakManager::handleMessage(const QJsonObject &message) {
-    if (m_current < 0) return;
+void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &message) {
+    if (worker.current < 0) return;
     const auto type = message["type"].toString();
     // Buffered progress/reviews must never resurrect a cancelled job.
-    if (m_jobs[m_current].toMap().value("cancelling").toBool() && type != "result") return;
+    if (m_jobs[worker.current].toMap().value("cancelling").toBool() && type != "result") return;
     if (type == "review") {
-        m_review = message.toVariantMap(); m_review["jobIndex"] = m_current;
-        patchJob(m_current, {{"status", tr("Waiting for confirmation")}, {"operations", m_review.value("operations")}});
-        emit reviewChanged();
+        QVariantMap values{{"status", tr("Waiting for confirmation")}};
+        const auto operations = message["operations"].toArray().toVariantList();
+        // Source-trust prompts can have no operation list. Preserve any plan
+        // already received so confirming a prompt cannot discard progress.
+        if (!operations.isEmpty()) values["operations"] = operations;
+        patchJob(worker.current, values);
+        queueReview(message.toVariantMap(), worker.current);
     } else if (type == "identity") {
         const auto id = message["appId"].toString();
         if (!id.isEmpty()) {
-            auto app = metadata(id); patchJob(m_current, {{"id", id}, {"name", app.value("name")}});
+            auto app = metadata(id); patchJob(worker.current, {{"id", id}, {"name", app.value("name")}});
         }
     } else if (type == "plan") {
         const auto id = message["appId"].toString();
         const auto operations = message["operations"].toArray().toVariantList();
         auto values = transactionStages(operations, "preparing");
         values["operations"] = operations;
-        patchJob(m_current, values);
-        const auto request = m_requests[m_current].toMap();
+        patchJob(worker.current, values);
+        const auto request = m_requests[worker.current].toMap();
         if (request.value("prepareOnly").toBool() && !id.isEmpty()) {
             m_sources[id] = request;
             for (const auto &entry : message["operations"].toArray()) {
@@ -333,7 +399,7 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
             m_installSizes = {{id, message.toVariantMap()}}; emit installSizesChanged();
         }
     } else if (type == "operation") {
-        auto job = m_jobs[m_current].toMap();
+        auto job = m_jobs[worker.current].toMap();
         auto operations = job.value("operations").toList();
         auto status = message["status"].toString();
         for (auto &entry : operations) {
@@ -352,27 +418,29 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
             }
         }
         auto values = transactionStages(operations, message["phase"].toString());
-        values.insert(downloadRateValues(values));
+        if (&worker == &m_installWorker) values.insert(downloadRateValues(values));
         values["operations"] = operations;
         // Metadata/transfer estimates can change mid-pull; never move the
         // overall bar backwards. Only a successful result may reach 100%.
         values["progress"] = qMax(job.value("progress").toDouble(), values.value("progress").toDouble());
-        values["status"] = status;
+        // Operation completion can precede data cleanup and the transaction
+        // result. Never present that sub-step as a completed app removal.
+        values["status"] = job.value("action") == "uninstall" ? tr("Uninstalling…") : status;
         values["currentRef"] = message["ref"].toString();
-        patchJob(m_current, values);
+        patchJob(worker.current, values);
     } else if (type == "status") {
-        patchJob(m_current, {{"status", message["status"].toString()}});
+        patchJob(worker.current, {{"status", message["status"].toString()}});
     } else if (type == "result") {
-        m_cancelTimeout.stop();
-        m_downloadRateTimer.stop();
-        m_resultReceived = true; m_worker.closeWriteChannel();
+        worker.cancelTimeout.stop();
+        if (&worker == &m_installWorker) m_downloadRateTimer.stop();
+        worker.resultReceived = true; worker.process.closeWriteChannel();
         const bool ok = message["success"].toBool();
-        const bool cancelled = message["cancelled"].toBool() || m_jobs[m_current].toMap().value("cancelling").toBool();
-        const bool preparation = m_requests[m_current].toMap().value("prepareOnly").toBool();
+        const bool cancelled = message["cancelled"].toBool() || m_jobs[worker.current].toMap().value("cancelling").toBool();
+        const bool preparation = m_requests[worker.current].toMap().value("prepareOnly").toBool();
         // A success racing with Cancel still actually installed the app.
         // Record that fact, but do not restore its cancelled Downloads entry.
         if (ok && !preparation) {
-            const auto job = m_jobs[m_current].toMap();
+            const auto job = m_jobs[worker.current].toMap();
             for (const auto &entry : job.value("operations").toList()) {
                 const auto op = entry.toMap();
                 const auto ref = op.value("ref").toString();
@@ -385,48 +453,66 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
         }
         // A prepared app is not an installed download. Repository additions
         // and failed source imports still get an honest session-history row.
-        if (preparation && !cancelled && (!ok || m_jobs[m_current].toMap().value("id").toString().isEmpty()))
-            patchJob(m_current, {{"hidden", false}});
+        if (preparation && !cancelled && (!ok || m_jobs[worker.current].toMap().value("id").toString().isEmpty()))
+            patchJob(worker.current, {{"hidden", false}});
         if (preparation && !ok && !cancelled) emit inputError(message["error"].toString());
-        patchJob(m_current, {{"active", false}, {"failed", !ok && !cancelled}, {"cancelled", cancelled},
-            {"progress", ok ? 1 : m_jobs[m_current].toMap().value("progress")},
-            {"status", ok ? tr("Complete") : cancelled ? tr("Cancelled") : tr("Failed")}, {"error", message["error"].toString()}});
-        m_review.clear(); emit reviewChanged();
+        const bool removing = m_jobs[worker.current].toMap().value("action") == "uninstall";
+        patchJob(worker.current, {{"active", false}, {"queued", false}, {"failed", !ok && !cancelled}, {"cancelled", cancelled},
+            {"progress", ok ? 1 : m_jobs[worker.current].toMap().value("progress")},
+            {"status", ok ? (removing ? QString() : tr("Complete")) : cancelled ? tr("Cancelled") : tr("Failed")}, {"error", message["error"].toString()}});
+        clearReviewsForJob(worker.current);
     }
 }
 void FlatpakManager::answerReview(int token, bool accept) {
     if (m_review.isEmpty() || m_review.value("token").toInt() != token) return;
-    // Resolving an uninstall plan is not consent to remove it. Let both views
-    // start showing removal progress only after this particular Yes response.
+    const auto review = m_review;
+    const int index = review.value("jobIndex").toInt();
+    clearReviewsForJob(index);
+    if (review.value("localRemoval").toBool()) {
+        if (accept) {
+            auto request = m_requests[index].toMap();
+            request["removalConfirmed"] = true;
+            m_requests[index] = request;
+            patchJob(index, {{"removalConfirmed", true}, {"status", tr("Pending…")}});
+            startNext();
+        } else {
+            patchJob(index, {{"active", false}, {"queued", false}, {"cancelled", true}, {"status", QString()}});
+        }
+        return;
+    }
+    auto worker = workerForJob(index);
+    if (!worker) return;
     QVariantMap values{{"status", accept ? tr("Working…") : tr("Cancelling…")}};
-    if (m_review.value("removing").toBool()) values["removalConfirmed"] = accept;
-    patchJob(m_current, values);
-    m_worker.write(QJsonDocument(QJsonObject{{"token", token}, {"accept", accept}}).toJson(QJsonDocument::Compact) + '\n');
-    m_review.clear(); emit reviewChanged();
+    if (review.value("removing").toBool()) values["removalConfirmed"] = accept;
+    patchJob(index, values);
+    worker->process.write(QJsonDocument(QJsonObject{{"token", review.value("workerToken").toInt()}, {"accept", accept}})
+        .toJson(QJsonDocument::Compact) + '\n');
 }
 void FlatpakManager::cancelJob(int index) {
     if (index < 0 || index >= m_jobs.size() || !active(m_jobs[index].toMap())) return;
-    if (index == m_current) {
-        m_downloadRateTimer.stop();
-        m_cancelTimeout.start(250);
-        m_worker.write("{\"cancel\":true}\n");
-        m_worker.closeWriteChannel();
-        // Return the page to idle immediately. The internal worker/current
-        // index still serializes a retry until cancellation really completes.
-        patchJob(index, {{"active", false}, {"cancelled", true}, {"status", QString()}, {"cancelling", true}});
-        m_review.clear(); emit reviewChanged();
-    } else patchJob(index, {{"active", false}, {"cancelled", true}, {"status", tr("Cancelled")}});
+    if (auto worker = workerForJob(index)) {
+        if (worker == &m_installWorker) m_downloadRateTimer.stop();
+        worker->cancelTimeout.start(250);
+        worker->process.write("{\"cancel\":true}\n");
+        worker->process.closeWriteChannel();
+        patchJob(index, {{"active", false}, {"queued", false}, {"cancelled", true},
+            {"status", QString()}, {"cancelling", true}});
+    } else {
+        patchJob(index, {{"active", false}, {"queued", false}, {"cancelled", true}, {"status", QString()}});
+    }
+    clearReviewsForJob(index);
 }
 void FlatpakManager::cancelAll() { for (int i = 0; i < m_jobs.size(); ++i) cancelJob(i); }
 void FlatpakManager::refreshInstalled() {
-    if (m_installedProcess.state() != QProcess::NotRunning) return;
+    if (m_installedProcess.state() != QProcess::NotRunning) { m_installedRefreshPending = true; return; }
     m_loading = true; m_installedError.clear(); emit installedChanged();
     m_installedTimeout.start(15000);
     m_installedProcess.start("flatpak", {"list", "--app",
         "--columns=application:f,name:f,size,origin:f,installation:f,branch:f,arch:f,description:f,version:f"});
 }
 void FlatpakManager::refreshCaches() {
-    if (m_stopping || m_refreshingCaches) return;
+    if (m_stopping) return;
+    if (m_refreshingCaches) { m_cacheRefreshPending = true; return; }
     m_refreshingCaches = true;
     // Finish the user export's icon cache before refreshing the application
     // database. Never rebuild root-owned system icon trees or restart Plasma.
@@ -456,6 +542,10 @@ void FlatpakManager::refreshNextCache() {
             refreshThemeIcons(0);
         }
         m_refreshingCaches = false;
+        if (m_cacheRefreshPending) {
+            m_cacheRefreshPending = false;
+            refreshCaches();
+        }
         refreshInstalled();
         QTimer::singleShot(0, this, &FlatpakManager::startNext);
         return;

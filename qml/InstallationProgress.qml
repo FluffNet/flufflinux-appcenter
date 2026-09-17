@@ -7,7 +7,8 @@ ColumnLayout {
     property var job: null
     readonly property bool planned: !!job && (job.operations || []).length > 0
     readonly property bool removing: !!job && job.action === "uninstall"
-    visible: !!job && job.active === true && (!removing || job.removalConfirmed === true)
+    visible: !!job && job.active === true
+             && (!removing || (job.removalConfirmed === true && job.queued !== true))
     spacing: 8
     RowLayout {
         Layout.fillWidth: true
