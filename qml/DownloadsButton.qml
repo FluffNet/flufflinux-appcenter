@@ -16,29 +16,10 @@ ToolButton {
     visible: window.downloadQueue.buttonVisible
     contentItem: Row {
         spacing: control.spacing
-        Canvas {
-            id: arrow
+        DownloadArrow {
             width: 24; height: 24
             anchors.verticalCenter: parent.verticalCenter
-            onPaint: {
-                const ctx = getContext("2d")
-                ctx.clearRect(0, 0, width, height)
-                ctx.strokeStyle = window.textColor
-                ctx.lineWidth = 1.8
-                ctx.lineCap = "round"
-                ctx.lineJoin = "round"
-                ctx.beginPath()
-                ctx.moveTo(12, 4)
-                ctx.lineTo(12, 20)
-                ctx.moveTo(6, 14)
-                ctx.lineTo(12, 20)
-                ctx.lineTo(18, 14)
-                ctx.stroke()
-            }
-            Connections {
-                target: window
-                function onTextColorChanged() { arrow.requestPaint() }
-            }
+            color: window.textColor
         }
         Label {
             anchors.verticalCenter: parent.verticalCenter

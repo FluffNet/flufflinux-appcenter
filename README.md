@@ -34,6 +34,10 @@ and captures `target/metadata-*.png`. It leaves 0 A.D.'s page open.
   targets. On narrow windows the buttons move below the information, while
   progress keeps its full width. The
   developer's name is displayed without a “By” prefix.
+- App actions match the Downloads button's rounded neutral background, subtle
+  border and icon-and-label layout. Install shares its arrow shape, in green;
+  Open keeps the play icon and Uninstall the red trash icon. Hover, disabled and
+  keyboard-focus states remain visible, without a solid accent fill.
 - Catalog artwork uses Flatpak's stable `active` deployment path, not the
   disposable snapshot directory. A catalog refresh can no longer leave an
   already-open page pointing at deleted icons. Missing artwork falls back to

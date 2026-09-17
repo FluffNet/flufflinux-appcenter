@@ -148,6 +148,66 @@ TestCase {
         backend.installedApps = []
         main.width = 1180
     }
+    function contrastRatio(first, second) {
+        function luminance(color) {
+            function linear(channel) { return channel <= 0.04045 ? channel / 12.92 : Math.pow((channel + 0.055) / 1.055, 2.4) }
+            return 0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b)
+        }
+        const a = luminance(first), b = luminance(second)
+        return (Math.max(a, b) + 0.05) / (Math.min(a, b) + 0.05)
+    }
+    function test_action_style_data() {
+        return [{tag: "dark", background: "#202326", foreground: "#ffffff"},
+                {tag: "light", background: "#eff0f1", foreground: "#202326"},
+                {tag: "custom", background: "#302922", foreground: "#f2e7d9"}]
+    }
+    function test_action_style(data) {
+        const previousBackground = main.palette.window, previousForeground = main.palette.windowText
+        main.palette.window = data.background
+        main.palette.windowText = data.foreground
+        const app = {id: "org.example.Contrast", name: "Contrast test", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        const install = findChild(page, "installAppButton")
+        waitForRendering(page)
+        mouseMove(page, 3, 3)
+        compare(install.background.color, main.raisedSurfaceColor)
+        compare(install.background.radius, main.cornerRadius)
+        const label = findChild(install, "appActionLabel")
+        compare(label.color, main.textColor)
+        verify(contrastRatio(install.background.color, label.color) >= 4.5, "Action text must be readable")
+        const arrow = findChild(install, "installDownloadArrow")
+        verify(arrow.visible && arrow.width === 24 && arrow.height === 24)
+        verify(arrow.color.g > arrow.color.r && arrow.color.g > arrow.color.b, "Install arrow must be green")
+        verify(contrastRatio(install.background.color, arrow.color) >= 3, "Green arrow must contrast with the button")
+        install.forceActiveFocus()
+        tryCompare(install, "activeFocus", true)
+        compare(install.background.border.width, 2)
+        mousePress(install)
+        verify(install.down)
+        compare(install.background.color, main.hoverColor)
+        verify(contrastRatio(install.background.color, label.color) >= 4.5)
+        mouseRelease(install)
+        compare(backend.requested, "install:" + app.id)
+        verify(contrastRatio(install.background.color, label.color) >= 4.5, "Hover text must remain readable")
+        backend.installedLoading = true
+        verify(!install.enabled)
+        compare(install.contentItem.opacity, 0.45)
+        backend.installedLoading = false
+        backend.installedApps = [Object.assign({}, app, {installation: "user"})]
+        const open = findChild(page, "openAppButton"), uninstall = findChild(page, "uninstallAppButton")
+        mouseMove(page, 3, 3)
+        compare(findChild(uninstall, "appActionLabel").color, main.textColor)
+        compare(open.background.color, main.raisedSurfaceColor)
+        compare(uninstall.background.color, main.raisedSurfaceColor)
+        compare(uninstall.background.border.color, main.borderColor)
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.installedApps = []
+        main.palette.window = previousBackground
+        main.palette.windowText = previousForeground
+    }
     function test_simple_uninstall_confirmation(data) {
         const dialog = findChild(main, "transactionReview")
         const plan = {token: 41, title: "Uninstall Calculator?", kind: "transaction", removing: true,
