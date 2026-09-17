@@ -129,13 +129,20 @@ TestCase {
         compare(appSize.color, main.textColor)
         const website = findChild(page, "appWebsiteLink")
         compare(website.contentItem.horizontalAlignment, Text.AlignLeft)
-        compare(website.leftPadding, 4)
-        compare(website.rightPadding, 4)
-        compare(website.topPadding, 4)
-        compare(website.bottomPadding, 4)
+        compare(website.leftPadding, 0)
+        compare(website.rightPadding, 0)
+        compare(website.topPadding, 0)
+        compare(website.bottomPadding, 0)
+        compare(website.background, null)
         compare(website.contentItem.text, app.homepage)
-        verify(Math.abs(website.width - website.contentItem.implicitWidth - 8) < 1,
-               "Website focus/click target must fit the URL plus 4px on each side")
+        verify(Math.abs(website.width - website.contentItem.implicitWidth) < 1,
+               "Plain website link must fit its text without a button inset")
+        const category = findChild(page, "appCategoryValue")
+        const caption = findChild(page, "appWebsiteCaption")
+        compare(website.mapToItem(page, 0, 0).x, category.mapToItem(page, 0, 0).x)
+        verify(Math.abs(website.contentItem.mapToItem(page, 0, website.contentItem.baselineOffset).y
+                        - caption.mapToItem(page, 0, caption.baselineOffset).y) < 1, "Website and its caption must share a baseline")
+        compare(website.contentItem.font.weight, category.font.weight)
         verify(website.width < website.parent.width / 2)
         backend.installSizes = {"org.example.Size": {state: "unavailable"}}
         verify(totalSize.visible && totalCaption.visible)
@@ -164,6 +171,38 @@ TestCase {
         verify(website.activeFocus)
         main.showCatalog(); tryCompare(stack, "busy", false)
         main.width = previousWidth
+    }
+    Component { id: linkFixture; AppCenter.WebsiteLink { x: 20; y: 20; text: "https://example.org/?a=1&b=2" } }
+    Component { id: linkSpy; SignalSpy { signalName: "activated" } }
+    function test_plain_website_link_activation_and_focus() {
+        const link = createTemporaryObject(linkFixture, main.contentItem)
+        const spy = createTemporaryObject(linkSpy, main, {target: link})
+        verify(spy.valid)
+        waitForRendering(link)
+        mouseMove(main.contentItem, main.width - 20, 20)
+        link.focus = false
+        compare(link.background, null)
+        verify(!link.contentItem.font.underline)
+        mouseMove(link, link.width / 2, link.height / 2)
+        tryCompare(link, "hovered", true)
+        verify(link.contentItem.font.underline)
+        mouseClick(link)
+        compare(spy.count, 1)
+        compare(spy.signalArguments[0][0], link.text)
+        mouseMove(main.contentItem, main.width - 20, 20)
+        main.contentItem.forceActiveFocus(Qt.OtherFocusReason)
+        link.forceActiveFocus(Qt.TabFocusReason)
+        tryCompare(link, "visualFocus", true)
+        verify(link.contentItem.font.underline)
+        compare(link.background, null) // Keyboard focus must not bring back a box.
+        keyClick(Qt.Key_Return)
+        compare(spy.count, 2)
+        keyClick(Qt.Key_Enter)
+        compare(spy.count, 3)
+        keyClick(Qt.Key_Space)
+        compare(spy.count, 4)
+        compare(link.Accessible.role, Accessible.Link)
+        compare(link.contentItem.textFormat, Text.PlainText)
     }
     function test_installed_app_tracks_size_target_data() {
         return [{tag: "fresh-session", priorApp: false}, {tag: "different-app-viewed-first", priorApp: true}]

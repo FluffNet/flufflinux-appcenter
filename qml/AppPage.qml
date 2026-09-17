@@ -483,38 +483,26 @@ Page {
                     visible: text.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap
                 }
                 Label { text: "Category"; color: window.mutedTextColor }
-                Label { text: app ? app.category : ""; color: window.textColor; Layout.fillWidth: true }
+                Label { objectName: "appCategoryValue"; text: app ? app.category : ""; color: window.textColor; Layout.fillWidth: true }
                 Label { text: "AppStream ID"; color: window.mutedTextColor }
                 Label { text: app ? app.id : ""; color: window.textColor; Layout.fillWidth: true; elide: Text.ElideRight }
                 Label { text: "License"; color: window.mutedTextColor; visible: app && app.license }
                 Label { text: app ? app.license : ""; color: window.textColor; Layout.fillWidth: true; visible: text.length > 0 }
-                Label { text: "Website"; color: window.mutedTextColor; visible: app && app.homepage }
+                Label { objectName: "appWebsiteCaption"; text: "Website"; color: window.mutedTextColor; visible: app && app.homepage }
                 Item {
                     Layout.fillWidth: true
                     implicitWidth: websiteLink.implicitWidth
                     implicitHeight: websiteLink.implicitHeight
                     visible: websiteLink.text.length > 0
-                    Button {
+                    WebsiteLink {
                         id: websiteLink
                         objectName: "appWebsiteLink"
                         text: app ? app.homepage : ""
-                        // Fit the URL plus a small focus/click-target inset,
-                        // while keeping long URLs within the value column.
-                        implicitWidth: contentItem.implicitWidth + leftPadding + rightPadding
+                        // Plain text starts at the same value-column edge as
+                        // the other details. Long URLs stay inside the column.
                         width: Math.min(parent.width, implicitWidth)
-                        flat: true
-                        leftPadding: 4; rightPadding: 4; topPadding: 4; bottomPadding: 4
-                        contentItem: Label {
-                            text: parent.text
-                            color: window.accentColor
-                            font: parent.font
-                            horizontalAlignment: Text.AlignLeft
-                            verticalAlignment: Text.AlignVCenter
-                            elide: Text.ElideRight
-                        }
-                        palette.buttonText: window.accentColor
-                        font.weight: Font.DemiBold
-                        onClicked: Qt.openUrlExternally(text)
+                        linkColor: window.accentColor
+                        onActivated: function(url) { Qt.openUrlExternally(url) }
                     }
                 }
             }

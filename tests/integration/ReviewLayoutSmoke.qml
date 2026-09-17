@@ -10,6 +10,7 @@ AppCenter.Main {
     property string scope: "user"
     property bool reviewOnAppPage: true
     property bool skipReview: false
+    property bool useCatalog: false
     property string phase: "start"
     property var testApp: null
     property bool failed: false
@@ -38,7 +39,9 @@ AppCenter.Main {
             const stack = main.find(main.contentItem, "navigationStack")
             if (stack.busy) return
             if (main.phase === "start") {
-                main.testApp = main.installedApps.find(app => String(app.id).replace(/\.desktop$/, "") === main.testId && app.installation === main.scope)
+                if (!main.check(!main.useCatalog || main.skipReview, "Catalog-only checks must not request removal")) return
+                main.testApp = main.useCatalog ? main.catalog.find(app => String(app.id).replace(/\.desktop$/, "") === main.testId)
+                    : main.installedApps.find(app => String(app.id).replace(/\.desktop$/, "") === main.testId && app.installation === main.scope)
                 if (!main.check(!!main.testApp, "Expected installed app missing: " + JSON.stringify(main.installedApps) + " " + main.installedError)) return
                 main.selectedCategory = "Installed"
                 if (main.reviewOnAppPage || main.skipReview) main.openApp(main.testApp)
@@ -84,14 +87,20 @@ AppCenter.Main {
                     if (!main.check(!main.find(stack.currentItem, "appInstalledDateValue").visible,
                                     "Unrecorded installation date must stay hidden")) return
                 }
-                if (!main.check(Math.abs(link.width - link.contentItem.implicitWidth - 8) < 1
-                                && link.leftPadding === 4 && link.rightPadding === 4
-                                && link.topPadding === 4 && link.bottomPadding === 4
-                                && link.width < link.parent.width,
-                                "Website control still stretches beyond the URL")) return
+                const category = main.find(stack.currentItem, "appCategoryValue")
+                const caption = main.find(stack.currentItem, "appWebsiteCaption")
+                if (!main.check(Math.abs(link.width - link.contentItem.implicitWidth) < 1
+                                && link.padding === 0 && link.background === null
+                                && link.width < link.parent.width
+                                && link.mapToItem(stack.currentItem, 0, 0).x === category.mapToItem(stack.currentItem, 0, 0).x
+                                && Math.abs(link.contentItem.mapToItem(stack.currentItem, 0, link.contentItem.baselineOffset).y
+                                            - caption.mapToItem(stack.currentItem, 0, caption.baselineOffset).y) < 1,
+                                "Website must be plain text aligned with its caption and the other values")) return
                 const scroll = main.find(stack.currentItem, "detailsFlickable")
                 scroll.contentY = Math.max(0, scroll.contentHeight - scroll.height)
                 link.forceActiveFocus(Qt.TabFocusReason)
+                if (!main.check(link.contentItem.font.underline && link.background === null,
+                                "Keyboard focus must underline the link, not draw a box")) return
                 console.info("REVIEW_LAYOUT_ALL_PASS: " + (main.skipReview ? "read-only app details" : "removal declined")
                              + "; focused website width=" + link.width + ", column=" + link.parent.width)
                 main.phase = "done" // Remain visible for the website screenshot.
