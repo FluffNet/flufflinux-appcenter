@@ -5,9 +5,26 @@ import QtQuick.Layouts
 Page {
     id: page
     objectName: "downloadsPage"
+    // Keep delegates alive while the backend replaces its progress snapshots.
+    // Recreating a pressed card loses its mouse grab before release/click.
+    ListModel { id: jobRows }
+    function syncJobRows() {
+        const keys = window.downloadQueue.jobs.map(job => job.index)
+        for (let row = jobRows.count - 1; row >= 0; --row)
+            if (keys.indexOf(jobRows.get(row).jobIndex) < 0) jobRows.remove(row)
+        for (let row = 0; row < keys.length; ++row) {
+            if (row < jobRows.count && jobRows.get(row).jobIndex === keys[row]) continue
+            let existing = row + 1
+            while (existing < jobRows.count && jobRows.get(existing).jobIndex !== keys[row]) ++existing
+            if (existing < jobRows.count) jobRows.move(existing, row, 1)
+            else jobRows.insert(row, {jobIndex: keys[row]})
+        }
+    }
+    Component.onCompleted: syncJobRows()
     StackView.onActivated: window.downloadQueue.markViewed()
     Connections {
         target: window.downloadQueue
+        function onJobsChanged() { page.syncJobRows() }
         function onActiveCountChanged() {
             if (page.StackView.status === StackView.Active) window.downloadQueue.markViewed()
         }
@@ -70,10 +87,12 @@ Page {
             x: 24; y: 24; width: parent.width - 48; spacing: 16
             Repeater {
                 objectName: "downloadJobs"
-                model: window.downloadQueue.jobs
+                model: jobRows
                 delegate: Pane {
                     id: downloadCard
-                    required property var modelData
+                    required property int jobIndex
+                    readonly property var modelData: window.downloadQueue.jobs.find(job => job.index === jobIndex)
+                        || {id: "", name: "", active: false, operations: []}
                     readonly property var installedApp: window.findInstalled(modelData)
                     readonly property var detailsApp: !modelData.id ? null : installedApp
                         || window.catalog.find(function(app) {

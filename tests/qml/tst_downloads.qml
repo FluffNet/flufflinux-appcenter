@@ -7,7 +7,7 @@ TestCase {
     when: main.visible
     AppCenter.Main { id: main; visible: true }
     function job(name, progress, active, failed) {
-        return {name: name, progress: progress, active: active, failed: failed,
+        return {index: name === "VLC" ? 1 : 0, name: name, progress: progress, active: active, failed: failed,
                 status: active ? "Installing" : failed ? "Failed" : "Complete", operations: []}
     }
     function test_app_icons_in_downloads_data() {

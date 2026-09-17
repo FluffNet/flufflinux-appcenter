@@ -622,7 +622,7 @@ TestCase {
         compare(touchPan.maximumTouchPoints, 2)
         compare(touchPan.mouseEnabled, false)
         verify((mousePan.acceptedButtons & Qt.LeftButton) !== 0)
-        compare(mousePan.acceptedDevices, PointerDevice.Mouse)
+        compare(mousePan.acceptedDevices, PointerDevice.Mouse | PointerDevice.TouchPad)
         tryCompare(previewImage, "status", Image.Ready)
 
         const centerX = gestureSurface.width / 2

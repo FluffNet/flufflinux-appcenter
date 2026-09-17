@@ -477,6 +477,28 @@ void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &messa
         const bool removing = m_jobs[worker.current].toMap().value("action") == "uninstall";
         if (ok && removing) {
             const auto removed = m_jobs[worker.current].toMap();
+            const auto removedId = normalizedId(removed.value("id").toString());
+            const auto removedRef = "app/" + removedId + "/" + removed.value("installedArch").toString()
+                                    + "/" + removed.value("installedBranch").toString();
+            // Remove this deployment's finished download cards, not queue IDs
+            // or another installation's history. Failed/declined removals never
+            // reach this block. The job-result signal below publishes the change.
+            for (auto &entry : m_jobs) {
+                auto history = entry.toMap();
+                if (active(history) || history.value("action") == "uninstall"
+                    || normalizedId(history.value("id").toString()) != removedId
+                    || history.value("installation") != removed.value("installation")) continue;
+                QString historyRef = history.value("flatpakRef").toString();
+                if (historyRef.isEmpty()) {
+                    for (const auto &operation : history.value("operations").toList()) {
+                        const auto ref = operation.toMap().value("ref").toString();
+                        if (ref.startsWith("app/" + removedId + "/")) { historyRef = ref; break; }
+                    }
+                }
+                if (!historyRef.isEmpty() && historyRef != removedRef) continue;
+                history["hidden"] = true;
+                entry = history;
+            }
             ++m_installedRevision;
             // Publish the authoritative removal before declaring the job done.
             // Otherwise the UI briefly offers Open/Uninstall from the old list.

@@ -14,7 +14,8 @@ and sidebar separators meet once instead of stacking rectangle outlines, and
 align to physical pixels at fractional scaling. The small application count
 uses native font rendering while retaining the system's chosen font.
 Navigation, categories, action buttons and preview controls use the same hover
-color, with explicit hover support even after touch input. Shared buttons render
+color, with a visible background tint and explicit hover support even after touch
+input. Hover does not add focus outlines. Shared buttons render
 their own text/icons so KDE's background-drawn labels remain visible.
 
 Catalog and Installed scrollbars sit at the outer right edge for the full page
@@ -139,7 +140,9 @@ for Discord and AAT, and leaves AAT's page open.
   using their current installed record; there is no completion text. The action
   disappears if the app is removed or another operation starts for it.
   Clicking an app's icon or title opens its information page; Back returns to
-  the same Downloads page. Clear History at the top right hides finished entries
+  the same Downloads page. Progress updates preserve each card and its pressed
+  state, so updates between press/release cannot interrupt title/icon or Cancel
+  clicks. Clear History at the top right hides finished entries
   only, preserving active/pending work, stable cancellation IDs and installation
   dates. The Downloads title stays centered between the header controls.
   Errors, cancellation and confirmation messages remain visible.
@@ -159,6 +162,9 @@ for Discord and AAT, and leaves AAT's page open.
   Successful removal updates the installed record before completing the job,
   and discards older in-flight list results, so Open/Uninstall cannot flash back
   before Install appears.
+  It also hides that deployment's finished Downloads entries, leaving other
+  apps/scopes/branches and active work alone. Failed or declined removal keeps
+  the existing history.
 - Installed lists user and system applications, with version and installed size.
   Its sorting menu offers name A–Z/Z–A, installation date newest/oldest, and size
   largest/smallest. Sizes sort by exact deployed bytes, not rounded display text;
@@ -273,8 +279,11 @@ of the installation backend.
 Screenshot thumbnails retain their hover highlight without an extra Preview
 badge. Native touchpad pinches apply incremental zoom at the current focus,
 without interpreting Qt's scene-coordinate translation as a pan. Releasing and
-starting another pinch preserves the transform; touch-screen and mouse handlers
-are unchanged.
+starting another pinch preserves the transform. Zoomed photos support held-click
+dragging from mice and touchpads, including Wayland mouse-button events still
+identified as TouchPad. Touchpad horizontal scrolling does not pan a zoomed photo
+or change screenshots; browsing by swipe remains available when fitted. Mouse-wheel
+zoom and touch-screen pinch/drag behavior are unchanged.
 
 ## Tests
 
@@ -299,6 +308,19 @@ focus points. It does not inject system input or start Flatpak operations:
 "$(pkg-config --variable=libexecdir Qt6Core)/moc" tests/native/test_pointer_gestures.cpp -o target/test_pointer_gestures.moc
 c++ -std=c++17 -fPIC tests/native/test_pointer_gestures.cpp -Itarget -o target/test-pointer-gestures $(pkg-config --cflags --libs Qt6QuickTest Qt6Quick Qt6Qml Qt6Gui)
 QT_QPA_PLATFORM=offscreen target/test-pointer-gestures -input tests/native/gestures
+```
+
+The hover suite covers every category, selected/unselected states, Back, app
+actions, Downloads controls, search/sort controls, confirmation buttons and
+preview controls in dark/light palettes. It sends enter/leave/re-enter events
+over icon, label and padding, including after touch input, and samples rendered
+page/popup pixels to verify the tint appears and disappears without changing focus
+outlines. It also checks disabled controls and keyboard focus. Run at both
+100% and 150%, including the KDE style:
+
+```sh
+QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=org.kde.desktop /usr/lib/qt6/bin/qmltestrunner -input tests/qml/tst_hover.qml
+QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=1.5 QT_QUICK_CONTROLS_STYLE=org.kde.desktop /usr/lib/qt6/bin/qmltestrunner -input tests/qml/tst_hover.qml
 ```
 
 Known test caveat: with Qt 6.11.2's KDE desktop style, the offscreen Installed-sort
@@ -384,6 +406,15 @@ discarding a stale installed list that returns after successful removal:
 ```sh
 c++ -std=c++17 -fPIC -pthread tests/native/test_parallel_workers.cpp src/flatpak_manager.cpp src/flatpak_sizes.cpp target/test-cancel-moc.cpp -o target/test-parallel-workers $(pkg-config --cflags --libs Qt6Core Qt6Gui Qt6DBus flatpak)
 QT_QPA_PLATFORM=offscreen target/test-parallel-workers
+```
+
+Successful-uninstall history cleanup has its own isolated fake-worker test.
+Declining/failing removal retains history; unrelated apps and active job IDs
+survive, and reinstall creates a new visible download entry:
+
+```sh
+c++ -std=c++17 -fPIC -pthread tests/native/test_removed_download_history.cpp src/flatpak_manager.cpp src/flatpak_sizes.cpp target/test-cancel-moc.cpp -o target/test-removed-history $(pkg-config --cflags --libs Qt6Core Qt6Gui Qt6DBus flatpak)
+QT_QPA_PLATFORM=offscreen target/test-removed-history
 ```
 
 `tests/integration/ParallelRemovalSmoke.qml` is an opt-in live VM check: it

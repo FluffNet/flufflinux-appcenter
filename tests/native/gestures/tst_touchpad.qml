@@ -9,6 +9,77 @@ TestCase {
     AppCenter.Main { id: main; visible: true }
     readonly property var app: ({id: "org.example.Preview", name: "Preview", summary: "", description: "", icon: "", developer: "", category: "", license: "", homepage: "", screenshots: [
         "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='640' height='360'%3E%3Crect width='640' height='360' fill='%23820101'/%3E%3C/svg%3E"]})
+    function init() {
+        failOnWarning(/(ReferenceError|TypeError|Binding loop)/)
+    }
+    function cleanup() {
+        const stack = findChild(main, "navigationStack")
+        if (stack.currentItem.screenshotPreviewDialog) {
+            stack.currentItem.screenshotPreviewDialog.close()
+            tryCompare(stack.currentItem.screenshotPreviewDialog, "visible", false)
+        }
+        main.showCatalog()
+        tryCompare(stack, "busy", false)
+    }
+    function openPreview() {
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        page.openScreenshot(0)
+        tryCompare(page.screenshotPreviewDialog, "opened", true)
+        tryCompare(findChild(page.screenshotPreviewDialog, "previewImage"), "status", Image.Ready)
+        waitForRendering(page.screenshotPreviewDialog.contentItem)
+        return page
+    }
+    function test_click_drag_pans_zoomed_image_data() {
+        return [{tag: "mouse", touchpad: false}, {tag: "touchpad-click", touchpad: true}]
+    }
+    function test_click_drag_pans_zoomed_image(data) {
+        const page = openPreview()
+        const surface = findChild(page.screenshotPreviewDialog, "previewGestureSurface")
+        const handler = findChild(page.screenshotPreviewDialog, "previewMousePan")
+        page.setPreviewZoom(2)
+        for (const direction of [1, -1]) {
+            const oldX = page.previewPanX, oldY = page.previewPanY
+            const x = surface.width / 2, y = surface.height / 2
+            nativeInput.pointer(surface, 0, x, y, data.touchpad)
+            for (let step = 1; step <= 5; ++step)
+                nativeInput.pointer(surface, 1, x + direction * step * 16, y + direction * step * 10, data.touchpad)
+            verify(handler.active, "A held left button must grab and pan the photo")
+            verify((page.previewPanX - oldX) * direction > 40)
+            verify((page.previewPanY - oldY) * direction > 20)
+            const panX = page.previewPanX, panY = page.previewPanY
+            nativeInput.pointer(surface, 2, x + direction * 80, y + direction * 50, data.touchpad)
+            verify(!handler.active)
+            compare(page.previewPanX, panX)
+            compare(page.previewPanY, panY)
+            compare(page.previewZoom, 2)
+        }
+    }
+    function test_touchpad_scroll_does_not_pan_zoomed_image() {
+        const page = openPreview()
+        const surface = findChild(page.screenshotPreviewDialog, "previewGestureSurface")
+        page.setPreviewZoom(2)
+        page.setPreviewPan(25, 15)
+        for (const dx of [40, -40, 120, -120]) {
+            nativeInput.scroll(surface, surface.width / 2, surface.height / 2, dx, 0)
+            compare(page.previewPanX, 25)
+            compare(page.previewPanY, 15)
+            compare(page.previewZoom, 2)
+            compare(page.previewScreenshotIndex, 0)
+        }
+    }
+    function test_mouse_wheel_behavior_is_preserved() {
+        const page = openPreview()
+        const surface = findChild(page.screenshotPreviewDialog, "previewGestureSurface")
+        page.setPreviewZoom(2)
+        nativeInput.mouseWheel(surface, surface.width / 2, surface.height / 2, 120, 0)
+        compare(page.previewPanX, -120)
+        compare(page.previewZoom, 2)
+        nativeInput.mouseWheel(surface, surface.width / 2, surface.height / 2, 0, 120)
+        verify(page.previewZoom > 2, "Ordinary mouse-wheel zoom must be unchanged")
+    }
     function test_repeated_native_gestures_keep_focus_data() {
         return [{tag: "same-focus", moveFocus: false}, {tag: "new-focus-each-gesture", moveFocus: true}]
     }

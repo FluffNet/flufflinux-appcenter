@@ -21,7 +21,9 @@ ApplicationWindow {
     readonly property color raisedSurfaceColor: surfaceColor
     readonly property color sidebarColor: backgroundColor
     readonly property color borderColor: Qt.tint(surfaceColor, Qt.rgba(textColor.r, textColor.g, textColor.b, 0.11))
-    readonly property color hoverColor: Qt.tint(surfaceColor, Qt.rgba(textColor.r, textColor.g, textColor.b, 0.045))
+    // Keep hover visibly distinct from the raised button surface. This is a
+    // background tint only; hovering must not look like keyboard focus.
+    readonly property color hoverColor: Qt.tint(surfaceColor, Qt.rgba(textColor.r, textColor.g, textColor.b, 0.085))
     readonly property int cornerRadius: 8
     readonly property url appIconUrl: typeof fluffAppIconUrl !== "undefined"
                                       ? fluffAppIconUrl : ""

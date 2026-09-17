@@ -927,7 +927,9 @@ Page {
                             objectName: "previewMousePan"
                             target: null
                             enabled: page.previewZoom > 1.001
-                            acceptedDevices: PointerDevice.Mouse
+                            // A touchpad click/drag is a mouse-button sequence,
+                            // but Wayland can retain TouchPad as its device type.
+                            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                             acceptedButtons: Qt.LeftButton
                             cursorShape: active ? Qt.ClosedHandCursor
                                                 : Qt.OpenHandCursor
@@ -962,8 +964,8 @@ Page {
                             rotationAxis.enabled: false
                             // Native touchpad pinches are zoom-only. Qt can report
                             // scene-coordinate translation here; applying it as
-                            // a pan makes successive gestures jump. Two-finger
-                            // scrolling/panning remains in the wheel handlers.
+                            // a pan makes successive gestures jump. Scrolling
+                            // is handled separately, never as part of a pinch.
                             xAxis.enabled: false
                             yAxis.enabled: false
                             onScaleChanged: function(delta) {
@@ -1002,7 +1004,13 @@ Page {
                                 event.accepted = true
                                 const fingerDistance = event.inverted ? rawX : -rawX
                                 if (page.previewZoom > 1.001) {
-                                    page.panPreviewBy(fingerDistance, 0)
+                                    // Consume two-finger side-scroll without
+                                    // moving the photo or browsing to another.
+                                    // Panning uses a held click or touchscreen.
+                                    if (!page.wheelEventIsTouchpad(point.device,
+                                            event.pixelDelta.x !== 0 || event.pixelDelta.y !== 0,
+                                            event.angleDelta.x, event.angleDelta.y))
+                                        page.panPreviewBy(fingerDistance, 0)
                                     return
                                 }
                                 if (gestureTriggered)

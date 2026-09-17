@@ -76,6 +76,25 @@ TestCase {
         compare(stack().currentItem, downloads, "Back should return to the same Downloads page")
         compare(backend.jobs.length, 1)
     }
+    function test_progress_updates_preserve_a_pressed_card_data() {
+        return [{tag: "icon", object: "downloadAppIcon"}, {tag: "title", object: "downloadAppName"},
+                {tag: "cancel", object: "cancelDownloadButton"}]
+    }
+    function test_progress_updates_preserve_a_pressed_card(data) {
+        const originalCard = card()
+        const button = findChild(originalCard, data.object)
+        mousePress(button)
+        for (let update = 1; update <= 8; ++update) {
+            backend.jobs = [Object.assign({}, job, {progress: update / 10, downloadedSize: update + " MiB"})]
+            compare(card(), originalCard, "Progress must update the existing card, not replace it mid-click")
+        }
+        mouseRelease(button)
+        if (data.tag === "cancel") compare(backend.cancelledIndex, job.index)
+        else {
+            tryCompare(stack(), "busy", false)
+            compare(stack().currentItem.app.id, app.id, "One press/release opens details despite progress updates")
+        }
+    }
     function test_clear_history_preserves_active_jobs() {
         const clear = findChild(stack().currentItem, "clearDownloadHistoryButton")
         verify(clear.visible && !clear.enabled)
@@ -90,6 +109,23 @@ TestCase {
         backend.jobs = [Object.assign({}, job, {active: false, status: "Complete"})]
         mouseClick(clear)
         compare(findChild(stack().currentItem, "downloadJobs").count, 0)
+    }
+    function test_history_changes_preserve_surviving_cards_and_ids() {
+        const rows = findChild(stack().currentItem, "downloadJobs")
+        const original = card()
+        const other = Object.assign({}, job, {index: 8, id: "org.example.Other", name: "Other"})
+        backend.jobs = [other, job]
+        compare(rows.count, 2)
+        compare(rows.itemAt(1), original)
+        const otherCard = rows.itemAt(0)
+        backend.jobs = [job, other]
+        compare(rows.itemAt(0), original)
+        compare(rows.itemAt(1), otherCard)
+        backend.jobs = [other]
+        compare(rows.count, 1)
+        compare(rows.itemAt(0), otherCard)
+        mouseClick(findChild(otherCard, "cancelDownloadButton"))
+        compare(backend.cancelledIndex, 8, "Removing history must not change a surviving job's cancellation ID")
     }
     function test_simple_progress_data() {
         return [{tag: "wide", width: 1180}, {tag: "narrow", width: 720}]
