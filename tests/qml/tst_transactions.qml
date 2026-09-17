@@ -292,7 +292,7 @@ TestCase {
     function test_removals_only_show_in_installed_and_app_view() {
         const app = {id: "org.example.Remove", name: "Remove test", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "",
                      installedSize: "10 MB", installedVersion: "1.0", installation: "user", installedBranch: "stable", installedArch: "x86_64"}
-        const removal = {id: app.id, index: 4, action: "uninstall", name: app.name, active: true, progress: 0.3, status: "Removing…", operations: [{name: app.id, progress: 0.3}]}
+        const removal = {id: app.id, index: 4, action: "uninstall", name: app.name, active: true, removalConfirmed: true, progress: 0.3, status: "Removing…", operations: [{name: app.id, progress: 0.3}]}
         const download = {id: "org.example.Download", index: 7, action: "install", name: "Download", active: true, progress: 0.5, status: "Downloading", operations: []}
         backend.installedApps = [app]
         backend.jobs = [removal]
@@ -342,6 +342,52 @@ TestCase {
         compare(typeof main.openFlatpak, "undefined")
         main.showCatalog()
         tryCompare(stack, "busy", false)
+    }
+    function test_removal_progress_waits_for_yes_data() {
+        return [{tag: "queued", status: "Queued", operations: []},
+                {tag: "preparing", status: "Preparing…", operations: []},
+                {tag: "review", status: "Waiting for confirmation", operations: [{name: "App", progress: 0}]}]
+    }
+    function test_removal_progress_waits_for_yes(data) {
+        const app = {id: "org.example.Confirmation", name: "Confirmation", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "",
+            installedSize: "10 MB", installedVersion: "1.0", installation: "user", installedBranch: "stable", installedArch: "x86_64"}
+        const removal = {id: app.id, index: 0, action: "uninstall", name: app.name, active: true,
+            removalConfirmed: false, progress: 0, status: data.status, operations: data.operations}
+        backend.installedApps = [app]
+        backend.jobs = [removal]
+        main.showCatalog()
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        main.selectedCategory = "Installed"
+        const list = findChild(stack.currentItem, "installedList")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const row = list.itemAtIndex(0)
+        verify(!findChild(row, "installedRemovalProgress").visible)
+        compare(findChild(row, "installedRemovalStatus").text, "Waiting for confirmation")
+        main.openApp(app); tryCompare(stack, "busy", false)
+        const page = stack.currentItem
+        verify(!findChild(page, "appInstallProgress").visible)
+        verify(!findChild(page, "cancelAppButton").visible)
+        compare(findChild(page, "appJobStatus").text, "Waiting for confirmation")
+        // No must not briefly display the bar while its worker exits.
+        backend.jobs = [Object.assign({}, removal, {status: "Cancelling…"})]
+        verify(!findChild(page, "appInstallProgress").visible)
+        verify(!findChild(page, "cancelAppButton").visible)
+        backend.jobs = []
+        verify(findChild(page, "uninstallAppButton").visible)
+        verify(!findChild(page, "appJobStatus").visible)
+        // A later Yes explicitly starts progress, never a Cancel action.
+        backend.jobs = [Object.assign({}, removal, {removalConfirmed: true, status: "Uninstalling…"})]
+        verify(findChild(page, "appInstallProgress").visible)
+        verify(!findChild(page, "cancelAppButton").visible)
+        compare(findChild(page, "appJobStatus").text, "Uninstalling…")
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        verify(findChild(row, "installedRemovalProgress").visible)
+        verify(findChild(row, "installedRemovalProgress").indeterminate)
+        compare(findChild(row, "installedRemovalStatus").text, "Uninstalling…")
+        backend.jobs = []
+        backend.installedApps = []
+        main.selectedCategory = "All Apps"
     }
     function test_app_actions_review_progress_and_installed_refresh() {
         const app = {id: "org.example.Test", name: "Test", summary: "A test", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}

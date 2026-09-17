@@ -33,6 +33,15 @@ AppCenter.Main {
         Qt.exit(1)
         return false
     }
+    function checkRemovalUi(confirmed) {
+        const stack = find(main.contentItem, "navigationStack")
+        const job = jobForApp(testApp)
+        return check(job && job.removalConfirmed === confirmed
+                     && find(stack.currentItem, "appInstallProgress").visible === confirmed
+                     && !find(stack.currentItem, "cancelAppButton").visible
+                     && (confirmed || find(stack.currentItem, "appJobStatus").text === "Waiting for confirmation"),
+                     "Uninstall must show only waiting text before Yes, then progress without Cancel")
+    }
     Connections {
         target: main.backend
         function onInstallSizesChanged() {
@@ -66,7 +75,9 @@ AppCenter.Main {
                 main.find(stack.currentItem, "uninstallAppButton").clicked()
                 main.phase = "decline"
             } else if (main.phase === "decline" && main.backend.review.removing) {
+                if (!main.checkRemovalUi(false)) return
                 main.backend.answerReview(main.backend.review.token, false)
+                if (!main.checkRemovalUi(false)) return
                 main.phase = "cancelled"
             } else if (main.phase === "cancelled" && !main.backend.busy) {
                 if (!main.check(!!main.findInstalled(main.testApp)
@@ -75,8 +86,14 @@ AppCenter.Main {
                 main.find(stack.currentItem, "uninstallAppButton").clicked()
                 main.phase = "approve"
             } else if (main.phase === "approve" && main.backend.review.removing) {
+                if (!main.checkRemovalUi(false)) return
                 main.phase = "removing"
                 main.backend.answerReview(main.backend.review.token, true)
+                if (!main.checkRemovalUi(true)) return
+                console.info("UNINSTALL_CONFIRMATION_PASS: no bar/cancel before Yes; progress without Cancel after Yes")
+                stack.currentItem.grabToImage(function(result) {
+                    result.saveToFile(Qt.resolvedUrl("../../target/uninstall-confirmed-proof.png").toString().replace("file://", ""))
+                })
             } else if (main.phase === "removing" && !main.backend.busy) {
                 if (!main.check(!main.findInstalled(main.testApp), "Test app was not removed")) return
                 const sizes = main.backend.installSizes[main.testId] || ({})

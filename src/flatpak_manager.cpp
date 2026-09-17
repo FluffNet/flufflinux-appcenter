@@ -192,6 +192,7 @@ void FlatpakManager::enqueue(QVariantMap request) {
             || (id.isEmpty() && job.value("source") == request.value("source")))) return;
     }
     request["active"] = true; request["failed"] = false; request["progress"] = 0;
+    if (request.value("action") == "uninstall") request["removalConfirmed"] = false;
     request["status"] = tr("Queued"); request["operations"] = QVariantList{};
     request["index"] = m_jobs.size();
     m_requests.append(request); m_jobs.append(request); emit jobsChanged(); startNext();
@@ -355,9 +356,13 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
 }
 void FlatpakManager::answerReview(int token, bool accept) {
     if (m_review.isEmpty() || m_review.value("token").toInt() != token) return;
+    // Resolving an uninstall plan is not consent to remove it. Let both views
+    // start showing removal progress only after this particular Yes response.
+    QVariantMap values{{"status", accept ? tr("Working…") : tr("Cancelling…")}};
+    if (m_review.value("removing").toBool()) values["removalConfirmed"] = accept;
+    patchJob(m_current, values);
     m_worker.write(QJsonDocument(QJsonObject{{"token", token}, {"accept", accept}}).toJson(QJsonDocument::Compact) + '\n');
     m_review.clear(); emit reviewChanged();
-    patchJob(m_current, {{"status", accept ? tr("Working…") : tr("Cancelling…")}});
 }
 void FlatpakManager::cancelJob(int index) {
     if (index < 0 || index >= m_jobs.size() || !active(m_jobs[index].toMap())) return;

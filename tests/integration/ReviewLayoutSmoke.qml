@@ -8,6 +8,7 @@ AppCenter.Main {
     width: 1240; height: 820
     property string testId: "com.anydesk.Anydesk"
     property string scope: "user"
+    property bool reviewOnAppPage: true
     property string phase: "start"
     property var testApp: null
     property bool failed: false
@@ -39,6 +40,9 @@ AppCenter.Main {
                 main.testApp = main.installedApps.find(app => String(app.id).replace(/\.desktop$/, "") === main.testId && app.installation === main.scope)
                 if (!main.check(!!main.testApp, "Expected installed app missing: " + JSON.stringify(main.installedApps) + " " + main.installedError)) return
                 main.selectedCategory = "Installed"
+                if (main.reviewOnAppPage) main.openApp(main.testApp)
+                main.phase = "openReview"
+            } else if (main.phase === "openReview") {
                 main.backend.uninstallApp(main.testApp)
                 main.phase = "review"
             } else if (main.phase === "review" && main.backend.review.removing) {
@@ -48,6 +52,14 @@ AppCenter.Main {
                     ? "If you proceed, " + main.testApp.name + " and its app data will be removed."
                     : "If you proceed, " + main.testApp.name + " will be removed for all users, and its app data for this account will be deleted."
                 if (!main.check(review.message === expected, "Wrong explanatory paragraph")) return
+                const job = main.jobForApp(main.testApp)
+                if (!main.check(job && job.removalConfirmed === false, "Uninstall already confirmed")) return
+                if (main.reviewOnAppPage) {
+                    if (!main.check(!main.find(stack.currentItem, "appInstallProgress").visible
+                                    && !main.find(stack.currentItem, "cancelAppButton").visible
+                                    && main.find(stack.currentItem, "appJobStatus").text === "Waiting for confirmation",
+                                    "Waiting state shows progress or Cancel")) return
+                }
                 console.info("REVIEW_LAYOUT_READY: " + review.title + " " + review.message)
                 main.readyAt = Date.now()
                 main.phase = "captureReview"

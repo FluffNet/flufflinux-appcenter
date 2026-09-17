@@ -8,6 +8,8 @@ ColumnLayout {
     readonly property var installed: typeof window.findInstalled === "function" ? window.findInstalled(app) : null
     readonly property var job: typeof window.jobForApp === "function" ? window.jobForApp(app) : null
     readonly property bool running: !!job && job.active === true
+    readonly property bool removing: !!job && job.action === "uninstall"
+    readonly property bool awaitingRemovalConfirmation: running && removing && job.removalConfirmed !== true
     readonly property var sizeInfo: window.backend && window.backend.installSizes
                                    ? window.backend.installSizes[String(app.id).replace(/\.desktop$/, "")] || ({}) : ({})
     // Hide redundant displayed sizes, including differences lost to rounding.
@@ -45,6 +47,7 @@ ColumnLayout {
     }
     RowLayout {
         Layout.fillWidth: true
+        visible: !actions.running || !actions.removing
         Button {
             objectName: "installAppButton"
             visible: !actions.installed && !actions.running
@@ -72,7 +75,7 @@ ColumnLayout {
         }
         Button {
             objectName: "cancelAppButton"
-            visible: actions.running
+            visible: actions.running && !actions.removing
             text: qsTr("Cancel")
             onClicked: window.backend.cancelJob(actions.job.index)
         }
@@ -87,7 +90,8 @@ ColumnLayout {
         objectName: "appJobStatus"
         Layout.fillWidth: true
         visible: !!actions.job && (actions.running || actions.job.failed === true)
-        text: actions.job ? actions.job.status + (actions.job.error ? "\n" + actions.job.error : "") : ""
+        text: actions.awaitingRemovalConfirmation ? qsTr("Waiting for confirmation")
+              : actions.job ? actions.job.status + (actions.job.error ? "\n" + actions.job.error : "") : ""
         textFormat: Text.PlainText; wrapMode: Text.Wrap
         color: actions.job && actions.job.failed ? window.accentColor : window.mutedTextColor
     }

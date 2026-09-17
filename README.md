@@ -52,7 +52,9 @@ background update services, notifications, settings, or tray components.
   on the app page; their completed Downloads history remains available.
 - Removals never appear in Downloads or its badge. Their progress/errors are
   shown in the Installed row and app view only; successful removal leaves no
-  lingering completion text on the app page.
+  lingering completion text on the app page. Before Yes, both views show only
+  “Waiting for confirmation”, without a progress bar. After Yes, removal progress
+  appears without a Cancel button; install/download cancellation is unchanged.
 - Installed lists user and system applications, with version and installed size.
   Open an app, view its information, or uninstall it from its row or app page.
   App details omit the technical installation/scope/branch/architecture row.

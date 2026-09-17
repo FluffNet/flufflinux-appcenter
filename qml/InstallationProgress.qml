@@ -11,7 +11,7 @@ ColumnLayout {
     readonly property real downloadValue: job ? (job.downloadProgress || 0) : 0
     readonly property int installedCount: job ? (job.installCompleted || 0) : 0
     readonly property int installCount: job ? (job.installTotal || 0) : 0
-    visible: !!job && job.active === true
+    visible: !!job && job.active === true && (!removing || job.removalConfirmed === true)
     spacing: 8
     Label {
         objectName: "downloadPhaseLabel"
