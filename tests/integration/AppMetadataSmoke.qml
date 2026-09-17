@@ -52,6 +52,10 @@ AppCenter.Main {
                 const buttons = main.find(stack.currentItem, "appActionButtons")
                 const info = main.find(stack.currentItem, "appHeroText")
                 if (!main.check(buttons.mapToItem(stack.currentItem, 0, 0).x >= info.mapToItem(stack.currentItem, info.width, 0).x, "Actions not on the right")) return
+                const card = main.find(stack.currentItem, "appHeroCard")
+                const leftInset = logo.mapToItem(card, 0, 0).x
+                const rightInset = card.width - buttons.mapToItem(card, buttons.width, 0).x
+                if (!main.check(Math.abs(leftInset - rightInset) < 1, "Unequal icon/button outer spacing")) return
                 for (const name of ["installAppButton", "openAppButton", "uninstallAppButton"]) {
                     const button = main.find(stack.currentItem, name)
                     if (button.visible && !main.check(button.width >= 176 && button.height >= 56, "Small touch target: " + name)) return

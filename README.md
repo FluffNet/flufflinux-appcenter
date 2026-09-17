@@ -30,7 +30,8 @@ and captures `target/metadata-*.png`. It leaves 0 A.D.'s page open.
 - App pages show Size and Version in a compact stack beneath the developer, read from the
   same local catalog (no additional network request). Unknown versions are
   omitted; dependency totals appear below when needed. Large action buttons sit
-  to the right, inset from the edge, with at least 176 × 56 logical-pixel touch
+  to the right, with the same 26-pixel outer inset as the app icon on the left
+  and at least 176 × 56 logical-pixel touch
   targets. On narrow windows the buttons move below the information, while
   progress keeps its full width. The
   developer's name is displayed without a “By” prefix.

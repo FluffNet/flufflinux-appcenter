@@ -303,6 +303,7 @@ Page {
             spacing: 24
 
             Rectangle {
+                objectName: "appHeroCard"
                 Layout.fillWidth: true; Layout.topMargin: 32
                 implicitHeight: Math.max(172, heroLayout.implicitHeight + 52)
                 radius: window.cornerRadius; color: window.surfaceColor
@@ -358,7 +359,8 @@ Page {
                         Layout.column: heroLayout.sideActions ? 2 : 1
                         Layout.rowSpan: heroLayout.sideActions ? 2 : 1
                         Layout.alignment: (heroLayout.sideActions ? Qt.AlignRight : Qt.AlignLeft) | Qt.AlignVCenter
-                        Layout.rightMargin: heroLayout.sideActions ? Math.min(160, heroLayout.width * 0.15) : 0
+                        // The shared 26px card padding mirrors the icon's
+                        // left inset; no additional right-side offset.
                         Layout.fillWidth: false
                         Layout.preferredWidth: !stacked && heroActions.installed && !heroActions.running ? 380 : 184
                     }

@@ -46,6 +46,16 @@ TestCase {
         })
         tryVerify(function() { return captured })
     }
+    function verifyMirroredHeroInsets(page) {
+        const card = findChild(page, "appHeroCard")
+        const icon = findChild(page, "appHeroIcon")
+        const buttons = findChild(page, "appActionButtons")
+        const leftInset = icon.mapToItem(card, 0, 0).x
+        const rightInset = card.width - buttons.mapToItem(card, buttons.width, 0).x
+        compare(leftInset, 26)
+        verify(Math.abs(leftInset - rightInset) < 1,
+               "The action stack's right inset must mirror the icon's left inset")
+    }
     function test_simple_uninstall_confirmation_data() {
         return [{tag: "user", message: "If you proceed, Calculator and its app data will be removed."},
                 {tag: "system", message: "If you proceed, Calculator will be removed for all users, and its app data for this account will be deleted."}]
@@ -82,10 +92,11 @@ TestCase {
         verify(details.mapToItem(page, 0, 0).y >= info.mapToItem(page, 0, info.height).y,
                "Size and version belong beneath the developer")
         compare(details.mapToItem(page, 0, 0).x, info.mapToItem(page, 0, 0).x)
-        if (data.width >= 980)
+        if (data.width >= 980) {
             verify(buttons.mapToItem(page, 0, 0).x >= info.mapToItem(page, info.width, 0).x,
                    "Actions belong to the right of the information")
-        else
+            verifyMirroredHeroInsets(page)
+        } else
             verify(buttons.mapToItem(page, 0, 0).y >= details.mapToItem(page, 0, details.height).y,
                    "Narrow windows put actions below the information")
         const install = findChild(page, "installAppButton")
@@ -98,9 +109,11 @@ TestCase {
         verify(bar.mapToItem(page, bar.width, 0).x >= buttons.mapToItem(page, buttons.width, 0).x - 1,
                "Progress must extend beneath the right-side buttons too")
         verify(bar.mapToItem(page, 0, 0).y >= buttons.mapToItem(page, 0, buttons.height).y)
-        if (data.width >= 980)
-            verify(bar.mapToItem(page, bar.width, 0).x - buttons.mapToItem(page, buttons.width, 0).x >= 100,
-                   "The action stack should sit inward, not against the far edge")
+        if (data.width >= 980) {
+            verifyMirroredHeroInsets(page)
+            verify(Math.abs(bar.mapToItem(page, bar.width, 0).x - buttons.mapToItem(page, buttons.width, 0).x) < 1,
+                   "Actions and progress should share the same right edge")
+        }
         const cancel = findChild(page, "cancelAppButton")
         verify(cancel.width >= 176 && cancel.height >= 56, "Cancel must be touch-friendly")
         if (data.width === 720) captureTouchLayout(page, "narrow-progress")
@@ -133,6 +146,7 @@ TestCase {
             verify(point.x >= 0 && point.x + button.width <= page.width - 24, "Buttons must fit the window")
         }
         if (data.width >= 980) {
+            verifyMirroredHeroInsets(page)
             verify(open.mapToItem(page, 0, 0).x >= info.mapToItem(page, info.width, 0).x)
             verify(uninstall.mapToItem(page, 0, 0).y >= open.mapToItem(page, 0, open.height).y + 12)
         } else {
