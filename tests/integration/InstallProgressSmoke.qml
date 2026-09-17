@@ -88,7 +88,7 @@ AppCenter.Main {
                                         && Math.abs(bar.value - current.progress) < 0.0001
                                         && count.text === current.installCompleted + "/" + current.installTotal + " Complete"
                                         && bytes.visible === (current.hasDownload && !current.downloadComplete)
-                                        && (!bytes.visible || bytes.text === current.downloadedSize + "/" + current.downloadTotalSize + " · " + current.downloadSpeed)
+                                        && (!bytes.visible || bytes.text === current.downloadedSize + " / " + current.downloadTotalSize + " (" + current.downloadSpeed + ")")
                                         && percentage.text === Math.floor(current.progress * 100 + 0.000001) + "%"
                                         && !main.find(stack.currentItem, "downloadPhaseProgress")
                                         && !main.find(stack.currentItem, "installPhaseProgress"),

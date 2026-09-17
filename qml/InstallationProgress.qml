@@ -15,7 +15,7 @@ ColumnLayout {
         Layout.minimumWidth: 0
         visible: progress.planned && !progress.removing && progress.job.hasDownload === true
                  && progress.job.downloadComplete !== true
-        text: qsTr("%1/%2 · %3").arg(progress.job ? progress.job.downloadedSize || "" : "")
+        text: qsTr("%1 / %2 (%3)").arg(progress.job ? progress.job.downloadedSize || "" : "")
                                 .arg(progress.job ? progress.job.downloadTotalSize || "" : "")
                                 .arg(progress.job ? progress.job.downloadSpeed || "" : "")
         horizontalAlignment: Text.AlignRight

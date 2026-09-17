@@ -66,7 +66,7 @@ private:
     QHash<QString, QVariantMap> m_sources;
     QHash<QString, QVariantMap> m_metadata;
     QProcess m_worker, m_installedProcess, m_cache;
-    QTimer m_installedTimeout, m_cacheTimeout, m_downloadRateTimer;
+    QTimer m_installedTimeout, m_cacheTimeout, m_downloadRateTimer, m_cancelTimeout;
     QElapsedTimer m_downloadClock;
     DownloadRate m_downloadRate;
     QByteArray m_buffer, m_diagnostics;

@@ -41,11 +41,15 @@ inline QVariantMap transactionStages(const QVariantList &operations, const QStri
     // A pure local bundle uses its import callbacks instead of network work.
     const double transferProgress = weight > 0 ? downloadProgress : total ? localProgress / total : 0;
     const double overall = qMin(0.99, 0.9 * transferProgress + 0.1 * installProgress);
-    const auto mb = [](quint64 size) { return QLocale().toString(double(size) / 1000000, 'f', 2) + " MB"; };
+    const auto sizeText = [](quint64 size) {
+        const bool gigabytes = size >= 1000000000;
+        return QLocale().toString(double(size) / (gigabytes ? 1000000000 : 1000000), 'f', 2)
+            + (gigabytes ? " GB" : " MB");
+    };
     return {{"phase", phase}, {"downloadProgress", downloadProgress},
             {"downloadEstimating", estimating}, {"receivedSize", QLocale().formattedDataSize(received)},
             {"receivedBytes", received}, {"downloadTotalBytes", downloadTotal},
-            {"downloadedSize", mb(received)}, {"downloadTotalSize", mb(downloadTotal)},
+            {"downloadedSize", sizeText(received)}, {"downloadTotalSize", sizeText(downloadTotal)},
             {"hasDownload", downloadTotal > 0}, {"downloadComplete", !pendingDownload}, {"progress", overall},
             {"installCompleted", complete}, {"installTotal", total},
             {"installProgress", installProgress}};

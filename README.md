@@ -33,13 +33,18 @@ background update services, notifications, settings, or tray components.
   repository's published estimates.
 - Downloads keeps this session's jobs, per-dependency status, progress, and
   errors, with each app's icon beside its name (and a themed fallback when
-  artwork is unavailable). Cancelled jobs disappear from both Downloads and the app page once
-  cancellation finishes. Cancelling the only job also hides the Downloads
+  artwork is unavailable). Cancelled jobs disappear immediately from both Downloads and the app page.
+  Cancellation signals Flatpak and closes the worker's input; a 250 ms watchdog
+  stops that dedicated worker if it fails to exit. Late progress cannot revive
+  the cancelled job, and a retry waits for worker exit/refresh before starting.
+  Cancelling the only job also hides the Downloads
   button; other completed/failed jobs stay. Operations are serialized;
   additional requests wait in the queue.
   A single overall progress bar includes every planned component, with
   `1/5 Complete` and a plain percentage below. Above the bar, right-aligned
-  `128.00 MB/512.00 MB · 2.30 MB/s` shows the total received bytes and live speed.
+  `128.00 MB / 512.00 MB (2.30 MB/s)` shows the total received bytes and live speed.
+  Each amount switches independently to decimal GB at one billion bytes, so
+  larger transfers read `190.74 MB / 1.90 GB (2.21 MB/s)`.
   Speed uses a two-second rolling sample of actual network bytes, resets between
   pulls, and drops to zero during stalls; it never advances the progress bar.
   The byte/speed line disappears after all downloads finish, while the single
@@ -209,6 +214,12 @@ Calculator and Picker and refuses to run if either is already installed. Run on
 the testing VM only; it never removes existing apps. Screenshots are saved in
 `target/cancel-*-proof.png`.
 
+`CancelDownloadSmoke.qml` runs the same checks after a real 0 A.D. app payload
+has transferred at least 64 KiB, not just during startup. It verifies immediate
+UI cancellation, worker exit plus refresh within two seconds, no installed test
+app, and a successful cancel/retry cycle. It refuses preinstalled 0 A.D. and
+Picker. Completed dependencies and reusable partial download data are retained.
+
 Installation dates are saved locally after successful App Center installations,
 separately from Downloads history. Installed and app details show the date in the
 system's locale and timezone, including the time but not the weekday; existing
@@ -229,6 +240,16 @@ c++ -std=c++17 -fPIC tests/native/test_install_history.cpp -o target/test-instal
 target/test-install-history
 c++ -std=c++17 -fPIC tests/native/test_transaction_progress.cpp -o target/test-transaction-progress $(pkg-config --cflags --libs Qt6Core)
 target/test-transaction-progress
+```
+
+The manager's cancellation/crash regression uses fake protocol workers, never
+installs or removes apps, and checks the forced-exit deadline, late-progress
+suppression, next-job safety and retention of genuine crash errors:
+
+```sh
+"$(pkg-config --variable=libexecdir Qt6Core)/moc" src/flatpak_manager.h -o target/test-cancel-moc.cpp
+c++ -std=c++17 -fPIC -pthread tests/native/test_cancel_worker.cpp src/flatpak_manager.cpp src/flatpak_sizes.cpp target/test-cancel-moc.cpp -o target/test-cancel-worker $(pkg-config --cflags --libs Qt6Core Qt6Gui Qt6DBus flatpak)
+QT_QPA_PLATFORM=offscreen target/test-cancel-worker
 ```
 
 `tests/integration/ReviewLayoutSmoke.qml` is a non-destructive VM check for the

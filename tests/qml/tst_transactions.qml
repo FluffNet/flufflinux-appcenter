@@ -310,7 +310,7 @@ TestCase {
         compare(findChild(page, "installPhaseProgress"), null)
         compare(findChild(page, "overallPercentageLabel").text, "50%")
         compare(findChild(page, "completedOperationsLabel").text, "0/2 Complete")
-        compare(findChild(page, "downloadBytesLabel").text, "128.00 MB/512.00 MB · 2.30 MB/s")
+        compare(findChild(page, "downloadBytesLabel").text, "128.00 MB / 512.00 MB (2.30 MB/s)")
         verify(findChild(page, "downloadBytesLabel").visible)
         verify(!findChild(page, "appJobStatus").visible)
         const deployment = Object.assign({}, job, {downloadProgress: 1, downloadComplete: true, progress: 0.95, downloadedSize: "128.00 MB", downloadTotalSize: "128.00 MB",
@@ -356,13 +356,52 @@ TestCase {
         backend.jobs = [Object.assign({}, job, {action: "source"})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(findChild(card, "downloadBytesLabel").visible)
-        compare(findChild(card, "downloadBytesLabel").text, "128.00 MB/512.00 MB · 2.30 MB/s")
+        compare(findChild(card, "downloadBytesLabel").text, "128.00 MB / 512.00 MB (2.30 MB/s)")
         backend.jobs = [Object.assign({}, deployment, {action: "source"})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(!findChild(card, "downloadBytesLabel").visible)
         backend.jobs = [Object.assign({}, job, {active: false, progress: 1, status: "Complete"})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(!card.visible)
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        backend.jobs = []
+    }
+    function test_download_amount_format_data() {
+        return [{tag: "megabytes", received: "128.00 MB", total: "512.00 MB", speed: "2.30 MB/s"},
+                {tag: "mixed_units", received: "190.74 MB", total: "1.90 GB", speed: "2.21 MB/s"},
+                {tag: "gigabytes", received: "1.20 GB", total: "1.90 GB", speed: "0.90 MB/s"},
+                {tag: "localized", received: "190,74 MB", total: "1,90 GB", speed: "2,21 MB/s"}]
+    }
+    function test_download_amount_format(data) {
+        const app = {id: "org.example.Format", name: "Download formatting", summary: "", description: "", icon: "", screenshots: [], category: "", license: "", homepage: "", developer: ""}
+        backend.jobs = [{id: app.id, name: app.name, index: 0, active: true, action: "install", progress: 0.2,
+            hasDownload: true, downloadComplete: false, downloadedSize: data.received, downloadTotalSize: data.total,
+            downloadSpeed: data.speed, installCompleted: 1, installTotal: 2, phase: "download", operations: [{}]}]
+        main.openApp(app)
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const previousWidth = main.width
+        main.width = 720
+        waitForRendering(stack.currentItem)
+        let label = findChild(stack.currentItem, "downloadBytesLabel")
+        const expected = data.received + " / " + data.total + " (" + data.speed + ")"
+        compare(label.text, expected)
+        const bar = findChild(stack.currentItem, "overallInstallProgress")
+        verify(label.visible && label.y + label.height <= bar.y)
+        compare(label.horizontalAlignment, Text.AlignRight)
+        verify(label.contentWidth <= label.width + 1)
+        verify(!label.text.includes("·"))
+        if (data.tag === "mixed_units") {
+            let captured = false
+            stack.currentItem.grabToImage(function(result) {
+                captured = result.saveToFile(Qt.resolvedUrl("../../target/download-format-proof.png").toString().replace("file://", ""))
+            })
+            tryVerify(function() { return captured })
+        }
+        main.showDownloads(); tryCompare(stack, "busy", false)
+        label = findChild(stack.currentItem, "downloadBytesLabel")
+        compare(label.text, expected)
+        main.width = previousWidth
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.jobs = []
     }

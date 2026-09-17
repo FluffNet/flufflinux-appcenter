@@ -26,6 +26,16 @@ bool active(const QVariantMap &job) { return job.value("active").toBool(); }
 }
 
 FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : QObject(parent) {
+    m_cancelTimeout.setSingleShot(true);
+    connect(&m_cancelTimeout, &QTimer::timeout, this, [this] {
+        if (m_current >= 0 && m_jobs[m_current].toMap().value("cancelling").toBool()
+            && m_worker.state() != QProcess::NotRunning) {
+            // The cooperative request must not leave an OSTree pull running
+            // indefinitely. Kill only this transaction's dedicated worker.
+            qWarning("Flatpak cancellation timed out; stopping the transaction worker");
+            m_worker.kill();
+        }
+    });
     m_downloadRateTimer.setInterval(500);
     connect(&m_downloadRateTimer, &QTimer::timeout, this, [this] {
         if (m_current < 0 || m_resultReceived) return;
@@ -44,6 +54,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     });
     connect(&m_worker, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
+            m_cancelTimeout.stop();
             m_downloadRateTimer.stop();
             patchJob(m_current, {{"active", false}, {"failed", true}, {"status", tr("Could not start Flatpak worker")}});
             m_current = -1;
@@ -53,9 +64,14 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     connect(&m_worker, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this](int, QProcess::ExitStatus) {
             receive();
+            m_cancelTimeout.stop();
             m_downloadRateTimer.stop();
-            if (!m_resultReceived) patchJob(m_current, {{"active", false}, {"failed", true},
-                {"status", tr("The Flatpak worker stopped unexpectedly")}, {"error", QString::fromUtf8(m_diagnostics)}});
+            if (!m_resultReceived) {
+                const bool cancelled = m_current >= 0 && m_jobs[m_current].toMap().value("cancelling").toBool();
+                patchJob(m_current, {{"active", false}, {"failed", !cancelled}, {"cancelled", cancelled},
+                    {"status", cancelled ? QString() : tr("The Flatpak worker stopped unexpectedly")},
+                    {"error", cancelled ? QString() : QString::fromUtf8(m_diagnostics)}});
+            }
             m_review.clear(); emit reviewChanged();
             const bool preparation = m_current >= 0 && m_requests[m_current].toMap().value("prepareOnly").toBool();
             m_current = -1;
@@ -281,6 +297,8 @@ QVariantMap FlatpakManager::downloadRateValues(const QVariantMap &job) {
 void FlatpakManager::handleMessage(const QJsonObject &message) {
     if (m_current < 0) return;
     const auto type = message["type"].toString();
+    // Buffered progress/reviews must never resurrect a cancelled job.
+    if (m_jobs[m_current].toMap().value("cancelling").toBool() && type != "result") return;
     if (type == "review") {
         m_review = message.toVariantMap(); m_review["jobIndex"] = m_current;
         patchJob(m_current, {{"status", tr("Waiting for confirmation")}, {"operations", m_review.value("operations")}});
@@ -344,11 +362,15 @@ void FlatpakManager::handleMessage(const QJsonObject &message) {
     } else if (type == "status") {
         patchJob(m_current, {{"status", message["status"].toString()}});
     } else if (type == "result") {
+        m_cancelTimeout.stop();
         m_downloadRateTimer.stop();
         m_resultReceived = true; m_worker.closeWriteChannel();
-        const bool ok = message["success"].toBool(), cancelled = message["cancelled"].toBool();
+        const bool ok = message["success"].toBool();
+        const bool cancelled = message["cancelled"].toBool() || m_jobs[m_current].toMap().value("cancelling").toBool();
         const bool preparation = m_requests[m_current].toMap().value("prepareOnly").toBool();
-        if (ok && !cancelled && !preparation) {
+        // A success racing with Cancel still actually installed the app.
+        // Record that fact, but do not restore its cancelled Downloads entry.
+        if (ok && !preparation) {
             const auto job = m_jobs[m_current].toMap();
             for (const auto &entry : job.value("operations").toList()) {
                 const auto op = entry.toMap();
@@ -384,8 +406,13 @@ void FlatpakManager::answerReview(int token, bool accept) {
 void FlatpakManager::cancelJob(int index) {
     if (index < 0 || index >= m_jobs.size() || !active(m_jobs[index].toMap())) return;
     if (index == m_current) {
+        m_downloadRateTimer.stop();
+        m_cancelTimeout.start(250);
         m_worker.write("{\"cancel\":true}\n");
-        patchJob(index, {{"status", tr("Cancelling…")}, {"cancelling", true}});
+        m_worker.closeWriteChannel();
+        // Return the page to idle immediately. The internal worker/current
+        // index still serializes a retry until cancellation really completes.
+        patchJob(index, {{"active", false}, {"cancelled", true}, {"status", QString()}, {"cancelling", true}});
         m_review.clear(); emit reviewChanged();
     } else patchJob(index, {{"active", false}, {"cancelled", true}, {"status", tr("Cancelled")}});
 }

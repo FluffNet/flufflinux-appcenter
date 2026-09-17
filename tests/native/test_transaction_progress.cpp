@@ -71,6 +71,17 @@ int main(int argc, char **argv) {
     application["downloadBytes"] = 100; application["receivedBytes"] = 120; application["downloadProgress"] = 0.9;
     result = transactionStages({application}, "download");
     assert(result["receivedBytes"].toULongLong() <= result["downloadTotalBytes"].toULongLong());
+    application["receivedBytes"] = 190740000; application["downloadBytes"] = 1897850000;
+    result = transactionStages({application}, "download");
+    assert(result["downloadedSize"].toString() == "190.74 MB");
+    assert(result["downloadTotalSize"].toString() == "1.90 GB");
+    assert(result["downloadTotalBytes"].toULongLong() == 1897850000); // Formatting does not alter accounting.
+    application["receivedBytes"] = 1000000000;
+    assert(transactionStages({application}, "download")["downloadedSize"].toString() == "1.00 GB");
+    application["receivedBytes"] = 999000000;
+    assert(transactionStages({application}, "download")["downloadedSize"].toString() == "999.00 MB");
+    application["receivedBytes"] = 0;
+    assert(transactionStages({application}, "download")["downloadedSize"].toString() == "0.00 MB");
     assert(transactionStages({}, "preparing")["progress"].toDouble() == 0);
     DownloadRate rate;
     assert(rate.sample(0, 0, false) == 0);
@@ -93,6 +104,7 @@ int main(int argc, char **argv) {
     assert(rate.sample(200, 10000000, false) == 0);
     QLocale::setDefault(QLocale("de_DE"));
     assert(transactionStages({application}, "download")["downloadedSize"].toString().contains(','));
+    assert(transactionStages({application}, "download")["downloadTotalSize"].toString() == "1,90 GB");
     assert(DownloadRate::display(1500000) == "1,50 MB/s");
     qInfo("PASS: unified weighted progress, aggregate/actual bytes, no early 100%%, dependencies, cached transfers, local bundles and completion");
 }

@@ -29,6 +29,8 @@ namespace {
 QString str(const char *s) { return QString::fromUtf8(s ? s : ""); }
 QString bytes(quint64 size) { return QLocale().formattedDataSize(size); }
 void send(QJsonObject message) {
+    static std::mutex outputMutex;
+    std::lock_guard<std::mutex> lock(outputMutex);
     const auto line = QJsonDocument(message).toJson(QJsonDocument::Compact);
     std::cout << line.constData() << std::endl;
 }
@@ -78,7 +80,10 @@ struct Worker {
         while (std::getline(std::cin, line)) {
             const auto reply = QJsonDocument::fromJson(QByteArray::fromStdString(line)).object();
             std::lock_guard<std::mutex> lock(mutex);
-            if (reply["cancel"].toBool()) g_cancellable_cancel(cancel);
+            if (reply["cancel"].toBool()) {
+                g_cancellable_cancel(cancel);
+                send({{"type", "cancel-ack"}});
+            }
             if (pendingReview && reply["token"].toInt() == pendingReview)
                 answer = reply["accept"].toBool() ? 1 : 0;
             replies.notify_all();
