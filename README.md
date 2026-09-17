@@ -27,7 +27,7 @@ and captures `target/metadata-*.png`. It leaves 0 A.D.'s page open.
 
 ## Install and remove apps
 
-- App pages show Size and Version in a compact stack on the right, read from the
+- App pages show Size and Version in a compact stack inset from the right edge, read from the
   same local catalog (no additional network request). Unknown versions are
   omitted; dependency totals appear below when needed. On narrow windows the
   stack moves below the app information, while progress keeps its full width. The

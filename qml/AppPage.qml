@@ -347,6 +347,9 @@ Page {
                         Layout.row: heroLayout.sideMetadata ? 0 : 1
                         Layout.column: heroLayout.sideMetadata ? 2 : 1
                         Layout.alignment: (heroLayout.sideMetadata ? Qt.AlignRight : Qt.AlignLeft) | Qt.AlignVCenter
+                        // Bring the compact stack inward without reducing the
+                        // full-width actions/progress row below it.
+                        Layout.rightMargin: heroLayout.sideMetadata ? Math.min(160, heroLayout.width * 0.15) : 0
                         Layout.fillWidth: false
                         Layout.preferredWidth: Math.min(340, implicitWidth)
                         Layout.maximumWidth: 340

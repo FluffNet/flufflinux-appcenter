@@ -45,6 +45,7 @@ TestCase {
     function test_version_stack_data() {
         return [{tag: "with-version", version: "0.28.0", total: "1.77 GiB", width: 1180},
                 {tag: "dependencies", version: "1.0", total: "2.35 GiB", width: 1180},
+                {tag: "compact-wide", version: "1.0", total: "2.35 GiB", width: 980},
                 {tag: "narrow", version: "2026.09.17", total: "2.35 GiB", width: 720},
                 {tag: "unknown", version: "", total: "1.77 GiB", width: 1180}]
     }
@@ -80,6 +81,9 @@ TestCase {
         verify(bar.visible)
         verify(bar.mapToItem(page, bar.width, 0).x >= details.mapToItem(page, details.width, 0).x - 1,
                "Progress must extend beneath the right-side details too")
+        if (data.width >= 980)
+            verify(bar.mapToItem(page, bar.width, 0).x - details.mapToItem(page, details.width, 0).x >= 100,
+                   "The metadata stack should sit inward, not against the far edge")
         backend.jobs = []
         main.showCatalog(); tryCompare(stack, "busy", false)
         main.width = 1180
