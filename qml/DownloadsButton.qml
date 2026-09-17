@@ -56,7 +56,8 @@ ToolButton {
     ToolTip.text: qsTr("Downloads")
     onClicked: window.showDownloads()
     background: Rectangle {
-        radius: 8
+        radius: window.cornerRadius
+        border.width: control.activeFocus ? 2 : 1
         color: control.hovered ? window.hoverColor : window.raisedSurfaceColor
         border.color: control.activeFocus ? window.accentColor : window.borderColor
         Rectangle {

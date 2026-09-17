@@ -13,9 +13,8 @@ Dialog {
     modal: true
     padding: 20
     background: Rectangle {
-        radius: 10
-        // Keep transaction/trust details readable over bright screenshots.
-        color: Qt.rgba(window.raisedSurfaceColor.r, window.raisedSurfaceColor.g, window.raisedSurfaceColor.b, 1)
+        radius: window.cornerRadius
+        color: window.raisedSurfaceColor
         border.color: window.borderColor
     }
     title: plan.title || qsTr("Confirm action")

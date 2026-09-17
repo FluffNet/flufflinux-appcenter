@@ -256,7 +256,11 @@ Page {
     background: null
     header: Control {
         height: 70; padding: 0
-        background: Rectangle { color: window.surfaceColor; border.color: window.borderColor; border.width: 1 }
+        background: Rectangle {
+            color: window.backgroundColor
+            border.width: 0
+            FluffSeparator { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom }
+        }
         contentItem: RowLayout {
             anchors.leftMargin: 14; anchors.rightMargin: 24
             ToolButton {
@@ -270,7 +274,7 @@ Page {
                 palette.buttonText: window.textColor
                 Accessible.name: "Back to app catalog"
                 background: Rectangle {
-                    radius: 6
+                    radius: window.cornerRadius
                     color: parent.hovered ? window.hoverColor : "transparent"
                     border.color: parent.activeFocus ? window.accentColor : "transparent"
                 }
@@ -301,7 +305,7 @@ Page {
             Rectangle {
                 Layout.fillWidth: true; Layout.topMargin: 32
                 implicitHeight: Math.max(172, heroLayout.implicitHeight + 52)
-                radius: 9; color: window.surfaceColor
+                radius: window.cornerRadius; color: window.surfaceColor
                 border.color: window.borderColor; border.width: 1
                 RowLayout {
                     id: heroLayout
@@ -410,7 +414,7 @@ Page {
                     Accessible.name: "Preview screenshot"
                     onClicked: page.openScreenshot(index)
                     background: Rectangle {
-                        radius: 8
+                        radius: window.cornerRadius
                         color: window.raisedSurfaceColor
                         border.color: screenshotButton.activeFocus || screenshotButton.hovered
                                       ? window.accentColor
@@ -452,7 +456,7 @@ Page {
             }
             Rectangle {
                 Layout.fillWidth: true
-                implicitHeight: aboutLayout.implicitHeight + 44; radius: 9
+                implicitHeight: aboutLayout.implicitHeight + 44; radius: window.cornerRadius
                 color: window.surfaceColor; border.color: window.borderColor; border.width: 1
                 ColumnLayout {
                     id: aboutLayout
@@ -688,7 +692,7 @@ Page {
         }
         Overlay.modal: Rectangle { color: Qt.rgba(0, 0, 0, 0.72) }
         background: Rectangle {
-            radius: 10
+            radius: window.cornerRadius
             color: window.surfaceColor
             border.color: window.borderColor
             border.width: 1

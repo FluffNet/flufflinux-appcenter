@@ -4,6 +4,22 @@ A native Flatpak software center for Fluff Linux, built with Rust (standard
 library only), QML, and the system Qt 6 and libflatpak libraries. There are no
 background update services, notifications, settings, or tray components.
 
+## Appearance
+
+The page, header and sidebar share the KDE window color. Cards, fields and
+dialogs share one subtly raised, opaque surface derived from it, without
+independent blue-gray tints. Custom panels and controls use an 8-unit corner
+radius; normal borders are 1 unit and keyboard-focus outlines are 2. Header
+and sidebar separators meet once instead of stacking rectangle outlines, and
+align to physical pixels at fractional scaling. The small application count
+uses native font rendering while retaining the system's chosen font.
+
+`tests/integration/StyleSmoke.qml` is a read-only visual check in the real KDE
+session. It captures the catalog, Installed, app and Downloads pages plus native
+and Qt-rendered count comparisons in `target/style-*.png`, then leaves the
+catalog open. It does not start transactions or change the desktop theme, font
+or scale. The QML styling tests also cover dark, light and custom palettes.
+
 ## Install and remove apps
 
 - Install from an app's information page. New apps, dependencies and software

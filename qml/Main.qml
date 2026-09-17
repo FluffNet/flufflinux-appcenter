@@ -8,17 +8,21 @@ ApplicationWindow {
     minimumWidth: 720; minimumHeight: 520
     visible: true
     title: "App Center"
-    color: "transparent"
+    color: backgroundColor
 
     readonly property bool darkMode: palette.window.hslLightness < 0.5
     readonly property color accentColor: darkMode ? "#e05562" : "#820101"
     readonly property color textColor: palette.windowText
     readonly property color mutedTextColor: palette.placeholderText
-    readonly property color surfaceColor: darkMode ? Qt.rgba(0.13, 0.15, 0.18, 0.94) : Qt.rgba(0.98, 0.985, 0.995, 0.95)
-    readonly property color raisedSurfaceColor: darkMode ? Qt.rgba(0.18, 0.20, 0.23, 0.96) : Qt.rgba(1, 1, 1, 0.97)
-    readonly property color sidebarColor: darkMode ? Qt.rgba(0.10, 0.115, 0.14, 0.96) : Qt.rgba(0.925, 0.94, 0.96, 0.96)
-    readonly property color borderColor: darkMode ? Qt.rgba(1, 1, 1, 0.13) : Qt.rgba(0.08, 0.10, 0.14, 0.16)
-    readonly property color hoverColor: darkMode ? Qt.rgba(1, 1, 1, 0.075) : Qt.rgba(0.13, 0.15, 0.20, 0.065)
+    // Two opaque, theme-derived levels. No independent blue-gray/translucent
+    // panels: the header/sidebar belong to the window, cards/fields sit above it.
+    readonly property color backgroundColor: Qt.rgba(palette.window.r, palette.window.g, palette.window.b, 1)
+    readonly property color surfaceColor: Qt.tint(backgroundColor, Qt.rgba(1, 1, 1, darkMode ? 0.035 : 0.60))
+    readonly property color raisedSurfaceColor: surfaceColor
+    readonly property color sidebarColor: backgroundColor
+    readonly property color borderColor: Qt.tint(surfaceColor, Qt.rgba(textColor.r, textColor.g, textColor.b, 0.11))
+    readonly property color hoverColor: Qt.tint(surfaceColor, Qt.rgba(textColor.r, textColor.g, textColor.b, 0.045))
+    readonly property int cornerRadius: 8
     readonly property url appIconUrl: typeof fluffAppIconUrl !== "undefined"
                                       ? fluffAppIconUrl : ""
 

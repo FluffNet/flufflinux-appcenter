@@ -14,9 +14,10 @@ AbstractButton {
     hoverEnabled: true
     Accessible.name: app.name + ", " + app.installedSize
     background: Rectangle {
-        radius: 8
-        color: row.hovered ? window.raisedSurfaceColor : window.surfaceColor
+        radius: window.cornerRadius
+        color: row.hovered ? window.hoverColor : window.surfaceColor
         border.color: row.activeFocus ? window.accentColor : window.borderColor
+        border.width: row.activeFocus ? 2 : 1
     }
     contentItem: RowLayout {
         spacing: 16
@@ -105,7 +106,12 @@ AbstractButton {
                 sourceSize: Qt.size(24, 24)
                 fillMode: Image.PreserveAspectFit
             }
-            background: Rectangle { radius: 6; color: "transparent"; border.color: window.borderColor }
+            background: Rectangle {
+                radius: window.cornerRadius
+                color: parent.hovered ? window.hoverColor : "transparent"
+                border.color: parent.activeFocus ? window.accentColor : window.borderColor
+                border.width: parent.activeFocus ? 2 : 1
+            }
         }
     }
 }

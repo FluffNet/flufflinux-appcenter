@@ -14,6 +14,8 @@ TestCase {
         visible: true
 
         property color accentColor: "#e05562"
+        property color backgroundColor: "#202326"
+        property int cornerRadius: 8
         property color textColor: "white"
         property color mutedTextColor: "#a0a0a0"
         property color surfaceColor: "#24282d"

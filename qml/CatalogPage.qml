@@ -149,9 +149,13 @@ Page {
         height: 88
         padding: 0
         background: Rectangle {
-            color: window.surfaceColor
-            border.color: window.borderColor
-            border.width: 1
+            objectName: "catalogHeaderBackground"
+            color: window.backgroundColor
+            border.width: 0
+            FluffSeparator {
+                objectName: "catalogHeaderSeparator"
+                anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom
+            }
         }
         contentItem: Item {
             Item {
@@ -262,7 +266,7 @@ Page {
                     }
                 }
                 background: Rectangle {
-                    radius: 7
+                    radius: window.cornerRadius
                     color: window.raisedSurfaceColor
                     border.color: parent.activeFocus ? window.accentColor : window.borderColor
                     border.width: parent.activeFocus ? 2 : 1
@@ -284,9 +288,14 @@ Page {
             Layout.preferredWidth: page.categorySidebarWidth
             padding: 12
             background: Rectangle {
+                objectName: "sidebarBackground"
                 color: window.sidebarColor
-                border.color: window.borderColor
-                border.width: 1
+                border.width: 0
+                FluffSeparator {
+                    objectName: "sidebarSeparator"
+                    vertical: true
+                    anchors.right: parent.right; anchors.top: parent.top; anchors.bottom: parent.bottom
+                }
             }
                 Column {
                     id: installedNavigation
@@ -337,16 +346,15 @@ Page {
                         }
                         onClicked: page.openCategory("Installed")
                         background: Rectangle {
-                            radius: 6
+                            radius: window.cornerRadius
                             color: page.installedView
                                    ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, 0.14)
                                    : installedButton.hovered ? window.hoverColor : "transparent"
                             border.color: page.installedView ? window.accentColor : "transparent"
                         }
                     }
-                    Rectangle {
-                        width: parent.width - 16; x: 8; height: 1
-                        color: window.borderColor
+                    FluffSeparator {
+                        width: parent.width - 16; x: 8
                     }
                     Item { width: 1; height: 4 }
                 }
@@ -392,7 +400,7 @@ Page {
                     font.pixelSize: 16
                     font.weight: categorySelected ? Font.DemiBold : Font.Normal
                     background: Rectangle {
-                        radius: 6
+                        radius: window.cornerRadius
                         color: categoryButton.categorySelected
                                ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, window.darkMode ? 0.16 : 0.10)
                                : categoryButton.hovered ? window.hoverColor : "transparent"
@@ -417,9 +425,13 @@ Page {
                         spacing: 5
                         Label { text: page.installedView ? qsTr("Installed") : window.searchText ? "Search results" : window.selectedCategory; color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold }
                         Label {
+                            objectName: "catalogCountLabel"
                             readonly property int count: page.installedView ? page.installedMatches.length : page.visibleApps.length
                             text: count + (count === 1 ? " application" : " applications")
                             color: window.mutedTextColor
+                            // Static small text should use the desktop font's
+                            // native rasterization, including at 150% scaling.
+                            renderType: Text.NativeRendering
                         }
                     }
                     Item { Layout.fillWidth: true }
@@ -442,7 +454,7 @@ Page {
                         palette.highlight: window.accentColor
                         palette.highlightedText: "white"
                         background: Rectangle {
-                            radius: 7
+                            radius: window.cornerRadius
                             color: window.raisedSurfaceColor
                             border.color: searchCategoryFilter.activeFocus
                                           ? window.accentColor

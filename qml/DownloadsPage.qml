@@ -15,7 +15,11 @@ Page {
     background: null
     header: ToolBar {
         height: 72
-        background: Rectangle { color: window.surfaceColor; border.color: window.borderColor }
+        background: Rectangle {
+            color: window.backgroundColor
+            border.width: 0
+            FluffSeparator { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom }
+        }
         RowLayout {
             anchors.fill: parent; anchors.margins: 12
             ToolButton { text: qsTr("Back"); icon.name: "go-previous"; onClicked: window.goBack() }
@@ -47,7 +51,7 @@ Page {
                     required property var modelData
                     Layout.fillWidth: true
                     padding: 20
-                    background: Rectangle { radius: 10; color: window.surfaceColor; border.color: window.borderColor }
+                    background: Rectangle { radius: window.cornerRadius; color: window.surfaceColor; border.color: window.borderColor }
                     contentItem: ColumnLayout {
                         spacing: 10
                         RowLayout {
@@ -108,7 +112,7 @@ Page {
                                     Label { text: modelData.downloadSize; color: window.mutedTextColor }
                                 }
                                 Label { Layout.fillWidth: true; text: modelData.status; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.mutedTextColor }
-                                Rectangle { Layout.fillWidth: true; height: 1; color: window.borderColor }
+                                FluffSeparator { Layout.fillWidth: true }
                             }
                         }
                     }
