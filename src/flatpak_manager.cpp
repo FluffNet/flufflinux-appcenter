@@ -74,7 +74,10 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                     app["installedOrigin"] = c[3].trimmed();
                     app["installation"] = c[4].trimmed(); app["installedBranch"] = c[5].trimmed();
                     app["installedArch"] = c[6].trimmed(); app["installedVersion"] = c[8].trimmed();
-                    app["installedSize"] = localInstalledFlatpakSize(app);
+                    quint64 installedBytes = 0;
+                    const auto installedSize = localInstalledFlatpakSize(app, &installedBytes);
+                    app["installedSize"] = installedSize;
+                    if (!installedSize.isEmpty()) app["installedBytes"] = installedBytes;
                     const auto ref = "app/" + c[0].trimmed() + "/" + c[6].trimmed() + "/" + c[5].trimmed();
                     const auto date = m_installHistory.date(c[4].trimmed(), ref);
                     if (!date.isEmpty()) {

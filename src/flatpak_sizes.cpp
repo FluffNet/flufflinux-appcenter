@@ -148,7 +148,8 @@ struct Lookup {
 };
 }
 
-QString localInstalledFlatpakSize(const QVariantMap &app) {
+QString localInstalledFlatpakSize(const QVariantMap &app, quint64 *bytes) {
+    if (bytes) *bytes = 0;
     const auto scope = app.value("installation").toString();
     auto id = app.value("id").toString();
     if (id.endsWith(".desktop")) id.chop(8);
@@ -162,7 +163,10 @@ QString localInstalledFlatpakSize(const QVariantMap &app) {
     if (!installation) return {};
     g_autoptr(FlatpakInstalledRef) ref = flatpak_installation_get_installed_ref(installation,
         FLATPAK_REF_KIND_APP, id.toUtf8(), arch.toUtf8(), branch.toUtf8(), nullptr, nullptr);
-    return ref ? downloadSizeText(flatpak_installed_ref_get_installed_size(ref)) : QString();
+    if (!ref) return {};
+    const auto installedBytes = flatpak_installed_ref_get_installed_size(ref);
+    if (bytes) *bytes = installedBytes;
+    return downloadSizeText(installedBytes);
 }
 
 QVariantMap localFlatpakSizes(const QVariantMap &request) {

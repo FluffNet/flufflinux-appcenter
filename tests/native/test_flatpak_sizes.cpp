@@ -35,12 +35,15 @@ int main(int argc, char **argv) {
                     {"installedArch", text(flatpak_ref_get_arch(FLATPAK_REF(ref)))},
                     {"installedBranch", text(flatpak_ref_get_branch(FLATPAK_REF(ref)))}};
                 const auto bytes = flatpak_installed_ref_get_installed_size(ref);
-                const auto size = localInstalledFlatpakSize(app);
+                quint64 sortBytes = 0;
+                const auto size = localInstalledFlatpakSize(app, &sortBytes);
                 assert(!size.isEmpty() && size == downloadSizeText(bytes));
+                assert(sortBytes == bytes);
                 app["id"] = id + ".desktop";
                 assert(localInstalledFlatpakSize(app) == size);
                 app["installedBranch"] = "appcenter-nonexistent-test-branch";
-                assert(localInstalledFlatpakSize(app).isEmpty());
+                assert(localInstalledFlatpakSize(app, &sortBytes).isEmpty());
+                assert(sortBytes == 0);
                 checked.append(QVariantMap{{"id", id}, {"scope", scope}, {"bytes", double(bytes)}, {"size", size}});
             }
         };
@@ -72,6 +75,9 @@ int main(int argc, char **argv) {
     }
     const QString app = "app/org.example.App/x86_64/stable";
     assert(localInstalledFlatpakSize({}).isEmpty());
+    quint64 unknownBytes = 123;
+    assert(localInstalledFlatpakSize({}, &unknownBytes).isEmpty());
+    assert(unknownBytes == 0);
     assert(localInstalledFlatpakSize({{"id", "org.example.App"}, {"installation", "user"}}).isEmpty());
     const QString runtime = "runtime/org.example.Platform/x86_64/1";
     const QString locale = "runtime/org.example.App.Locale/x86_64/stable";

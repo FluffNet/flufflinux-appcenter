@@ -52,16 +52,16 @@ Page {
         ColumnLayout {
             id: content
             x: 24; y: 24; width: parent.width - 48; spacing: 16
-            Label {
-                Layout.fillWidth: true
-                text: qsTr("This session’s downloads and installations. Dependencies appear under each app.")
-                wrapMode: Text.WordWrap; color: window.mutedTextColor
-            }
             Repeater {
                 objectName: "downloadJobs"
                 model: window.downloadQueue.jobs
                 delegate: Pane {
+                    id: downloadCard
                     required property var modelData
+                    readonly property var installedApp: window.findInstalled(modelData)
+                    readonly property var appJob: window.jobForApp(installedApp)
+                    readonly property bool canOpen: !modelData.active && !modelData.failed
+                        && !modelData.cancelled && !!installedApp && (!appJob || !appJob.active)
                     Layout.fillWidth: true
                     padding: 20
                     background: Rectangle { radius: window.cornerRadius; color: window.surfaceColor; border.color: window.borderColor }
@@ -79,18 +79,35 @@ Page {
                                 icon: modelData.icon || ""
                             }
                             Label { objectName: "downloadAppName"; text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 20; font.bold: true; color: window.textColor; Layout.fillWidth: true }
-                            Button {
+                            AppActionButton {
+                                objectName: "cancelDownloadButton"
+                                Layout.fillWidth: false
                                 visible: modelData.active
                                 text: qsTr("Cancel")
+                                icon.name: "dialog-cancel"
                                 onClicked: if (window.backend) window.backend.cancelJob(modelData.index)
+                            }
+                            AppActionButton {
+                                objectName: "openDownloadButton"
+                                Layout.fillWidth: false
+                                visible: downloadCard.canOpen
+                                text: qsTr("Open")
+                                icon.name: "media-playback-start"
+                                onClicked: if (window.backend && downloadCard.canOpen)
+                                    window.backend.launchApp(downloadCard.installedApp)
                             }
                         }
                         Label {
                             objectName: "downloadJobStatus"
                             Layout.fillWidth: true
-                            visible: !modelData.active || !(modelData.operations || []).length || modelData.cancelling === true
-                                     || (window.backend.review && window.backend.review.jobIndex === modelData.index)
-                            text: modelData.status
+                            visible: text.length > 0
+                            // Successful history is represented by Open, never completion text.
+                            text: modelData.failed ? qsTr("Failed")
+                                  : !modelData.active ? ""
+                                  : modelData.cancelling ? qsTr("Cancelling…")
+                                  : window.backend && window.backend.review && window.backend.review.jobIndex === modelData.index ? qsTr("Waiting for confirmation")
+                                  : modelData.queued ? qsTr("Pending…")
+                                  : !(modelData.operations || []).length ? qsTr("Preparing…") : ""
                             textFormat: Text.PlainText; wrapMode: Text.Wrap
                             color: modelData.failed ? window.accentColor : window.mutedTextColor
                         }
@@ -100,27 +117,10 @@ Page {
                             job: modelData
                         }
                         Label {
+                            objectName: "downloadJobError"
                             Layout.fillWidth: true; visible: !!modelData.error
                             text: modelData.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap
                             color: window.accentColor
-                        }
-                        Repeater {
-                            model: modelData.operations || []
-                            delegate: ColumnLayout {
-                                required property var modelData
-                                Layout.fillWidth: true; spacing: 4
-                                RowLayout {
-                                    Layout.fillWidth: true
-                                    Label {
-                                        Layout.fillWidth: true; wrapMode: Text.WrapAnywhere
-                                        text: (modelData.dependency ? qsTr("Dependency: ") : "") + modelData.name
-                                        textFormat: Text.PlainText; color: window.textColor
-                                    }
-                                    Label { text: modelData.downloadSize; color: window.mutedTextColor }
-                                }
-                                Label { Layout.fillWidth: true; text: modelData.status; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.mutedTextColor }
-                                FluffSeparator { Layout.fillWidth: true }
-                            }
                         }
                     }
                 }

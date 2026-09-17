@@ -7,12 +7,36 @@ Page {
     StackView.onActivated: searchField.forceActiveFocus()
     background: null
     readonly property bool installedView: window.selectedCategory === "Installed"
+    property int installedSortIndex: 0
+    readonly property var installedSortOptions: [
+        qsTr("Name: A–Z"), qsTr("Name: Z–A"),
+        qsTr("Installed: Newest first"), qsTr("Installed: Oldest first"),
+        qsTr("Size: Largest first"), qsTr("Size: Smallest first")
+    ]
     readonly property var installedMatches: {
         const query = window.searchText.trim().toLowerCase()
+        const sortIndex = installedSortIndex
         return (window.installedApps || []).filter(function(app) {
             return !query || (app.name + " " + app.id).toLowerCase().indexOf(query) >= 0
-        }).sort(function(a, b) { return a.name.localeCompare(b.name) })
+        }).sort(function(a, b) {
+            const byName = a.name.localeCompare(b.name)
+            const tie = byName || (a.id + "/" + a.installation + "/" + a.installedBranch)
+                .localeCompare(b.id + "/" + b.installation + "/" + b.installedBranch)
+            if (sortIndex < 2) return sortIndex === 1 ? -tie : tie
+            const byDate = sortIndex < 4
+            const left = byDate ? Date.parse(a.installedAt || "") : a.installedBytes
+            const right = byDate ? Date.parse(b.installedAt || "") : b.installedBytes
+            const leftKnown = typeof left === "number" && isFinite(left) && (byDate || left >= 0)
+            const rightKnown = typeof right === "number" && isFinite(right) && (byDate || right >= 0)
+            // Missing dates/sizes always go last, in either direction. Sort the
+            // original byte counts, never localized/rounded MiB or GiB labels.
+            if (leftKnown !== rightKnown) return leftKnown ? -1 : 1
+            if (!leftKnown) return tie
+            const ascending = sortIndex === 3 || sortIndex === 5
+            return (ascending ? left - right : right - left) || tie
+        })
     }
+    onInstalledSortIndexChanged: installedList.positionViewAtBeginning()
     readonly property var categories: [
         { name: "All Apps", label: qsTr("Home"), icon: "go-home" },
         { name: "Audio & Video", label: qsTr("Audio & Video"), icon: "applications-multimedia" },
@@ -436,6 +460,29 @@ Page {
                     }
                     Item { Layout.fillWidth: true }
                     ComboBox {
+                        id: installedSort
+                        objectName: "installedSort"
+                        visible: page.installedView
+                        Layout.preferredWidth: 210
+                        Layout.preferredHeight: 42
+                        model: page.installedSortOptions
+                        currentIndex: page.installedSortIndex
+                        onActivated: page.installedSortIndex = index
+                        Accessible.name: qsTr("Sort installed apps")
+                        palette.button: window.raisedSurfaceColor
+                        palette.buttonText: window.textColor
+                        palette.window: window.raisedSurfaceColor
+                        palette.text: window.textColor
+                        palette.highlight: window.accentColor
+                        palette.highlightedText: "white"
+                        background: Rectangle {
+                            radius: window.cornerRadius
+                            color: window.raisedSurfaceColor
+                            border.color: installedSort.activeFocus ? window.accentColor : window.borderColor
+                            border.width: installedSort.activeFocus ? 2 : 1
+                        }
+                    }
+                    ComboBox {
                         id: searchCategoryFilter
                         visible: !page.installedView && window.searchText.length > 0
                         Layout.preferredWidth: 210
@@ -527,13 +574,13 @@ Page {
                 color: window.textColor
             }
             Label {
+                objectName: "catalogEmptyMessage"
                 anchors.centerIn: parent
                 width: parent.width - 48
                 wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
                 visible: page.installedView ? !window.installedLoading && (window.installedError || page.installedMatches.length === 0)
                                             : window.catalogLoaded && page.visibleApps.length === 0
-                text: page.installedView ? (window.installedError || (window.searchText ? qsTr("No installed apps match your search.") : qsTr("No Flatpak apps are installed.")))
-                     : window.catalog.length === 0 ? "No Flatpak applications were found." : "No applications match this view."
+                text: page.installedView && window.installedError ? window.installedError : qsTr("No results.")
                 color: window.mutedTextColor; font.pixelSize: 17
             }
         }

@@ -27,6 +27,12 @@ and Qt-rendered count comparisons in `target/style-*.png`, then leaves the
 catalog open. It does not start transactions or change the desktop theme, font
 or scale. The QML styling tests also cover dark, light and custom palettes.
 
+`tests/integration/DownloadsSortSmoke.qml` verifies sorting with real installed
+byte counts and captures Installed, empty results, and wide/narrow Downloads.
+Download progress is simulated; its completed card uses already-installed Steam.
+The check never starts transactions, launches apps, or changes desktop settings.
+It requires Steam to be installed and 0 A.D. to be present in the catalog.
+
 `tests/integration/AppMetadataSmoke.qml` is another read-only VM check: it
 opens five real catalog apps, verifies their version/developer labels and
 successfully loaded artwork, exercises the missing-icon fallback and recovery,
@@ -121,8 +127,10 @@ for Discord and AAT, and leaves AAT's page open.
   so a reduced language-pack transfer updates the page total and progress total
   together; the page never retains the old maximum while the bar shows less.
   Local bundles keep their separate file/import sizes, not a network-byte substitute.
-  Downloads retains component names/statuses
-  but no extra component bars; the app page omits redundant activity/name text.
+  Downloads uses the same compact progress display, without dependency/component
+  rows or introductory text. Completed apps offer Open directly from Downloads,
+  using their current installed record; there is no completion text. The action
+  disappears if the app is removed or another operation starts for it.
   Errors, cancellation and confirmation messages remain visible.
   Successful installs leave Open/Uninstall actions, not completion text,
   on the app page; their completed Downloads history remains available.
@@ -135,6 +143,11 @@ for Discord and AAT, and leaves AAT's page open.
   “Uninstalling…” with activity but no Cancel button, including while finished
   sub-steps are being cleaned up. “Complete” never appears on the app page.
 - Installed lists user and system applications, with version and installed size.
+  Its sorting menu offers name A–Z/Z–A, installation date newest/oldest, and size
+  largest/smallest. Sizes sort by exact deployed bytes, not rounded display text;
+  unknown sizes/dates sort last in either direction. Filtering keeps the selected
+  order, and empty catalog/Installed results say “No results.” Real loading errors
+  remain visible.
   Open an app, view its information, or uninstall it from its row or app page.
   App details omit the technical installation/scope/branch/architecture row.
   The website is a plain clickable link, aligned with the other detail values
