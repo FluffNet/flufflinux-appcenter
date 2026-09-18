@@ -207,6 +207,31 @@ TestCase {
         verify(backButton.width >= 106)
     }
 
+    function test_back_hover_background_is_inset_data() {
+        return [{tag: "narrow", width: 720}, {tag: "wide", width: 1180}]
+    }
+
+    function test_back_hover_background_is_inset(data) {
+        window.width = data.width
+        window.requestActivate()
+        const back = findChild(appPage, "backButton")
+        waitForPolish(appPage)
+        compare(back.mapToItem(appPage.header, 0, 0).x, 14)
+        const position = back.background.mapToItem(appPage.header, 0, 0)
+        verify(position.x >= 14, "Inset the whole hover background, not just the label")
+        verify(position.y > 0)
+        verify(position.y + back.background.height < appPage.header.height)
+        verify(back.width >= 106 && back.height >= 40)
+        mouseMove(back, back.width / 2, back.height / 2)
+        tryCompare(back, "hovered", true)
+        compare(back.background.color, window.hoverColor)
+        // The inset is not part of the Back button's hit target.
+        mouseClick(appPage.header, 7, appPage.header.height / 2)
+        verify(!window.showCatalogCalled)
+        mouseClick(back)
+        verify(window.showCatalogCalled)
+    }
+
     function test_page_supports_touch_and_touchpad_back_gestures() {
         const touchGesture = findChild(appPage, "pageTouchBackGesture")
         const touchpadGesture = findChild(appPage, "pageTouchpadBackGesture")

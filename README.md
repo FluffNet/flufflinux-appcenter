@@ -19,6 +19,9 @@ input. Hover does not add focus outlines. Shared buttons render
 their own text/icons so KDE's background-drawn labels remain visible.
 Category backgrounds explicitly cover their full hit area, overriding KDE's
 native list-item insets so the edges have the same hover tint as the center.
+Installed rows use a stronger neutral border for the nested removal button so
+it remains visible over the row's hover tint. App-view Back has an outer inset
+that keeps its whole hover background away from the window edge.
 
 Catalog and Installed scrollbars sit at the outer right edge for the full page
 content height, with a persistent contrasting thumb and a minimum 44-pixel
@@ -317,7 +320,9 @@ actions, Downloads controls, search/sort controls, confirmation buttons and
 preview controls in dark/light palettes. It sends enter/leave/re-enter events
 over icon, label and padding, including after touch input, and samples rendered
 page/popup pixels to verify the tint appears and disappears without changing focus
-outlines. It also checks disabled controls and keyboard focus. Run at both
+outlines. It also checks the rendered removal-button border on idle/hovered
+Installed rows, disabled controls and keyboard focus. App-page tests check the
+Back button's outer inset and hit target at narrow/wide widths. Run at both
 100% and 150%, including the KDE style:
 
 ```sh

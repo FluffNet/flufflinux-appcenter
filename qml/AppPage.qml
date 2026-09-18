@@ -256,13 +256,13 @@ Page {
     background: null
     header: Control {
         height: 70; padding: 0
+        leftPadding: 14; rightPadding: 24
         background: Rectangle {
             color: window.backgroundColor
             border.width: 0
             FluffSeparator { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom }
         }
         contentItem: RowLayout {
-            anchors.leftMargin: 14; anchors.rightMargin: 24
             FluffToolButton {
                 objectName: "backButton"
                 text: "←  Back"

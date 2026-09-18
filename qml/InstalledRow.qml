@@ -103,11 +103,13 @@ AbstractButton {
                 sourceSize: Qt.size(24, 24)
                 fillMode: Image.PreserveAspectFit
             }
-            background: Rectangle {
-                radius: window.cornerRadius
-                color: parent.hovered ? window.hoverColor : "transparent"
-                border.color: parent.activeFocus ? window.accentColor : window.borderColor
-                border.width: parent.activeFocus ? 2 : 1
+            background: FluffButtonBackground {
+                idleColor: "transparent"
+                // The ordinary card border disappears against the row's
+                // hover tint. Keep this nested action distinct in both themes
+                // without using the red keyboard-focus outline for hover.
+                idleBorderColor: Qt.tint(window.surfaceColor,
+                    Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.28))
             }
         }
     }

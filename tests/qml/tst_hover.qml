@@ -83,11 +83,12 @@ TestCase {
         tryVerify(function() { return shot !== null })
         return shot
     }
-    function sample(button) {
+    function sample(button, x, y) {
         // The right-side padding avoids text/icons. Capture the containing
         // page or popup so clipping/stale rendering cannot pass as hover.
         const root = sceneRoot()
-        const point = button.mapToItem(root, button.width - 9, button.height / 2)
+        const point = button.mapToItem(root, x === undefined ? button.width - 9 : x,
+                                      y === undefined ? button.height / 2 : y)
         const shot = capture()
         sampledImage.source = shot.url
         tryCompare(sampledImage, "status", Image.Ready)
@@ -232,6 +233,51 @@ TestCase {
         const idle = sample(button)
         mouseMove(button)
         fuzzyCompare(sample(button), idle, 1 / 255)
+    }
+    function colorDifference(first, second) {
+        return Math.max(Math.abs(first.r - second.r), Math.abs(first.g - second.g), Math.abs(first.b - second.b))
+    }
+    function test_installed_removal_border_data() {
+        return [{tag: "dark", dark: true}, {tag: "light", dark: false}]
+    }
+    function test_installed_removal_border(data) {
+        theme(data.dark)
+        const button = prepareControl("uninstallButton")
+        const row = findChild(stack().currentItem, "installedList").itemAtIndex(0)
+        main.contentItem.forceActiveFocus(Qt.OtherFocusReason)
+        away()
+        const border = button.background.border.color
+        verify(border !== main.accentColor)
+        compare(button.background.border.width, 1)
+        // Cover the idle card, the hovered card and the nested action itself.
+        // Sample the actual edge, not just its configured color.
+        for (const state of ["idle", "row", "button"]) {
+            if (state === "row") {
+                mouseMove(row, row.width / 2, row.height / 2)
+                tryCompare(row, "hovered", true)
+                verify(!button.hovered)
+            } else if (state === "button") {
+                mouseMove(button)
+                tryCompare(button, "hovered", true)
+            }
+            const backdrop = sample(button, button.width + 3, button.height / 2)
+            const edge = sample(button, button.width - 0.5, button.height / 2)
+            verify(colorDifference(edge, backdrop) >= 0.08,
+                   state + ": the removal border must remain visible against the card")
+            compare(button.background.border.color, border)
+            verify(!button.activeFocus)
+            if (data.dark && state === "row")
+                verify(capture().saveToFile(Qt.resolvedUrl("../../target/hover-installed-removal.png")))
+        }
+        button.forceActiveFocus(Qt.TabFocusReason)
+        compare(button.background.border.color, main.accentColor)
+        compare(button.background.border.width, 2)
+        main.contentItem.forceActiveFocus(Qt.OtherFocusReason)
+        // An active operation disables removal without changing its geometry.
+        backend.jobs = [job]
+        tryCompare(button, "enabled", false)
+        compare(button.background.color, Qt.rgba(0, 0, 0, 0))
+        compare(button.background.border.color, border)
     }
     function test_shared_tint_is_visible_data() {
         return [{tag: "dark", dark: true}, {tag: "light", dark: false}]
