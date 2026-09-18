@@ -19,6 +19,7 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(QString installedError READ installedError NOTIFY installedChanged)
     Q_PROPERTY(int iconRevision READ iconRevision NOTIFY installedChanged)
     Q_PROPERTY(QVariantMap installSizes READ installSizes NOTIFY installSizesChanged)
+    Q_PROPERTY(QVariantMap appPermissions READ appPermissions NOTIFY appPermissionsChanged)
     Q_PROPERTY(QVariantList catalog READ catalog NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList repositories READ repositories NOTIFY repositoriesChanged)
     Q_PROPERTY(bool sourcesBusy READ sourcesBusy NOTIFY repositoriesChanged)
@@ -29,6 +30,9 @@ public:
     ~FlatpakManager() override;
     QVariantList jobs() const;
     QVariantMap installSizes() const { return m_installSizes; }
+    QVariantMap appPermissions() const { return m_appPermissions; }
+    Q_INVOKABLE int requestAppPermissions(QVariantMap app);
+    Q_INVOKABLE void cancelAppPermissions(int token = 0);
     QVariantMap review() const { return m_review; }
     bool busy() const;
     QVariantList installedApps() const { return m_installed; }
@@ -62,6 +66,7 @@ signals:
     void appOpened(QVariantMap app);
     void inputError(QString message);
     void installSizesChanged();
+    void appPermissionsChanged();
     void catalogChanged();
     void repositoriesChanged();
 private slots:
@@ -94,6 +99,9 @@ private:
     QVariantList m_jobs, m_requests, m_installed, m_pendingReviews;
     QVariantMap m_review;
     QVariantMap m_installSizes, m_sizeApp;
+    QVariantMap m_appPermissions;
+    QProcess *m_permissionsProcess = nullptr;
+    int m_permissionsToken = 0;
     InstallHistory m_installHistory;
     QHash<QString, QVariantMap> m_sources;
     QHash<QString, QVariantMap> m_metadata;

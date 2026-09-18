@@ -9,6 +9,25 @@ library only), QML, and the system Qt 6 and libflatpak libraries. There are no
 background update services, notifications, or tray components. Settings currently
 contains Flatpak source management.
 
+App details includes **View App Permissions**, a read-only, scrollable dialog
+with grouped icons, explanations and a centered Close button. It fills the app
+window with a 32px outer margin, resizes with it, and keeps Close visible while
+the permission list scrolls. Network, audio,
+devices, display, shared memory, files, persistent storage, session/system bus,
+extra capabilities and USB portal rules are kept in a consistent order; entries
+within each group are sorted. File access modes and explicit denials remain
+visible, and unknown/future permission values are preserved. Environment values
+are not permissions and are never displayed.
+
+Installed apps use `flatpak info --show-permissions` for their exact installation,
+architecture and branch, including Flatpak overrides. Uninstalled apps use the
+selected source's exact URL/name/ref: cached metadata first, with a read-only
+metadata fetch when necessary. Local `.flatpak` bundles can provide their own
+metadata. Loading, unavailable data, retry and a 30-second timeout are explicit;
+closing a dialog cancels only its own request. This work never enters Queue or
+installs apps/adds sources. Dynamic access granted through portals is separate
+from these sandbox permissions, as explained in the dialog.
+
 ## Appearance
 
 The page, header and sidebar share the KDE window color. Cards, fields and

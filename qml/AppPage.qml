@@ -489,7 +489,7 @@ Page {
                 }
             }
             GridLayout {
-                Layout.fillWidth: true; Layout.bottomMargin: 38
+                Layout.fillWidth: true
                 columns: 2; columnSpacing: 28; rowSpacing: 10
                 Label { text: qsTr("Source"); color: window.mutedTextColor }
                 Label {
@@ -536,6 +536,26 @@ Page {
                     }
                 }
             }
+            FluffButton {
+                id: permissionsButton
+                objectName: "viewAppPermissionsButton"
+                Layout.alignment: Qt.AlignLeft; Layout.bottomMargin: 38
+                text: qsTr("View App Permissions")
+                icon.name: "object-locked"
+                onClicked: permissionsDialog.open()
+            }
+        }
+    }
+
+    AppPermissionsDialog {
+        id: permissionsDialog
+        app: page.app || ({})
+        backend: window.backend
+        onClosed: {
+            const wasActive = permissionsButton.activeFocus
+            permissionsButton.focus = false
+            if (wasActive && page.StackView.status === StackView.Active)
+                page.forceActiveFocus(Qt.OtherFocusReason)
         }
     }
 

@@ -18,6 +18,7 @@ unsafe extern "C" {
         inputs: *const *const i8,
     ) -> i32;
     fn fluff_transaction_worker(request: *const i8) -> i32;
+    fn fluff_permissions_worker(request: *const i8) -> i32;
 }
 
 fn installed_assets(executable: &Path) -> Option<PathBuf> {
@@ -86,6 +87,11 @@ fn run() -> Result<i32, String> {
         return Ok(0);
     }
     // The unprivileged worker doesn't parse the catalog or initialize a GUI.
+    if args.first().map(String::as_str) == Some("--permissions-worker") {
+        if args.len() != 2 { return Err("Missing permissions request".into()); }
+        let request = CString::new(args[1].as_str()).map_err(|e| e.to_string())?;
+        return Ok(unsafe { fluff_permissions_worker(request.as_ptr()) });
+    }
     if args.first().map(String::as_str) == Some("--transaction-worker") {
         if args.len() != 2 {
             return Err("Missing transaction request".into());

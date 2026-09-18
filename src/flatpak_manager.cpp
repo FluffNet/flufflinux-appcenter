@@ -2,6 +2,7 @@
 #include "flatpak_manager.h"
 #include "transaction_progress.h"
 #include "flatpak_sizes.h"
+#include "flatpak_permissions.h"
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -128,6 +129,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                     app["installedSize"] = installedSize;
                     if (!installedSize.isEmpty()) app["installedBytes"] = installedBytes;
                     const auto ref = "app/" + c[0].trimmed() + "/" + c[6].trimmed() + "/" + c[5].trimmed();
+                    app["installedRef"] = ref;
                     const auto date = m_installHistory.date(c[4].trimmed(), ref);
                     if (!date.isEmpty()) {
                         app["installedAt"] = date;
@@ -243,6 +245,7 @@ void FlatpakManager::clearReviewsForJob(int index) {
 }
 FlatpakManager::~FlatpakManager() {
     m_stopping = true;
+    cancelAppPermissions();
     cancelAll();
     // Normal UI close is prevented while busy. Cover both workers on forced shutdown.
     for (auto worker : {&m_installWorker, &m_removalWorker}) {
@@ -317,6 +320,91 @@ void FlatpakManager::requestInstallInfo(QVariantMap app) {
     // reads current local metadata; there is no size cache or background job.
     m_installSizes = {{id, request.isEmpty() ? QVariantMap{{"state", "unavailable"}} : localFlatpakSizes(request)}};
     emit installSizesChanged();
+}
+void FlatpakManager::cancelAppPermissions(int token) {
+    if (token && token != m_permissionsToken) return;
+    auto process = m_permissionsProcess;
+    m_permissionsProcess = nullptr;
+    if (process) {
+        process->disconnect(this);
+        process->kill();
+        connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), process, &QObject::deleteLater);
+        if (process->state() == QProcess::NotRunning) process->deleteLater();
+    }
+    m_appPermissions.clear();
+    emit appPermissionsChanged();
+}
+int FlatpakManager::requestAppPermissions(QVariantMap app) {
+    cancelAppPermissions();
+    if (m_stopping) return 0;
+    const int token = ++m_permissionsToken;
+    const bool installed = !app.value("installation").toString().isEmpty();
+    QString program = QCoreApplication::applicationFilePath();
+    QStringList arguments;
+    QVariantMap request;
+    if (installed) {
+        for (const auto &item : m_installed) {
+            const auto candidate = item.toMap();
+            if (candidate.value("id") == app.value("id") && candidate.value("installation") == app.value("installation")
+                && candidate.value("installedArch") == app.value("installedArch") && candidate.value("installedBranch") == app.value("installedBranch")) {
+                request = candidate; break;
+            }
+        }
+        if (!request.value("installedRef").toString().isEmpty()) {
+            program = "flatpak";
+            const auto scope = request.value("installation").toString();
+            arguments = {"info", "--show-permissions", scope == "user" ? "--user" : scope == "system" ? "--system" : "--installation=" + scope, "--", request.value("installedRef").toString()};
+        }
+    } else {
+        request = installRequest(app);
+        if (!request.isEmpty()) arguments = {"--permissions-worker", QString::fromUtf8(QJsonDocument::fromVariant(request).toJson(QJsonDocument::Compact))};
+    }
+    if (arguments.isEmpty()) {
+        m_appPermissions = AppPermissions::error(tr("Permission information is not available for this app. Refresh and try again."));
+        emit appPermissionsChanged(); return token;
+    }
+    m_appPermissions = {{"state", "loading"}, {"installed", installed}};
+    emit appPermissionsChanged();
+    auto process = new QProcess(this);
+    m_permissionsProcess = process;
+    auto timer = new QTimer(process);
+    timer->setSingleShot(true);
+    auto finish = [this, process, installed, timer](QVariantMap result) {
+        if (m_permissionsProcess != process) return;
+        timer->stop(); m_permissionsProcess = nullptr;
+        result["installed"] = installed;
+        m_appPermissions = result;
+        emit appPermissionsChanged();
+    };
+    connect(timer, &QTimer::timeout, process, [process, finish] {
+        finish(AppPermissions::error(tr("Reading app permissions timed out. Please try again.")));
+        process->kill();
+    });
+    connect(process, &QProcess::readyReadStandardOutput, this, [process, finish] {
+        if (process->bytesAvailable() > 2 * 1024 * 1024) {
+            finish(AppPermissions::error(tr("The permission information is too large to display."))); process->kill();
+        }
+    });
+    connect(process, &QProcess::errorOccurred, this, [process, finish](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            finish(AppPermissions::error(tr("Could not start the Flatpak permissions reader."))); process->deleteLater();
+        }
+    });
+    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [process, finish, installed](int code, QProcess::ExitStatus status) {
+        QVariantMap result;
+        if (code || status != QProcess::NormalExit) result = AppPermissions::error(tr("Could not read app permissions. Please try again."));
+        else if (installed) result = AppPermissions::parse(process->readAllStandardOutput(), true);
+        else {
+            result = QJsonDocument::fromJson(process->readAllStandardOutput()).object().toVariantMap();
+            if (result.value("state") != "ready" && result.value("state") != "error")
+                result = AppPermissions::error(tr("Flatpak returned invalid permission information."));
+        }
+        finish(result); process->deleteLater();
+    });
+    timer->start(30000);
+    process->start(program, arguments);
+    process->closeWriteChannel();
+    return token;
 }
 bool FlatpakManager::busy() const {
     for (const auto &job : m_jobs) if (active(job.toMap())) return true;

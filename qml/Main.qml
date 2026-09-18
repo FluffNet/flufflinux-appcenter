@@ -84,7 +84,7 @@ ApplicationWindow {
         const installed = findInstalled(app)
         if (installed) return installed
         const clean = Object.assign({}, app)
-        for (const field of ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedBranch", "installedArch", "installedAt", "installedDate"])
+        for (const field of ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedRef", "installedBranch", "installedArch", "installedAt", "installedDate"])
             delete clean[field]
         return clean
     }
