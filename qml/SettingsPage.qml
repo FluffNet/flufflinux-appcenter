@@ -161,10 +161,9 @@ Page {
         onOpened: cancelRemoveSourceButton.forceActiveFocus(Qt.TabFocusReason)
         contentItem: Label {
             text: (page.selectedSource && page.selectedSource.hasSystem
-                ? qsTr("Remove %1, including its system-wide copy? This affects all users and requires administrator authentication. If authentication is cancelled, no copies will be removed.")
-                : qsTr("Remove %1 from your account?"))
+                ? qsTr("Remove %1 for all users?\n\nAdministrator authentication is required. Installed apps won’t be removed.")
+                : qsTr("Remove %1 from your account?\n\nInstalled apps won’t be removed."))
                 .arg(page.selectedSource ? page.selectedSource.title || page.selectedSource.name : "")
-                + "\n\n" + qsTr("Installed apps will not be removed. Sources still used by installed apps cannot be removed.")
             textFormat: Text.PlainText; wrapMode: Text.Wrap
         }
         footer: DialogButtonBox {

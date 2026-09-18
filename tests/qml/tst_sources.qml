@@ -96,12 +96,31 @@ TestCase {
         mouseClick(findChild(row, "removeSourceButton"))
         const remove = findChild(page(), "removeSourceDialog")
         tryCompare(remove, "opened", true)
-        verify(remove.contentItem.text.indexOf("administrator authentication") !== -1)
+        compare(remove.contentItem.text, "Remove Flathub for all users?\n\nAdministrator authentication is required. Installed apps won’t be removed.")
         verify(backend.request.indexOf("remove:") !== 0) // Showing confirmation must not remove anything.
         remove.reject(); tryCompare(remove, "visible", false)
         backend.busy = true
         verify(!findChild(page(), "addSourceButton").enabled)
         verify(!checkbox.enabled)
+    }
+    function test_remove_source_message_data() {
+        return [{tag:"merged", scope:"merged", hasSystem:true},
+                {tag:"system", scope:"default", hasSystem:true},
+                {tag:"user", scope:"user", hasSystem:false}]
+    }
+    function test_remove_source_message(data) {
+        backend.repositories = [{name:"flathub", title:"Flathub", url:"https://dl.flathub.org/repo/",
+                                 scope:data.scope, hasSystem:data.hasSystem, enabled:true}]
+        main.showSettings(); tryCompare(stack(), "busy", false)
+        mouseClick(findChild(page(), "removeSourceButton"))
+        const dialog = findChild(page(), "removeSourceDialog")
+        tryCompare(dialog, "opened", true)
+        compare(dialog.contentItem.text, data.hasSystem
+            ? "Remove Flathub for all users?\n\nAdministrator authentication is required. Installed apps won’t be removed."
+            : "Remove Flathub from your account?\n\nInstalled apps won’t be removed.")
+        mouseClick(findChild(dialog, "cancelRemoveSourceButton"))
+        tryCompare(dialog, "visible", false)
+        verify(backend.request.indexOf("remove:") !== 0)
     }
     function test_remove_source_defaults_to_cancel_data() {
         return [{tag:"return", key:Qt.Key_Return}, {tag:"enter", key:Qt.Key_Enter},
