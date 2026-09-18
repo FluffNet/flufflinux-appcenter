@@ -28,7 +28,7 @@ AppCenter.Main {
         stage = -1
         const about = probe.findChild(main, "aboutDialog")
         const add = probe.findChild(main, "addSourceDialog")
-        const target = about.visible ? about.contentItem : add && add.visible ? add.contentItem
+        const target = about.visible ? about.contentItem.parent : add && add.visible ? add.contentItem
             : probe.findChild(main, "navigationStack")
         target.grabToImage(function(result) {
             if (!result.saveToFile(Qt.resolvedUrl("../../target/beta-" + name + ".png").toString().replace("file://", ""))) { Qt.exit(1); return }

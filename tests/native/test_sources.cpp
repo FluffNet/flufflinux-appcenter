@@ -91,7 +91,7 @@ int main(int argc, char **argv) {
     auto anotherUser = userRow; anotherUser["name"] = "deliberate-alias";
     assert(Sources::group({userRow, anotherUser}).size() == 2);
     // Removal revalidates identity, cannot follow a forged path or remove a
-    // changed repository, and uses the non-forcing Flatpak removal API.
+    // changed repository, and removes only from the validated installation.
     assert(SourceRemoval::matches(user, userRow, problem));
     auto forged = userRow; forged["url"] = "https://changed.example/repo/";
     assert(!SourceRemoval::matches(user, forged, problem));
@@ -99,7 +99,6 @@ int main(int argc, char **argv) {
     assert(!SourceRemoval::matches(user, forged, problem));
     SourceRemoval::Target removal{std::shared_ptr<FlatpakInstallation>(FLATPAK_INSTALLATION(g_object_ref(user)),
         [](FlatpakInstallation *item) { g_object_unref(item); }), userRow};
-    assert(SourceRemoval::unused(user, alias, problem));
     assert(SourceRemoval::remove(removal, nullptr, problem));
     assert(!flatpak_installation_get_remote_by_name(user, alias.toUtf8(), nullptr, nullptr));
     assert(flatpak_installation_get_remote_by_name(system, "source", nullptr, nullptr));

@@ -107,9 +107,11 @@ for Discord and AAT, and leaves AAT's page open.
 - Removing a merged source covers both copies. A dedicated root-owned helper
   can only remove explicitly validated system repositories; it cannot execute
   arbitrary commands, install apps or change trust policy. Administrator
-  authentication is required each time, cancellation leaves both copies intact,
-  and sources still used by installed apps/runtimes are refused without forcing
-  removal. Source removal never uninstalls apps. The user copy is removed only
+  authentication is required each time and cancelling authentication leaves both
+  copies intact. Sources can be removed while apps/runtimes from them remain
+  installed, using Flatpak's supported `remote-delete --force` operation. Source
+  removal never uninstalls apps or deletes their data, but updates from that source
+  stop until it is restored. The user copy is removed only
   after system removal succeeds; partial failures remain visible.
 - With no configured repositories, the Add Source dialog offers **Add Default
   Sources** at its bottom-left to restore signed official Flathub explicitly,
@@ -344,6 +346,10 @@ compile-time test settings path and Flatpak's temporary-installation overrides.
 The optional online check downloads official Flathub metadata only. Merged-source
 tests cover signing/policy equality, altered-source refusal, cancelled/denied
 authorization preserving both copies, and explicitly restoring default sources.
+In-use source tests create tiny offline app/runtime fixtures in fresh `/tmp`
+installations, then compare every deployed file, export, commit and origin before
+and after removing/restoring the source. User, default/named system and merged
+scopes are covered; real desktop installations and repositories are untouched.
 The production helper rejects non-root execution and arbitrary installation paths;
 the policy requires active-session administrator authentication without cached grants.
 
@@ -352,6 +358,10 @@ c++ -std=c++17 -fPIC tests/native/test_sources.cpp -o target/test-sources $(pkg-
 target/test-sources /var/lib/flatpak/repo/flathub.trustedkeys.gpg
 c++ -std=c++17 -fPIC -pthread tests/native/test_source_worker.cpp -o target/test-source-worker $(pkg-config --cflags --libs Qt6Core Qt6Network flatpak ostree-1)
 python3 tests/integration/test_sources.py target/test-source-worker /var/lib/flatpak/repo/flathub.trustedkeys.gpg --online
+c++ -std=c++17 -fPIC tests/native/test_source_removal.cpp -o target/test-source-removal $(pkg-config --cflags --libs Qt6Core flatpak ostree-1)
+python3 tests/integration/test_source_removal.py target/test-source-worker target/test-source-removal
+# Root is needed only for the isolated system-installation fixtures:
+sudo python3 tests/integration/test_source_removal.py target/test-source-worker target/test-source-removal --system
 ```
 
 `tst_sources.qml` covers menu placement, Settings controls, removal confirmation,

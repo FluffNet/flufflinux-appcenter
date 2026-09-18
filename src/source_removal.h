@@ -1,6 +1,8 @@
 #pragma once
 #include "flatpak_sources.h"
 #include <QRegularExpression>
+#include <QProcess>
+#include <QProcessEnvironment>
 #include <memory>
 #include <vector>
 
@@ -38,19 +40,6 @@ inline bool matches(FlatpakInstallation *installation, const QJsonObject &expect
     }
     return true;
 }
-inline bool unused(FlatpakInstallation *installation, const QString &name, QString &problem) {
-    g_autoptr(GError) error = nullptr;
-    g_autoptr(GPtrArray) refs = flatpak_installation_list_installed_refs(installation, nullptr, &error);
-    if (!refs) { problem = Sources::text(error->message); return false; }
-    for (guint i = 0; i < refs->len; ++i) {
-        auto ref = FLATPAK_INSTALLED_REF(g_ptr_array_index(refs, i));
-        if (Sources::text(flatpak_installed_ref_get_origin(ref)) == name) {
-            problem = "The source " + name + " is still used by installed apps or runtimes. No sources were removed.";
-            return false;
-        }
-    }
-    return true;
-}
 inline bool resolve(FlatpakInstallation *user, const QJsonArray &members, bool systemOnly,
                     std::vector<Target> &targets, QString &problem) {
     if (members.isEmpty() || members.size() > 32) { problem = "Invalid source-removal request."; return false; }
@@ -71,10 +60,6 @@ inline bool resolve(FlatpakInstallation *user, const QJsonArray &members, bool s
         if (!installation || scope.isEmpty() || seen.contains(identity)) { problem = "Invalid source-removal target."; return false; }
         seen.insert(identity);
         if (!matches(installation, member, problem)) return false;
-        // System preflight runs inside the authorized helper. User preflight
-        // happens before the prompt, so a rejected user copy cannot cause a
-        // partial system removal.
-        if ((systemOnly || scope == "user") && !unused(installation, member["name"].toString(), problem)) return false;
         targets.push_back({std::shared_ptr<FlatpakInstallation>(FLATPAK_INSTALLATION(g_object_ref(installation)),
             [](FlatpakInstallation *item) { g_object_unref(item); }), member});
     }
@@ -82,10 +67,41 @@ inline bool resolve(FlatpakInstallation *user, const QJsonArray &members, bool s
 }
 inline bool remove(const Target &target, GCancellable *cancel, QString &problem) {
     if (!matches(target.installation.get(), target.expected, problem)) return false;
-    g_autoptr(GError) error = nullptr;
-    if (!flatpak_installation_remove_remote(target.installation.get(), target.expected["name"].toString().toUtf8(), cancel, &error)) {
-        problem = Sources::text(error->message); return false;
+    if (cancel && g_cancellable_is_cancelled(cancel)) return false;
+    // libflatpak's public remove_remote API has no force option. The supported
+    // CLI --force removes only the source, skipping its app-uninstall prompt.
+    // Always use a fixed executable, explicit installation and separate args.
+    const bool user = flatpak_installation_get_is_user(target.installation.get());
+    const auto scope = Sources::scope(target.installation.get());
+    if (!user && scope.isEmpty()) { problem = "Invalid system installation."; return false; }
+    QProcess process;
+    auto environment = QProcessEnvironment::systemEnvironment();
+    if (user) {
+        g_autoptr(GFile) path = flatpak_installation_get_path(target.installation.get());
+        g_autofree char *localPath = g_file_get_path(path);
+        if (!localPath) { problem = "Invalid user installation."; return false; }
+        // Derived from the validated installation, never from request JSON.
+        environment.insert("FLATPAK_USER_DIR", Sources::text(localPath));
     }
+    process.setProcessEnvironment(environment);
+    process.setStandardInputFile(QProcess::nullDevice());
+    process.start("/usr/bin/flatpak", {"remote-delete", "--force",
+        user ? QString("--user") : "--installation=" + scope,
+        "--", target.expected["name"].toString()});
+    if (!process.waitForStarted()) { problem = "Could not start Flatpak source removal."; return false; }
+    while (!process.waitForFinished(100)) {
+        if (cancel && g_cancellable_is_cancelled(cancel)) {
+            process.terminate();
+            if (!process.waitForFinished(1000)) { process.kill(); process.waitForFinished(1000); }
+            return false;
+        }
+    }
+    if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+        problem = QString::fromUtf8(process.readAllStandardError()).trimmed();
+        if (problem.isEmpty()) problem = "Could not remove the software source.";
+        return false;
+    }
+    flatpak_installation_drop_caches(target.installation.get(), nullptr, nullptr);
     return true;
 }
 } // namespace SourceRemoval

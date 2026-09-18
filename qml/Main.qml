@@ -172,7 +172,11 @@ ApplicationWindow {
         title: qsTr("About App Center")
         modal: true; standardButtons: Dialog.Close
         footer: DialogButtonBox {
-            standardButtons: Dialog.Close; delegate: FluffButton {}
+            standardButtons: Dialog.Close
+            alignment: Qt.AlignHCenter
+            topPadding: 8; bottomPadding: 8
+            leftPadding: 8; rightPadding: 8
+            delegate: FluffButton { objectName: "aboutCloseButton" }
             onRejected: aboutDialog.close()
         }
         contentItem: ColumnLayout {
@@ -185,8 +189,12 @@ ApplicationWindow {
             Label { text: qsTr("App Center"); font.pixelSize: 26; font.bold: true; Layout.alignment: Qt.AlignHCenter }
             Label { objectName: "aboutVersion"; text: qsTr("Version %1").arg(Qt.application.version || "2026.09 (Beta)"); Layout.alignment: Qt.AlignHCenter }
             Label { text: qsTr("Discover and manage Flatpak apps on Fluff Linux."); Layout.fillWidth: true; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
-            Label { objectName: "aboutCopyright"; text: "Copyright © 2026 FluffNet LLC"; Layout.alignment: Qt.AlignHCenter }
-            Label { objectName: "aboutLicense"; text: qsTr("License: MIT"); Layout.alignment: Qt.AlignHCenter }
+            Label {
+                objectName: "aboutCopyright"
+                text: qsTr("Copyright © 2026 FluffNet LLC - MIT License")
+                Layout.fillWidth: true; horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap
+            }
         }
     }
     TransactionReview { backend: window.backend }
