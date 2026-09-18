@@ -10,6 +10,7 @@ const QT_PACKAGES: &[&str] = &[
     "Qt6Network",
     "Qt6DBus",
     "flatpak",
+    "ostree-1",
 ];
 
 fn command_output(program: &str, arguments: &[&str]) -> String {
@@ -63,6 +64,7 @@ fn main() {
         PathBuf::from("src/flatpak_manager.cpp"),
         PathBuf::from("src/flatpak_worker.cpp"),
         PathBuf::from("src/flatpak_sizes.cpp"),
+        PathBuf::from("src/flatpak_catalog.cpp"),
         generated,
     ] {
         let object = output_dir
@@ -107,6 +109,8 @@ fn main() {
     println!("cargo:rerun-if-changed=src/qt_bridge.cpp");
     println!("cargo:rerun-if-changed=src/window_preferences.h");
     println!("cargo:rerun-if-changed=src/flatpak_manager.h");
+    println!("cargo:rerun-if-changed=src/flatpak_sources.h");
+    println!("cargo:rerun-if-changed=src/flatpak_catalog.cpp");
     println!("cargo:rerun-if-changed=src/flatpak_manager.cpp");
     println!("cargo:rerun-if-changed=src/install_history.h");
     println!("cargo:rerun-if-changed=src/flatpak_worker.cpp");

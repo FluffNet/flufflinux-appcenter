@@ -26,6 +26,52 @@ bool active(const QVariantMap &job) { return job.value("active").toBool(); }
 }
 
 FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : QObject(parent) {
+    m_catalog = catalog;
+    connect(&m_sourceProcess, &QProcess::readyReadStandardOutput, this, [this] {
+        m_sourceBuffer += m_sourceProcess.readAllStandardOutput();
+        while (m_sourceBuffer.contains('\n')) {
+            const int end = m_sourceBuffer.indexOf('\n');
+            const auto message = QJsonDocument::fromJson(m_sourceBuffer.left(end)).object();
+            m_sourceBuffer.remove(0, end + 1);
+            if (message["type"] == "sources") {
+                m_repositories = message["sources"].toArray().toVariantList();
+                emit repositoriesChanged(); reloadCatalog();
+            } else if (message["type"] == "result") {
+                m_sourceResult = true;
+                // Opening Settings must not erase a provisioning/refresh
+                // error before the user has had a chance to read it.
+                if (!m_sourceListing || !message["success"].toBool()) m_sourcesError = message["error"].toString();
+                m_sourceProcess.closeWriteChannel();
+            }
+        }
+    });
+    connect(&m_sourceProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this] {
+        if (!m_sourceResult) m_sourcesError = tr("Could not finish updating software sources.");
+        emit repositoriesChanged(); emit jobsChanged(); reloadCatalog();
+        const auto inputs = m_pendingInputs; m_pendingInputs.clear();
+        for (const auto &source : inputs) openSource(source);
+    });
+    connect(&m_sourceProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            m_sourcesError = tr("Could not start the software-source worker.");
+            emit repositoriesChanged(); emit jobsChanged();
+        }
+    });
+    connect(&m_catalogProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+        [this](int code, QProcess::ExitStatus status) {
+            const auto document = QJsonDocument::fromJson(m_catalogProcess.readAllStandardOutput());
+            if (!code && status == QProcess::NormalExit && document.isArray()) {
+                m_catalog = document.array().toVariantList(); m_metadata.clear();
+                for (const auto &entry : m_catalog) {
+                    const auto app = entry.toMap();
+                    m_metadata[normalizedId(app.value("id").toString())] = app;
+                }
+                emit catalogChanged();
+                if (!m_sizeApp.isEmpty()) requestInstallInfo(m_sizeApp);
+                refreshInstalled();
+            }
+            if (m_catalogAgain) { m_catalogAgain = false; reloadCatalog(); }
+        });
     connectWorker(m_installWorker);
     connectWorker(m_removalWorker);
     m_downloadRateTimer.setInterval(500);
@@ -201,7 +247,7 @@ FlatpakManager::~FlatpakManager() {
             worker->process.waitForFinished(1000);
         }
     }
-    for (auto process : {&m_installedProcess, &m_cache}) {
+    for (auto process : {&m_installedProcess, &m_cache, &m_sourceProcess, &m_catalogProcess}) {
         if (process->state() != QProcess::NotRunning) { process->kill(); process->waitForFinished(1000); }
     }
 }
@@ -239,9 +285,22 @@ QVariantMap FlatpakManager::installRequest(const QVariantMap &app) const {
         request["id"] = id; request["name"] = app.value("name");
         return request;
     }
-    const auto catalogApp = m_metadata.value(id, app);
+    auto catalogApp = m_metadata.value(id, app);
+    const auto variants = catalogApp.value("sources").toList();
+    if (!variants.isEmpty()) {
+        bool found = false;
+        for (const auto &entry : variants) {
+            const auto candidate = entry.toMap();
+            if (candidate.value("remote") == app.value("remote") && candidate.value("flatpakRef") == app.value("flatpakRef")
+                && candidate.value("sourceUrl") == app.value("sourceUrl")) {
+                catalogApp = candidate; found = true; break;
+            }
+        }
+        if (!found) return {}; // Never silently install from a different source.
+    }
     return {{"action", "install"}, {"id", id}, {"name", app.value("name")}, {"installation", "user"},
-        {"flatpakRef", catalogApp.value("flatpakRef")}, {"remote", catalogApp.value("remote")}};
+        {"flatpakRef", catalogApp.value("flatpakRef")}, {"remote", catalogApp.value("remote")},
+        {"sourceUrl", catalogApp.value("sourceUrl")}};
 }
 void FlatpakManager::requestInstallInfo(QVariantMap app) {
     if (m_stopping) return;
@@ -251,13 +310,13 @@ void FlatpakManager::requestInstallInfo(QVariantMap app) {
     auto request = installRequest(app);
     // Only the currently displayed values are retained. Every app opening
     // reads current local metadata; there is no size cache or background job.
-    m_installSizes = {{id, localFlatpakSizes(request)}};
+    m_installSizes = {{id, request.isEmpty() ? QVariantMap{{"state", "unavailable"}} : localFlatpakSizes(request)}};
     emit installSizesChanged();
 }
 bool FlatpakManager::busy() const {
     for (const auto &job : m_jobs) if (active(job.toMap())) return true;
     return m_installWorker.process.state() != QProcess::NotRunning
-        || m_removalWorker.process.state() != QProcess::NotRunning || m_refreshingCaches;
+        || m_removalWorker.process.state() != QProcess::NotRunning || sourcesBusy() || m_refreshingCaches;
 }
 QVariantMap FlatpakManager::metadata(const QString &id) const {
     auto app = m_metadata.value(id);
@@ -297,12 +356,16 @@ void FlatpakManager::enqueue(QVariantMap request) {
     startNext();
 }
 void FlatpakManager::installApp(QVariantMap app) {
+    if (sourcesBusy()) { emit inputError(tr("Please wait for software sources to finish updating.")); return; }
     const auto id = normalizedId(app.value("id").toString());
     if (id.isEmpty()) return;
     for (const auto &entry : m_installed) if (normalizedId(entry.toMap().value("id").toString()) == id) return;
-    enqueue(installRequest(app));
+    const auto request = installRequest(app);
+    if (request.isEmpty()) { emit inputError(tr("This app's source has changed. Reopen the app and choose its source again.")); return; }
+    enqueue(request);
 }
 void FlatpakManager::uninstallApp(QVariantMap app) {
+    if (sourcesBusy()) { emit inputError(tr("Please wait for software sources to finish updating.")); return; }
     // Re-resolve against our installed list; never trust a path/ref from QML.
     for (const auto &entry : m_installed) {
         auto installed = entry.toMap();
@@ -321,6 +384,13 @@ void FlatpakManager::uninstallApp(QVariantMap app) {
 void FlatpakManager::openSource(QString source) {
     source = source.trimmed();
     if (source.isEmpty() || source.size() > 8192) { emit inputError(tr("Invalid Flatpak link or filename.")); return; }
+    // Desktop file/URL activation can arrive during first-run provisioning.
+    // Retain it until sources are ready instead of losing the launch request.
+    if (sourcesBusy()) {
+        if (m_pendingInputs.size() < 16) m_pendingInputs.append(source);
+        else emit inputError(tr("Too many files are waiting for software sources to finish updating."));
+        return;
+    }
     const QUrl url(source);
     if (url.scheme() == "flatpak") {
         // flatpak:org.example.App and flatpak://org.example.App preserve ID case.
@@ -360,6 +430,7 @@ void FlatpakManager::startNext() {
             QString::fromUtf8(QJsonDocument::fromVariant(m_requests[i]).toJson(QJsonDocument::Compact))});
     }
     emit jobsChanged();
+    if (m_sourcesRefreshPending && !busy()) { m_sourcesRefreshPending = false; refreshSources(true); }
 }
 void FlatpakManager::receive(WorkerState &worker) {
     worker.buffer += worker.process.readAllStandardOutput();
@@ -455,6 +526,7 @@ void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &messa
         const bool ok = message["success"].toBool();
         const bool cancelled = message["cancelled"].toBool() || m_jobs[worker.current].toMap().value("cancelling").toBool();
         const bool preparation = m_requests[worker.current].toMap().value("prepareOnly").toBool();
+        if (ok && preparation) m_sourcesRefreshPending = true;
         // A success racing with Cancel still actually installed the app.
         // Record that fact, but do not restore its cancelled Downloads entry.
         if (ok && !preparation) {
@@ -557,7 +629,47 @@ void FlatpakManager::cancelJob(int index) {
     }
     clearReviewsForJob(index);
 }
-void FlatpakManager::cancelAll() { for (int i = 0; i < m_jobs.size(); ++i) cancelJob(i); }
+void FlatpakManager::cancelAll() {
+    m_pendingInputs.clear();
+    for (int i = 0; i < m_jobs.size(); ++i) cancelJob(i);
+    if (sourcesBusy()) { m_sourceProcess.write("{\"cancel\":true}\n"); m_sourceProcess.closeWriteChannel(); }
+}
+
+void FlatpakManager::initializeSources() { runSourceOperation({{"operation", "initialize"}}); }
+void FlatpakManager::refreshSources(bool catalogs) { runSourceOperation({{"operation", catalogs ? "refresh" : "list"}}); }
+void FlatpakManager::runSourceOperation(QVariantMap request) {
+    if (m_stopping || busy()) return;
+    m_sourceListing = request.value("operation") == "list";
+    if (!m_sourceListing) m_sourcesError.clear();
+    m_sourceBuffer.clear(); m_sourceResult = false;
+    request["action"] = "repositories";
+    m_sourceProcess.start(QCoreApplication::applicationFilePath(), {"--transaction-worker",
+        QString::fromUtf8(QJsonDocument::fromVariant(request).toJson(QJsonDocument::Compact))});
+    emit repositoriesChanged(); emit jobsChanged();
+}
+void FlatpakManager::setSourceEnabled(QVariantMap source, bool enabled) {
+    for (const auto &entry : m_repositories) {
+        const auto known = entry.toMap();
+        if (known.value("scope") == "user" && known.value("name") == source.value("name") && known.value("url") == source.value("url")) {
+            runSourceOperation({{"operation", "enable"}, {"remote", known.value("name")}, {"url", known.value("url")}, {"enabled", enabled}});
+            return;
+        }
+    }
+}
+void FlatpakManager::removeSource(QVariantMap source) {
+    for (const auto &entry : m_repositories) {
+        const auto known = entry.toMap();
+        if (known.value("scope") == "user" && known.value("name") == source.value("name") && known.value("url") == source.value("url")) {
+            runSourceOperation({{"operation", "remove"}, {"remote", known.value("name")}, {"url", known.value("url")}});
+            return;
+        }
+    }
+}
+void FlatpakManager::reloadCatalog() {
+    if (m_stopping) return;
+    if (m_catalogProcess.state() != QProcess::NotRunning) { m_catalogAgain = true; return; }
+    m_catalogProcess.start(QCoreApplication::applicationFilePath(), {"--catalog"});
+}
 void FlatpakManager::refreshInstalled() {
     if (m_installedProcess.state() != QProcess::NotRunning) { m_installedRefreshPending = true; return; }
     m_loading = true; m_installedError.clear(); emit installedChanged();

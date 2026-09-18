@@ -187,7 +187,8 @@ QVariantMap localFlatpakSizes(const QVariantMap &request) {
     auto ref = request.value("flatpakRef").toString();
     if (ref.isEmpty()) ref = "app/" + request.value("id").toString() + "/" + text(flatpak_get_default_arch()) + "/stable";
     for (int i = 0; i < lookup.sources.size(); ++i) {
-        if (lookup.sources[i].name != remote || !lookup.sources[i].refs.contains(ref)) continue;
+        if (lookup.sources[i].name != remote || !lookup.sources[i].refs.contains(ref)
+            || (!request.value("sourceUrl").toString().isEmpty() && lookup.sources[i].url != request.value("sourceUrl"))) continue;
         auto app = lookup.sources[i].refs[ref];
         // A missing size/metadata is unknown, not a zero-byte download.
         if (!flatpak_remote_ref_get_metadata(app)) break;

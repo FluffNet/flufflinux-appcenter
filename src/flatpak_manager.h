@@ -19,6 +19,10 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(QString installedError READ installedError NOTIFY installedChanged)
     Q_PROPERTY(int iconRevision READ iconRevision NOTIFY installedChanged)
     Q_PROPERTY(QVariantMap installSizes READ installSizes NOTIFY installSizesChanged)
+    Q_PROPERTY(QVariantList catalog READ catalog NOTIFY catalogChanged)
+    Q_PROPERTY(QVariantList repositories READ repositories NOTIFY repositoriesChanged)
+    Q_PROPERTY(bool sourcesBusy READ sourcesBusy NOTIFY repositoriesChanged)
+    Q_PROPERTY(QString sourcesError READ sourcesError NOTIFY repositoriesChanged)
 public:
     explicit FlatpakManager(const QVariantList &catalog, QObject *parent = nullptr);
     ~FlatpakManager() override;
@@ -40,6 +44,14 @@ public:
     Q_INVOKABLE void clearDownloadHistory();
     Q_INVOKABLE void refreshInstalled();
     Q_INVOKABLE void launchApp(QVariantMap app);
+    QVariantList catalog() const { return m_catalog; }
+    QVariantList repositories() const { return m_repositories; }
+    bool sourcesBusy() const { return m_sourceProcess.state() != QProcess::NotRunning; }
+    QString sourcesError() const { return m_sourcesError; }
+    void initializeSources();
+    Q_INVOKABLE void refreshSources(bool refreshCatalogs = false);
+    Q_INVOKABLE void setSourceEnabled(QVariantMap source, bool enabled);
+    Q_INVOKABLE void removeSource(QVariantMap source);
 signals:
     void jobsChanged();
     void reviewChanged();
@@ -47,6 +59,8 @@ signals:
     void appOpened(QVariantMap app);
     void inputError(QString message);
     void installSizesChanged();
+    void catalogChanged();
+    void repositoriesChanged();
 private slots:
     void refreshThemeIcons(int group);
 private:
@@ -72,6 +86,8 @@ private:
     void refreshNextCache();
     QVariantMap installRequest(const QVariantMap &app) const;
     QVariantMap metadata(const QString &id) const;
+    void runSourceOperation(QVariantMap request);
+    void reloadCatalog();
     QVariantList m_jobs, m_requests, m_installed, m_pendingReviews;
     QVariantMap m_review;
     QVariantMap m_installSizes, m_sizeApp;
@@ -89,4 +105,10 @@ private:
     bool m_loading = true, m_stopping = false;
     bool m_refreshingCaches = false, m_cacheRefreshPending = false, m_installedRefreshPending = false;
     QString m_installedError;
+    QVariantList m_catalog, m_repositories;
+    QProcess m_sourceProcess, m_catalogProcess;
+    QByteArray m_sourceBuffer;
+    QString m_sourcesError;
+    QStringList m_pendingInputs;
+    bool m_sourceResult = false, m_sourceListing = false, m_catalogAgain = false, m_sourcesRefreshPending = false;
 };

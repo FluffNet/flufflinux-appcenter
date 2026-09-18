@@ -360,7 +360,8 @@ Page {
                         // The shared 26px card padding mirrors the icon's
                         // left inset; no additional right-side offset.
                         Layout.fillWidth: false
-                        Layout.preferredWidth: !stacked && heroActions.installed && !heroActions.running ? 380 : 184
+                        Layout.preferredWidth: !stacked && heroActions.installed && !heroActions.running ? 380
+                            : !heroActions.installed && app && app.sources && app.sources.length > 1 ? 236 : 184
                     }
                     // Buttons can move independently without narrowing the
                     // single progress bar beneath the entire information area.
@@ -488,6 +489,13 @@ Page {
             GridLayout {
                 Layout.fillWidth: true; Layout.bottomMargin: 38
                 columns: 2; columnSpacing: 28; rowSpacing: 10
+                Label { text: qsTr("Source"); color: window.mutedTextColor }
+                Label {
+                    objectName: "appSourceValue"
+                    text: app ? (app.installedOrigin || app.remote || qsTr("Unavailable"))
+                          + (app.installedOrigin ? " (" + (app.installation === "user" ? qsTr("User") : qsTr("System")) + ")" : "") : ""
+                    textFormat: Text.PlainText; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere
+                }
                 Label { text: qsTr("Installed version"); color: window.mutedTextColor; visible: !!(app && app.installedSize) }
                 Label { text: app && app.installedVersion || qsTr("Unavailable"); color: window.textColor; visible: !!(app && app.installedSize); Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
                 Label { text: qsTr("Installed size"); color: window.mutedTextColor; visible: !!(app && app.installedSize) }

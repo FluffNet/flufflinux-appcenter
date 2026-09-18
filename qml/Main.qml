@@ -81,15 +81,17 @@ ApplicationWindow {
         const installed = findInstalled(app)
         if (installed) return installed
         const clean = Object.assign({}, app)
-        for (const field of ["installedSize", "installedBytes", "installedVersion", "installation", "installedBranch", "installedArch", "installedAt", "installedDate"])
+        for (const field of ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedBranch", "installedArch", "installedAt", "installedDate"])
             delete clean[field]
         return clean
     }
     function uninstallApp(app) { if (backend) backend.uninstallApp(app) }
     Connections {
         target: window.backend
+        ignoreUnknownSignals: true
         function onAppOpened(app) { window.openApp(app) }
         function onInputError(message) { inputError.text = message; errorDialog.open() }
+        function onCatalogChanged() { window.catalog = window.backend.catalog }
     }
     onClosing: function(close) {
         if (backend && backend.busy) { close.accepted = false; closeDialog.open() }
@@ -99,6 +101,15 @@ ApplicationWindow {
             stack.push(downloadsPage)
     }
     function goBack() { if (stack.depth > 1) stack.pop() }
+    function showSettings() {
+        if (stack.currentItem.objectName !== "settingsPage") stack.push(settingsPage)
+        if (backend && typeof backend.refreshSources === "function") backend.refreshSources()
+    }
+    function showAbout() { aboutDialog.open() }
+    function selectSource(source) {
+        selectedApp = Object.assign({}, source, { sources: selectedApp.sources || [] })
+        if (backend) backend.requestInstallInfo(selectedApp)
+    }
     function openApp(app) {
         selectedApp = app
         // Track the displayed app even while installed. The backend refreshes
@@ -153,6 +164,30 @@ ApplicationWindow {
     Component { id: catalogPage; CatalogPage {} }
     Component { id: appPage; AppPage { app: window.detailsFor(window.selectedApp) } }
     Component { id: downloadsPage; DownloadsPage {} }
+    Component { id: settingsPage; SettingsPage {} }
+    Dialog {
+        id: aboutDialog
+        objectName: "aboutDialog"
+        anchors.centerIn: parent; width: Math.min(window.width - 48, 440)
+        title: qsTr("About App Center")
+        modal: true; standardButtons: Dialog.Close
+        footer: DialogButtonBox {
+            standardButtons: Dialog.Close; delegate: FluffButton {}
+            onRejected: aboutDialog.close()
+        }
+        contentItem: ColumnLayout {
+            spacing: 16
+            Image {
+                Layout.alignment: Qt.AlignHCenter
+                Layout.preferredWidth: 72; Layout.preferredHeight: 72
+                source: window.appIconUrl; fillMode: Image.PreserveAspectFit
+            }
+            Label { text: qsTr("App Center"); font.pixelSize: 26; font.bold: true; Layout.alignment: Qt.AlignHCenter }
+            Label { text: qsTr("Version %1").arg(Qt.application.version || "0.1.0"); Layout.alignment: Qt.AlignHCenter }
+            Label { text: qsTr("Discover and manage Flatpak apps on Fluff Linux."); Layout.fillWidth: true; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
+            Label { text: "FluffNet"; Layout.alignment: Qt.AlignHCenter }
+        }
+    }
     TransactionReview { backend: window.backend }
     Dialog {
         id: errorDialog

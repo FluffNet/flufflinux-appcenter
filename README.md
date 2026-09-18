@@ -2,7 +2,8 @@
 
 A native Flatpak software center for Fluff Linux, built with Rust (standard
 library only), QML, and the system Qt 6 and libflatpak libraries. There are no
-background update services, notifications, settings window, or tray components.
+background update services, notifications, or tray components. Settings currently
+contains Flatpak source management.
 
 ## Appearance
 
@@ -92,9 +93,24 @@ for Discord and AAT, and leaves AAT's page open.
   sources are installed **for the current user**, without administrator prompts.
   App Center's system-wide default-handler registration is separate from where
   Flatpaks are installed. The catalog's source and branch are preserved.
-- On first use, an account without Flathub is offered the official signed
-  Flathub source for that user. Other missing sources require their `.flatpakrepo`
-  file; the app never silently falls back to a system installation.
+- The three-dot menu beside Search opens **About** and **Settings**. Settings
+  opens to **Flatpak Sources**, with Add Source, enable/disable, remove, details,
+  and refresh controls. There are no priority controls. System originals are
+  read-only here; their user copies can be managed without administrator access.
+- On first run with no repositories, the official signed Flathub repository is
+  added automatically. Existing system repositories are copied into the user
+  installation with their public signing keys, verification policy, filters and
+  other settings intact. Same-name/different-address conflicts get a separate
+  deterministic user name, never overwrite an existing source. Disabled sources
+  remain disabled, and deliberately removed copies are remembered in
+  `~/.config/flufflinux-appcenter.conf` rather than recreated on every launch.
+- Official Flathub stable/beta URLs are automatically trusted; names alone are
+  never trusted. Other newly supplied repositories still require confirmation.
+  Source changes run outside the GUI thread and never install apps themselves.
+- Apps offered by more than one source have a dropdown beside Install. Choosing
+  a source changes the app's metadata, version, size estimate and installation
+  request together. The catalog keeps one card per app. App details and Installed
+  show the source; installed entries report their actual installed origin.
 - App pages show **App size** and **Total size with dependencies** before
   installation (only **App size** when their displayed size text matches, even
   if the underlying byte counts differ slightly). These
@@ -111,7 +127,7 @@ for Discord and AAT, and leaves AAT's page open.
   refreshes the correct app's sizes before the Install action reappears, without
   needing to leave and reopen the page.
 - **Install starts immediately**, without an installation-confirmation dialog.
-  New software sources still require an explicit trust confirmation; source
+  New third-party software sources require an explicit trust confirmation; source
   additions can remain after cancelling the later app installation. Missing
   local metadata shows unavailable sizes, never a fake zero. Installation still
   resolves the current plan normally, so actual transfers can differ from the
@@ -227,7 +243,7 @@ Supported inputs:
 - `flatpak:org.example.App` and `flatpak://org.example.App` IDs.
 
 Files and links open the app page with sizes and an Install button; merely
-opening a file/link does not install the app. Local bundles and new sources
+opening a file/link does not install the app. Local bundles and new third-party sources
 retain their trust warning. Remote references are
 limited to 2 MiB, with a bounded timeout and HTTPS-only redirects. Insecure HTTP
 and URLs with embedded credentials are rejected. Signed Flatpak repositories
@@ -242,14 +258,14 @@ and links to the existing App Center window, keeping one session's queue.
 Fluff Linux (Arch-based), KDE Plasma 6, Wayland. No macOS or Windows builds.
 
 ```sh
-sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak gzip make desktop-file-utils gtk-update-icon-cache kservice xdg-utils
+sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree gzip make desktop-file-utils gtk-update-icon-cache kservice xdg-utils
 cargo run
 ```
 
 AppStream metadata comes from configured Flatpak catalog caches. Apps absent
 from those caches still appear in Installed and can be removed. Adding a new
-source may require refreshing its AppStream metadata and restarting App Center
-before its full catalog appears.
+source refreshes its AppStream metadata and reloads the catalog without a restart.
+Settings also provides an explicit Refresh; offline failures remain visible there.
 
 ## Install and register as the default handler
 
@@ -286,7 +302,7 @@ resolves file/link preparation at `ready-pre-auth` and stops before deployment.
 App-page sizes instead use local-only libflatpak metadata queries, without
 starting that worker or storing a separate cache.
 Actual installation proceeds directly after the app-page Install action;
-uninstall and software-source trust requests wait for the GUI's confirmation.
+uninstall and third-party software-source trust requests wait for the GUI's confirmation.
 The worker never interpolates file names, app IDs or URLs into shell commands.
 Removal consent is bound to the manager's exact installed app/scope/branch;
 the worker revalidates that reference before force-stopping or removing it.
@@ -304,6 +320,22 @@ or change screenshots; browsing by swipe remains available when fitted. Mouse-wh
 zoom and touch-screen pinch/drag behavior are unchanged.
 
 ## Tests
+
+Source-management tests never install or remove real apps. The native mirror
+test writes only temporary repositories; the integration worker uses a
+compile-time test settings path and Flatpak's temporary-installation overrides.
+The optional online check downloads official Flathub metadata only.
+
+```sh
+c++ -std=c++17 -fPIC tests/native/test_sources.cpp -o target/test-sources $(pkg-config --cflags --libs Qt6Core flatpak ostree-1)
+target/test-sources /var/lib/flatpak/repo/flathub.trustedkeys.gpg
+c++ -std=c++17 -fPIC -pthread tests/native/test_source_worker.cpp -o target/test-source-worker $(pkg-config --cflags --libs Qt6Core Qt6Network flatpak ostree-1)
+python3 tests/integration/test_sources.py target/test-source-worker /var/lib/flatpak/repo/flathub.trustedkeys.gpg --online
+```
+
+`tst_sources.qml` covers menu placement, Settings controls, removal confirmation,
+single/multiple source choices, metadata switching, installed origins and small
+windows. `SourcesSmoke.qml` captures native-themed pages without changing sources.
 
 On Fluff Linux:
 

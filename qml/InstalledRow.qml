@@ -57,6 +57,15 @@ AbstractButton {
                     font.weight: Font.Bold
                     wrapMode: Text.WrapAnywhere
                 }
+                Label { text: qsTr("Source:"); color: window.mutedTextColor }
+                Label {
+                    objectName: "installedSourceValue"
+                    Layout.fillWidth: true
+                    text: (app.installedOrigin || qsTr("Unavailable")) + (app.installedOrigin
+                        ? " (" + (app.installation === "user" ? qsTr("User") : qsTr("System")) + ")" : "")
+                    textFormat: Text.PlainText; color: window.textColor; font.weight: Font.Bold
+                    wrapMode: Text.WrapAnywhere
+                }
                 Label {
                     objectName: "installedDateCaption"
                     visible: !!app.installedDate
@@ -93,7 +102,7 @@ AbstractButton {
         }
         FluffToolButton {
             objectName: "uninstallButton"
-            enabled: !!window.backend && !(row.job && row.job.active)
+            enabled: !!window.backend && !window.backend.sourcesBusy && !(row.job && row.job.active)
             Layout.preferredWidth: 44; Layout.preferredHeight: 44
             Accessible.name: qsTr("Uninstall %1").arg(app.name)
             onClicked: window.uninstallApp(app)

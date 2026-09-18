@@ -2,6 +2,18 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::ffi::{CStr, c_char, c_void};
+
+unsafe extern "C" {
+    fn fluff_visit_catalogs(visit: unsafe extern "C" fn(*const c_char, *const c_char, *const c_char, *mut c_void), data: *mut c_void);
+}
+unsafe extern "C" fn catalog_root(path: *const c_char, remote: *const c_char, url: *const c_char, data: *mut c_void) {
+    if path.is_null() { return; }
+    let roots = unsafe { &mut *(data as *mut Vec<(PathBuf, String, String)>) };
+    roots.push((PathBuf::from(unsafe { CStr::from_ptr(path) }.to_string_lossy().into_owned()),
+        unsafe { CStr::from_ptr(remote) }.to_string_lossy().into_owned(),
+        unsafe { CStr::from_ptr(url) }.to_string_lossy().into_owned()));
+}
 
 #[derive(Clone, Default)]
 pub struct App {
@@ -18,20 +30,19 @@ pub struct App {
     pub screenshots: Vec<String>,
     pub flatpak_ref: String,
     pub remote: String,
+    pub source_url: String,
+    pub sources: Vec<App>,
 }
 
 pub fn load_catalog() -> Vec<App> {
     let mut apps = HashMap::<String, App>::new();
-    let mut files = Vec::new();
-    collect_files(Path::new("/var/lib/flatpak/appstream"), 0, &mut files);
-    if let Some(home) = std::env::var_os("HOME") {
-        collect_files(
-            &PathBuf::from(home).join(".local/share/flatpak/appstream"),
-            0,
-            &mut files,
-        );
-    }
-    for path in files {
+    let mut roots = Vec::<(PathBuf, String, String)>::new();
+    unsafe { fluff_visit_catalogs(catalog_root, &mut roots as *mut _ as *mut c_void); }
+    for (root, remote, url) in roots {
+      let mut files = Vec::new();
+      collect_files(&root, 0, &mut files);
+      files.sort();
+      for path in files {
         let Some(text) = read_metadata(&path) else {
             continue;
         };
@@ -42,12 +53,18 @@ pub fn load_catalog() -> Vec<App> {
             {
                 continue;
             }
-            if let Some(app) = parse_component(component, &path) {
-                apps.entry(app.id.clone())
+            if let Some(mut app) = parse_component(component, &path) {
+                app.remote = remote.clone();
+                app.source_url = url.clone();
+                let variant = app.clone();
+                app.sources.push(variant);
+                let key = app.id.strip_suffix(".desktop").unwrap_or(&app.id).to_string();
+                apps.entry(key)
                     .and_modify(|current| merge(current, &app))
                     .or_insert(app);
             }
         }
+      }
     }
     let mut result: Vec<_> = apps.into_values().collect();
     result.sort_by_key(|app| app.name.to_lowercase());
@@ -143,6 +160,8 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         screenshots,
         flatpak_ref,
         remote,
+        source_url: String::new(),
+        sources: Vec::new(),
     })
 }
 
@@ -161,6 +180,12 @@ fn preferred_screenshot(screenshot: &str) -> Option<String> {
 }
 
 fn merge(current: &mut App, incoming: &App) {
+    for source in &incoming.sources {
+        if !current.sources.iter().any(|existing| existing.remote == source.remote
+            && existing.source_url == source.source_url && existing.flatpak_ref == source.flatpak_ref) {
+            current.sources.push(source.clone());
+        }
+    }
     macro_rules! fill {
         ($field:ident) => {
             if current.$field.is_empty() {
@@ -401,14 +426,14 @@ pub fn to_json(apps: &[App]) -> String {
         let search_haystack =
             format!("{search_name} {search_summary} {search_description} {search_metadata}");
         output.push_str(&format!(
-            "{{\"id\":{},\"name\":{},\"summary\":{},\"description\":{},\"icon\":{},\"category\":{},\"developer\":{},\"license\":{},\"homepage\":{},\"screenshots\":[{}],\"searchName\":{},\"searchSummary\":{},\"searchDescription\":{},\"searchMetadata\":{},\"searchHaystack\":{},\"flatpakRef\":{},\"remote\":{},\"version\":{}}}",
+            "{{\"id\":{},\"name\":{},\"summary\":{},\"description\":{},\"icon\":{},\"category\":{},\"developer\":{},\"license\":{},\"homepage\":{},\"screenshots\":[{}],\"searchName\":{},\"searchSummary\":{},\"searchDescription\":{},\"searchMetadata\":{},\"searchHaystack\":{},\"flatpakRef\":{},\"remote\":{},\"version\":{},\"sourceUrl\":{},\"sources\":{}}}",
             escape_json(&app.id), escape_json(&app.name), escape_json(&app.summary),
             escape_json(&app.description), escape_json(&app.icon), escape_json(&app.category),
             escape_json(&app.developer), escape_json(&app.license), escape_json(&app.homepage), screenshots,
             escape_json(&search_name), escape_json(&search_summary),
             escape_json(&search_description), escape_json(&search_metadata),
             escape_json(&search_haystack), escape_json(&app.flatpak_ref), escape_json(&app.remote),
-            escape_json(&app.version)
+            escape_json(&app.version), escape_json(&app.source_url), to_json(&app.sources)
         ));
     }
     output.push(']');
@@ -418,6 +443,24 @@ pub fn to_json(apps: &[App]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn keeps_distinct_sources_without_duplicate_catalog_cards() {
+        let base = App { id: "org.example.App".into(), name: "Test".into(), remote: "stable".into(),
+            flatpak_ref: "app/org.example.App/x86_64/stable".into(), version: "1.0".into(),
+            source_url: "https://example.org/stable".into(), ..App::default() };
+        let mut current = base.clone();
+        current.sources.push(base.clone());
+        let mut beta = App { remote: "beta".into(), flatpak_ref: "app/org.example.App/x86_64/beta".into(),
+            source_url: "https://example.org/beta".into(), version: "2.0".into(), ..base.clone() };
+        beta.sources.push(beta.clone());
+        merge(&mut current, &beta);
+        merge(&mut current, &beta); // System/user copies of the same origin collapse.
+        assert_eq!(current.sources.len(), 2);
+        assert_eq!(current.version, "1.0");
+        assert_eq!(current.sources[1].version, "2.0");
+        assert!(current.sources.iter().all(|source| source.sources.is_empty()));
+        assert!(to_json(&[current]).contains("\"sourceUrl\":\"https://example.org/beta\""));
+    }
     #[test]
     fn reads_published_version_and_handles_missing_or_self_closing_releases() {
         let prefix = "<component type='desktop-application'><id>org.example.Version</id><name>Version</name>";

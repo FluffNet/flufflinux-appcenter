@@ -4,6 +4,7 @@
 #include <flatpak.h>
 #include "transaction_status.h"
 #include "download_size.h"
+#include "flatpak_sources.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -200,6 +201,7 @@ gboolean addRemote(FlatpakTransaction *, FlatpakTransactionRemoteReason, const c
         w.problem = QCoreApplication::translate("Flatpak", "The new repository must use HTTPS without embedded credentials.");
         return false;
     }
+    if (!Sources::officialDefinition(str(url)).isEmpty()) return true;
     return w.ask({{"kind", "remote"}, {"title", QCoreApplication::translate("Flatpak", "Trust a new software source?")},
         {"message", QCoreApplication::translate("Flatpak", "Flatpak needs to add %1 for your user:\n%2\nOnly continue if you trust this source. It can remain in your account even if you cancel installation later.").arg(str(name), str(url))},
         {"operations", QJsonArray{}}});
@@ -327,32 +329,8 @@ bool clearAppData(const QString &id, Worker &w) {
     return true;
 }
 
-bool ensureUserRemote(FlatpakInstallation *installation, const QString &name, Worker &w) {
-    g_autoptr(FlatpakRemote) existing = flatpak_installation_get_remote_by_name(installation, name.toUtf8(), w.cancel, nullptr);
-    if (existing) return true;
-    if (w.estimateOnly) {
-        w.problem = QCoreApplication::translate("Flatpak", "Sizes will be available after the software source is configured for your user.");
-        return false;
-    }
-    // A distro commonly ships a system Flathub catalog but no per-user source.
-    // Bootstrap the official signed source, never silently install system-wide
-    // or copy a different source's name without its signing key and policy.
-    if (name != "flathub") {
-        w.problem = QCoreApplication::translate("Flatpak", "The source %1 is not configured for your user. Open its .flatpakrepo file first.").arg(name);
-        return false;
-    }
-    g_autoptr(FlatpakInstallation) system = flatpak_installation_new_system(w.cancel, nullptr);
-    g_autoptr(FlatpakRemote) systemRemote = system
-        ? flatpak_installation_get_remote_by_name(system, "flathub", w.cancel, nullptr) : nullptr;
-    if (systemRemote) {
-        g_autofree char *url = flatpak_remote_get_url(systemRemote);
-        const auto source = str(url);
-        if (source != "https://dl.flathub.org/repo/" && source != "https://flathub.org/repo/") {
-            w.problem = QCoreApplication::translate("Flatpak", "The system source named flathub is not the official Flathub URL. Open its .flatpakrepo file to configure it for your user.");
-            return false;
-        }
-    }
-    const auto contents = readSource("https://dl.flathub.org/repo/flathub.flatpakrepo", w);
+bool addOfficialRemote(FlatpakInstallation *installation, const QString &name, const QString &definition, Worker &w) {
+    const auto contents = readSource(definition, w);
     if (contents.isEmpty()) return false;
     g_autoptr(GError) error = nullptr;
     g_autoptr(GKeyFile) key = g_key_file_new();
@@ -361,18 +339,107 @@ bool ensureUserRemote(FlatpakInstallation *installation, const QString &name, Wo
     }
     g_autofree char *gpgKey = g_key_file_get_string(key, "Flatpak Repo", "GPGKey", nullptr);
     g_autofree char *url = g_key_file_get_string(key, "Flatpak Repo", "Url", nullptr);
-    if (!gpgKey || !*gpgKey || str(url) != "https://dl.flathub.org/repo/") {
+    if (!gpgKey || !*gpgKey || Sources::officialDefinition(str(url)) != definition) {
         w.problem = "The Flathub source file has an unexpected URL or no signing key."; return false;
     }
     g_autoptr(GBytes) data = g_bytes_new(contents.constData(), contents.size());
-    g_autoptr(FlatpakRemote) remote = flatpak_remote_new_from_file("flathub", data, &error);
+    g_autoptr(FlatpakRemote) remote = flatpak_remote_new_from_file(name.toUtf8(), data, &error);
     if (!remote) { w.problem = str(error->message); return false; }
     flatpak_remote_set_gpg_verify(remote, true);
-    if (!addRemote(nullptr, FLATPAK_TRANSACTION_REMOTE_GENERIC_REPO, nullptr, "flathub", url, &w)) return false;
     if (!flatpak_installation_modify_remote(installation, remote, w.cancel, &error)) {
         w.problem = str(error->message); return false;
     }
     return true;
+}
+
+bool ensureUserRemote(FlatpakInstallation *installation, const QString &name, const QString &expectedUrl, Worker &w) {
+    g_autoptr(FlatpakRemote) existing = flatpak_installation_get_remote_by_name(installation, name.toUtf8(), w.cancel, nullptr);
+    if (existing) {
+        if (!expectedUrl.isEmpty() && Sources::url(existing) != expectedUrl) {
+            w.problem = "This software source has changed. Reopen the app and select its source again."; return false;
+        }
+        if (flatpak_remote_get_disabled(existing)) { w.problem = "This software source is disabled. Enable it in Settings first."; return false; }
+        return true;
+    }
+    if (w.estimateOnly) {
+        w.problem = QCoreApplication::translate("Flatpak", "Sizes will be available after the software source is configured for your user.");
+        return false;
+    }
+    g_autoptr(GPtrArray) systems = flatpak_get_system_installations(w.cancel, nullptr);
+    for (guint i = 0; systems && i < systems->len; ++i) {
+        auto system = FLATPAK_INSTALLATION(g_ptr_array_index(systems, i));
+        g_autoptr(GPtrArray) remotes = flatpak_installation_list_remotes(system, w.cancel, nullptr);
+        for (guint j = 0; remotes && j < remotes->len; ++j) {
+            auto source = FLATPAK_REMOTE(g_ptr_array_index(remotes, j));
+            if (Sources::userName(installation, system, source) != name || Sources::suppressed(system, source)
+                || flatpak_remote_get_disabled(source) || (!expectedUrl.isEmpty() && Sources::url(source) != expectedUrl)) continue;
+            return Sources::mirror(installation, system, source, w.cancel, w.problem);
+        }
+    }
+    w.problem = "The source " + name + " is not configured. Add it in Settings → Flatpak Sources.";
+    return false;
+}
+
+bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker &w) {
+    const auto operation = request["operation"].toString();
+    g_autoptr(GError) error = nullptr;
+    if (operation == "initialize" || operation == "refresh") {
+        QSettings settings(Sources::configPath(), QSettings::IniFormat);
+        const bool first = !settings.value("Sources/initialized", false).toBool();
+        const bool empty = Sources::list().isEmpty();
+        g_autoptr(GPtrArray) systems = flatpak_get_system_installations(w.cancel, &error);
+        if (!systems) { w.problem = error ? str(error->message) : "Could not read system sources."; return false; }
+        QStringList problems;
+        for (guint i = 0; i < systems->len; ++i) {
+            auto system = FLATPAK_INSTALLATION(g_ptr_array_index(systems, i));
+            g_autoptr(GPtrArray) remotes = flatpak_installation_list_remotes(system, w.cancel, nullptr);
+            for (guint j = 0; remotes && j < remotes->len; ++j) {
+                auto remote = FLATPAK_REMOTE(g_ptr_array_index(remotes, j));
+                if (flatpak_remote_get_remote_type(remote) != FLATPAK_REMOTE_TYPE_STATIC || Sources::suppressed(system, remote)) continue;
+                QString problem;
+                if (!Sources::mirror(user, system, remote, w.cancel, problem)) problems.append(problem);
+            }
+        }
+        if (first && empty && !addOfficialRemote(user, "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo", w))
+            problems.append(w.problem);
+        if (problems.isEmpty()) settings.setValue("Sources/initialized", true);
+        else w.problem = problems.join('\n');
+    } else if (operation == "enable" || operation == "remove") {
+        const auto name = request["remote"].toString();
+        g_autoptr(FlatpakRemote) remote = flatpak_installation_get_remote_by_name(user, name.toUtf8(), w.cancel, &error);
+        if (!remote) { w.problem = str(error->message); return false; }
+        if (Sources::url(remote) != request["url"].toString()) {
+            w.problem = "The source has changed. Refresh Settings before trying again."; return false;
+        }
+        if (operation == "enable") {
+            flatpak_remote_set_disabled(remote, !request["enabled"].toBool());
+            if (!flatpak_installation_modify_remote(user, remote, w.cancel, &error)) { w.problem = str(error->message); return false; }
+        } else {
+            // No force removal: libflatpak refuses sources still used by apps.
+            if (!flatpak_installation_remove_remote(user, name.toUtf8(), w.cancel, &error)) { w.problem = str(error->message); return false; }
+            Sources::rememberRemoval(user, remote);
+        }
+    } else if (operation != "list" && operation != "refresh") {
+        w.problem = "Unknown source operation."; return false;
+    }
+    send({{"type", "sources"}, {"sources", Sources::list()}});
+    if (operation == "list" || operation == "remove") return w.problem.isEmpty();
+    // Fetch only missing catalogs on launch; explicit Refresh updates all.
+    // This runs in the child, never on the GUI thread.
+    g_autoptr(GPtrArray) remotes = flatpak_installation_list_remotes(user, w.cancel, nullptr);
+    for (guint i = 0; remotes && i < remotes->len; ++i) {
+        auto remote = FLATPAK_REMOTE(g_ptr_array_index(remotes, i));
+        if (flatpak_remote_get_disabled(remote) || flatpak_remote_get_noenumerate(remote)) continue;
+        g_autoptr(GFile) directory = flatpak_remote_get_appstream_dir(remote, nullptr);
+        g_autofree char *path = directory ? g_file_get_path(directory) : nullptr;
+        if (operation != "refresh" && path && QFileInfo::exists(str(path) + "/appstream.xml.gz")) continue;
+        g_clear_error(&error);
+        if (!flatpak_installation_update_appstream_sync(user, flatpak_remote_get_name(remote), nullptr, nullptr, w.cancel, &error)) {
+            if (!w.problem.isEmpty()) w.problem += '\n';
+            w.problem += str(flatpak_remote_get_name(remote)) + ": " + str(error->message);
+        }
+    }
+    return w.problem.isEmpty();
 }
 
 bool execute(const QJsonObject &request, Worker &w) {
@@ -400,9 +467,10 @@ bool execute(const QJsonObject &request, Worker &w) {
             ? flatpak_installation_new_system_with_id(scope.toUtf8(), w.cancel, &error)
             : flatpak_installation_new_system(w.cancel, &error);
     if (!installation) { w.problem = str(error->message); return false; }
+    if (request["action"].toString() == "repositories") return repositories(installation, request, w);
     if (request["action"].toString() == "install"
         && !ensureUserRemote(installation, request["remote"].toString().isEmpty()
-            ? "flathub" : request["remote"].toString(), w)) return false;
+            ? "flathub" : request["remote"].toString(), request["sourceUrl"].toString(), w)) return false;
     g_autoptr(FlatpakTransaction) tx = flatpak_transaction_new_for_installation(installation, w.cancel, &error);
     if (!tx) { w.problem = str(error->message); return false; }
     g_object_set_data(G_OBJECT(tx), "worker", &w);
@@ -474,6 +542,8 @@ bool execute(const QJsonObject &request, Worker &w) {
                 // flag yet. Require its supplied key and explicitly enable
                 // verification before committing the configuration.
                 flatpak_remote_set_gpg_verify(remote, true);
+                const auto official = Sources::officialDefinition(str(repositoryUrl));
+                if (!official.isEmpty()) return addOfficialRemote(installation, name, official, w);
                 if (!w.ask({{"kind", "remote"}, {"title", "Add software source?"},
                     {"message", name + "\n" + str(repositoryUrl) + "\nThis source will be available for your user only."}, {"operations", QJsonArray{}}})) return false;
                 if (!flatpak_installation_modify_remote(installation, remote, w.cancel, &error)) {

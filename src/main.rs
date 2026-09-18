@@ -81,6 +81,10 @@ fn c_path(path: &Path) -> Result<CString, String> {
 
 fn run() -> Result<i32, String> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args == ["--catalog"] {
+        println!("{}", appstream::to_json(&appstream::load_catalog()));
+        return Ok(0);
+    }
     // The unprivileged worker doesn't parse the catalog or initialize a GUI.
     if args.first().map(String::as_str) == Some("--transaction-worker") {
         if args.len() != 2 {

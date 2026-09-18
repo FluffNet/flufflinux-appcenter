@@ -215,7 +215,7 @@ Page {
                 id: searchField
                 objectName: "searchField"
                 width: Math.min(420, Math.max(100, page.width - page.categorySidebarWidth
-                                            - (downloadsControl.visible ? downloadsControl.width + 56 : 36)))
+                                            - (downloadsControl.visible ? downloadsControl.width + 112 : 92)))
                 anchors.right: parent.right
                 anchors.rightMargin: 24
                 anchors.verticalCenter: parent.verticalCenter
@@ -303,6 +303,33 @@ Page {
                 interval: 140
                 repeat: false
                 onTriggered: window.searchText = searchField.text
+            }
+
+            FluffToolButton {
+                id: applicationMenuButton
+                objectName: "applicationMenuButton"
+                anchors.right: searchField.left; anchors.rightMargin: 10
+                anchors.verticalCenter: parent.verticalCenter
+                width: 44; height: 44
+                text: "⋮"; font.pixelSize: 28
+                Accessible.name: qsTr("Application menu")
+                onClicked: applicationMenu.open()
+                Menu {
+                    id: applicationMenu
+                    objectName: "applicationMenu"
+                    y: applicationMenuButton.height + 6
+                    width: 210
+                    MenuItem {
+                        objectName: "aboutMenuItem"
+                        text: qsTr("About"); icon.name: "dialog-information"
+                        onTriggered: window.showAbout()
+                    }
+                    MenuItem {
+                        objectName: "settingsMenuItem"
+                        text: qsTr("Settings"); icon.name: "settings-configure"
+                        onTriggered: window.showSettings()
+                    }
+                }
             }
         }
     }
@@ -593,7 +620,9 @@ Page {
                 wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
                 visible: page.installedView ? !window.installedLoading && (window.installedError || page.installedMatches.length === 0)
                                             : window.catalogLoaded && page.visibleApps.length === 0
-                text: page.installedView && window.installedError ? window.installedError : qsTr("No results.")
+                text: page.installedView && window.installedError ? window.installedError
+                      : !page.installedView && window.catalog.length === 0 && window.backend && window.backend.sourcesBusy
+                      ? qsTr("Loading applications…") : qsTr("No results.")
                 color: window.mutedTextColor; font.pixelSize: 17
             }
         }

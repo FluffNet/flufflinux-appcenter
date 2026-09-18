@@ -77,6 +77,7 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     engine.rootContext()->setContextProperty("fluffAppIconUrl", QUrl::fromLocalFile(QString::fromUtf8(icon_path)));
     engine.rootContext()->setContextProperty("fluffInitialCatalog", document.array().toVariantList());
     engine.rootContext()->setContextProperty("fluffWindowManaged", manageWindow);
+    if (manageWindow) QTimer::singleShot(0, &manager, &FlatpakManager::initializeSources);
     engine.load(QUrl::fromLocalFile(QString::fromUtf8(qml_path)));
     if (engine.rootObjects().isEmpty()) return 4;
     if (manageWindow) {
