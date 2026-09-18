@@ -52,8 +52,12 @@ def worker(env, request, approve=False):
 def run(env, operation, **fields):
     events = worker(env, dict(action="repositories", operation=operation, **fields))
     assert not any(event["type"] == "review" for event in events), events
-    assert events[-1]["success"], events
+    assert events[-1]["success"], (operation, fields, events)
     return next(event["sources"] for event in events if event["type"] == "sources")
+
+
+def members(rows):
+    return [member for row in rows for member in row["members"]]
 
 
 def isolated(root, create=True):
@@ -90,17 +94,32 @@ with tempfile.TemporaryDirectory(prefix="appcenter-sources-") as directory:
     add_system(root, "vendor", "https://example.org/repo/", disabled=True)
     system_before = (root / "system/repo/config").read_bytes()
     sources = run(env, "initialize")
-    users = {source["name"]: source for source in sources if source["scope"] == "user"}
+    assert len(sources) == 3 and all(row["scope"] == "merged" for row in sources), sources
+    users = {source["name"]: source for source in members(sources) if source["scope"] == "user"}
     assert set(users) == {"flathub", "flathub-beta", "vendor"}, users
     assert all(source["verified"] for source in users.values())
     assert not users["vendor"]["enabled"]
     assert "initialized=true" in (root / "appcenter.conf").read_text()
-    run(env, "enable", remote="flathub-beta", url=users["flathub-beta"]["url"], enabled=False)
+    run(env, "enable", remote="flathub-beta", url=users["flathub-beta"]["url"], sourceKey=users["flathub-beta"]["sourceKey"], enabled=False)
     sources = run(env, "initialize")
-    assert not next(s for s in sources if s["scope"] == "user" and s["name"] == "flathub-beta")["enabled"]
-    run(env, "remove", remote="vendor", url=users["vendor"]["url"])
+    assert not next(s for s in members(sources) if s["scope"] == "user" and s["name"] == "flathub-beta")["enabled"]
+    # Cancelled, denied and failed system authorization must leave BOTH scopes
+    # untouched. This fake only exists in the compile-time isolated test worker.
+    authorizer = root / "fake-authorizer"
+    env["APPCENTER_TEST_PKEXEC"] = str(authorizer)
+    before_user = (root / "user/repo/config").read_bytes()
+    merged_vendor = next(row for row in sources if row["name"] == "vendor")
+    for code in (126, 127, 1):
+        authorizer.write_text(f"#!/bin/sh\nexit {code}\n")
+        authorizer.chmod(0o700)
+        events = worker(env, dict(action="repositories", operation="remove", members=merged_vendor["members"]))
+        assert not events[-1]["success"], events
+        assert events[-1]["cancelled"] == (code in (126, 127)), events
+        assert (root / "user/repo/config").read_bytes() == before_user
+        assert (root / "system/repo/config").read_bytes() == system_before
+    run(env, "remove", members=[users["vendor"]])
     sources = run(env, "initialize")
-    assert not any(s["scope"] == "user" and s["name"] == "vendor" for s in sources), sources
+    assert not any(s["scope"] == "user" and s["name"] == "vendor" for s in members(sources)), sources
     assert (root / "system/repo/config").read_bytes() == system_before
     # A third-party source still requires explicit approval, even named flathub.
     repo_file = root / "spoof.flatpakrepo"
@@ -112,13 +131,43 @@ with tempfile.TemporaryDirectory(prefix="appcenter-sources-") as directory:
     assert not (root / "user/app").exists()
     print("PASS: system stable/beta/vendor mirroring, signing verification, disabled state, removal persists, system unchanged, untrusted confirmation, no app installations")
 
+with tempfile.TemporaryDirectory(prefix="appcenter-merged-removal-") as directory:
+    root = Path(directory)
+    env = isolated(root)
+    add_system(root, "vendor", "https://example.org/vendor/", disabled=True)
+    sources = run(env, "initialize")
+    assert len(sources) == 1 and len(sources[0]["members"]) == 2
+    authorizer = root / "fake-authorizer"
+    authorizer.write_text("""#!/usr/bin/env python3
+import json, os, pathlib, subprocess, sys
+assert sys.argv[1] == '--disable-internal-agent'
+assert sys.argv[2].endswith('/lib/flufflinux-appcenter/source-helper')
+members = json.loads(sys.argv[3])
+assert len(members) == 1 and members[0]['scope'] != 'user'
+repo = pathlib.Path(os.environ['FLATPAK_SYSTEM_DIR']) / 'repo'
+assert str(repo).startswith('/tmp/appcenter-merged-removal-')
+subprocess.run(['ostree', '--repo=' + str(repo), 'remote', 'delete', members[0]['name']], check=True)
+""")
+    authorizer.chmod(0o700)
+    env["APPCENTER_TEST_PKEXEC"] = str(authorizer)
+    # The actual helper algorithm is covered by native tests. This fake
+    # authorizer exercises the worker's privileged-to-user sequencing only.
+    assert run(env, "remove", members=sources[0]["members"]) == []
+    assert run(env, "initialize") == []
+    assert not (root / "user/app").exists() and not (root / "system/app").exists()
+    print("PASS: merged removal requests only system members from Polkit, then removes user copy; no resurrection")
+
 if "--online" in sys.argv:
     with tempfile.TemporaryDirectory(prefix="appcenter-first-run-") as directory:
         root = Path(directory)
         env = isolated(root, create=False)
         sources = run(env, "initialize")
         assert len(sources) == 1 and sources[0]["name"] == "flathub" and sources[0]["verified"]
-        run(env, "remove", remote="flathub", url=sources[0]["url"])
+        run(env, "remove", members=sources[0]["members"])
         assert run(env, "initialize") == []  # Deliberate removal is not another first run.
+        sources = run(env, "defaults")
+        assert len(sources) == 1 and sources[0]["name"] == "flathub" and sources[0]["verified"]
+        events = worker(env, dict(action="repositories", operation="defaults"))
+        assert not events[-1]["success"]  # Never add over existing sources.
         assert not (root / "user/app").exists()
         print("PASS: empty first-run Flathub setup, no trust prompt, deliberate removal respected, no apps installed")

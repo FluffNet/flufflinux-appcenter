@@ -637,6 +637,7 @@ void FlatpakManager::cancelAll() {
 
 void FlatpakManager::initializeSources() { runSourceOperation({{"operation", "initialize"}}); }
 void FlatpakManager::refreshSources(bool catalogs) { runSourceOperation({{"operation", catalogs ? "refresh" : "list"}}); }
+void FlatpakManager::addDefaultSources() { runSourceOperation({{"operation", "defaults"}}); }
 void FlatpakManager::runSourceOperation(QVariantMap request) {
     if (m_stopping || busy()) return;
     m_sourceListing = request.value("operation") == "list";
@@ -650,8 +651,12 @@ void FlatpakManager::runSourceOperation(QVariantMap request) {
 void FlatpakManager::setSourceEnabled(QVariantMap source, bool enabled) {
     for (const auto &entry : m_repositories) {
         const auto known = entry.toMap();
-        if (known.value("scope") == "user" && known.value("name") == source.value("name") && known.value("url") == source.value("url")) {
-            runSourceOperation({{"operation", "enable"}, {"remote", known.value("name")}, {"url", known.value("url")}, {"enabled", enabled}});
+        if (known.value("id").toString().isEmpty() || known.value("id") != source.value("id")) continue;
+        for (const auto &entry : known.value("members").toList()) {
+            const auto member = entry.toMap();
+            if (member.value("scope") != "user") continue;
+            runSourceOperation({{"operation", "enable"}, {"remote", member.value("name")},
+                {"url", member.value("url")}, {"sourceKey", member.value("sourceKey")}, {"enabled", enabled}});
             return;
         }
     }
@@ -659,8 +664,8 @@ void FlatpakManager::setSourceEnabled(QVariantMap source, bool enabled) {
 void FlatpakManager::removeSource(QVariantMap source) {
     for (const auto &entry : m_repositories) {
         const auto known = entry.toMap();
-        if (known.value("scope") == "user" && known.value("name") == source.value("name") && known.value("url") == source.value("url")) {
-            runSourceOperation({{"operation", "remove"}, {"remote", known.value("name")}, {"url", known.value("url")}});
+        if (!known.value("id").toString().isEmpty() && known.value("id") == source.value("id")) {
+            runSourceOperation({{"operation", "remove"}, {"members", known.value("members")}});
             return;
         }
     }

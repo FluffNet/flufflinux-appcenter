@@ -1,6 +1,6 @@
 // All writes are confined to fresh temporary repositories. The optional input
 // is a PUBLIC signing-key ring, read only; no apps are installed or removed.
-#include "../../src/flatpak_sources.h"
+#include "../../src/source_removal.h"
 #include <QCoreApplication>
 #include <QTemporaryDir>
 #include <cstdio>
@@ -77,6 +77,32 @@ int main(int argc, char **argv) {
     g_autoptr(FlatpakRemote) aliased = flatpak_installation_get_remote_by_name(user, alias.toUtf8(), nullptr, nullptr);
     assert(aliased && flatpak_remote_get_disabled(aliased));
     assert(Sources::url(copy) == "https://example.org/repo/");
+    assert(!Sources::sourceKey(system, conflict).isEmpty());
+    assert(Sources::sourceKey(system, conflict) == Sources::sourceKey(user, aliased));
+    auto userRow = QJsonObject{{"name", alias}, {"scope", "user"}, {"url", Sources::url(aliased)},
+        {"sourceKey", Sources::sourceKey(user, aliased)}, {"enabled", false}};
+    auto systemRow = userRow; systemRow["name"] = "source"; systemRow["scope"] = "default";
+    const auto merged = Sources::group({userRow, systemRow});
+    assert(merged.size() == 1 && merged[0].toObject()["scope"] == "merged");
+    assert(merged[0].toObject()["members"].toArray().size() == 2);
+    assert(merged[0].toObject()["hasSystem"].toBool() && merged[0].toObject()["hasUser"].toBool());
+    auto changedKey = systemRow; changedKey["sourceKey"] = "different-key-or-policy";
+    assert(Sources::group({userRow, changedKey}).size() == 2);
+    auto anotherUser = userRow; anotherUser["name"] = "deliberate-alias";
+    assert(Sources::group({userRow, anotherUser}).size() == 2);
+    // Removal revalidates identity, cannot follow a forged path or remove a
+    // changed repository, and uses the non-forcing Flatpak removal API.
+    assert(SourceRemoval::matches(user, userRow, problem));
+    auto forged = userRow; forged["url"] = "https://changed.example/repo/";
+    assert(!SourceRemoval::matches(user, forged, problem));
+    forged = userRow; forged["name"] = "../../repo";
+    assert(!SourceRemoval::matches(user, forged, problem));
+    SourceRemoval::Target removal{std::shared_ptr<FlatpakInstallation>(FLATPAK_INSTALLATION(g_object_ref(user)),
+        [](FlatpakInstallation *item) { g_object_unref(item); }), userRow};
+    assert(SourceRemoval::unused(user, alias, problem));
+    assert(SourceRemoval::remove(removal, nullptr, problem));
+    assert(!flatpak_installation_get_remote_by_name(user, alias.toUtf8(), nullptr, nullptr));
+    assert(flatpak_installation_get_remote_by_name(system, "source", nullptr, nullptr));
     // Refuse signed repositories with missing keys; never weaken verification.
     g_autoptr(FlatpakRemote) missing = add(system, "missing-keys", "https://example.org/missing/", {});
     flatpak_remote_set_gpg_verify(missing, true);

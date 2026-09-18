@@ -59,6 +59,7 @@ fn main() {
         "failed to generate Flatpak manager bindings"
     );
     let mut objects = Vec::new();
+    let display_version = std::fs::read_to_string("VERSION").expect("VERSION is missing");
     for source in [
         PathBuf::from("src/qt_bridge.cpp"),
         PathBuf::from("src/flatpak_manager.cpp"),
@@ -72,6 +73,7 @@ fn main() {
             .with_extension("o");
         let status = Command::new("c++")
             .args(["-std=c++17", "-fPIC", "-pthread", "-Wall", "-Wextra", "-c"])
+            .arg(format!("-DAPPCENTER_DISPLAY_VERSION=\"{}\"", display_version.trim()))
             .arg(&source)
             .arg("-o")
             .arg(&object)
@@ -107,6 +109,8 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=src/qt_bridge.cpp");
+    println!("cargo:rerun-if-changed=VERSION");
+    println!("cargo:rerun-if-changed=src/source_removal.h");
     println!("cargo:rerun-if-changed=src/window_preferences.h");
     println!("cargo:rerun-if-changed=src/flatpak_manager.h");
     println!("cargo:rerun-if-changed=src/flatpak_sources.h");

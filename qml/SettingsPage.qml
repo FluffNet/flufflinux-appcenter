@@ -54,11 +54,6 @@ Page {
                 }
             }
             Label {
-                Layout.fillWidth: true; Layout.leftMargin: 24; Layout.rightMargin: 24
-                text: qsTr("Apps are installed for your account. System sources are copied automatically; the system originals are managed by your administrator.")
-                wrapMode: Text.Wrap; color: window.mutedTextColor
-            }
-            Label {
                 objectName: "sourcesStatus"
                 Layout.fillWidth: true; Layout.leftMargin: 24; Layout.rightMargin: 24
                 visible: !!text
@@ -82,7 +77,7 @@ Page {
                             objectName: "sourceEnabled"
                             implicitWidth: 44; implicitHeight: 44
                             checked: sourceRow.modelData.enabled
-                            enabled: !page.busy && sourceRow.modelData.scope === "user"
+                            enabled: !page.busy && (sourceRow.modelData.hasUser || sourceRow.modelData.scope === "user")
                             Accessible.name: qsTr("Enable %1").arg(sourceRow.modelData.name)
                             onClicked: {
                                 window.backend.setSourceEnabled(sourceRow.modelData, checked)
@@ -93,7 +88,9 @@ Page {
                             Layout.fillWidth: true
                             Label {
                                 Layout.fillWidth: true; color: window.textColor
-                                text: (sourceRow.modelData.title || sourceRow.modelData.name) + " (" + (sourceRow.modelData.scope === "user" ? qsTr("User") : qsTr("System")) + ")"
+                                objectName: "sourceTitle"
+                                text: (sourceRow.modelData.title || sourceRow.modelData.name)
+                                      + (sourceRow.modelData.scope === "merged" ? "" : " (" + (sourceRow.modelData.scope === "user" ? qsTr("User") : qsTr("System")) + ")")
                                 textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 18; font.bold: true
                             }
                             Label { Layout.fillWidth: true; text: sourceRow.modelData.url; textFormat: Text.PlainText; color: window.mutedTextColor; wrapMode: Text.WrapAnywhere }
@@ -101,7 +98,6 @@ Page {
                         FluffToolButton {
                             objectName: "removeSourceButton"
                             width: 44; height: 44
-                            visible: sourceRow.modelData.scope === "user"
                             enabled: !page.busy
                             icon.source: Qt.resolvedUrl("trash-red.svg"); icon.color: "transparent"
                             Accessible.name: qsTr("Remove %1").arg(sourceRow.modelData.name)
@@ -132,7 +128,15 @@ Page {
             TextField { id: sourceInput; objectName: "sourceInput"; Layout.fillWidth: true; placeholderText: "https://example.org/source.flatpakrepo"; selectByMouse: true }
             FluffButton { text: qsTr("Choose File…"); icon.name: "document-open"; onClicked: sourceFile.open() }
             RowLayout {
-                Layout.alignment: Qt.AlignRight
+                Layout.fillWidth: true
+                FluffButton {
+                    objectName: "addDefaultSourcesButton"
+                    text: qsTr("Add Default Sources"); icon.name: "list-add"
+                    visible: page.sources.length === 0
+                    enabled: !page.busy
+                    onClicked: { window.backend.addDefaultSources(); addDialog.close() }
+                }
+                Item { Layout.fillWidth: true }
                 FluffButton { text: qsTr("Cancel"); onClicked: addDialog.close() }
                 FluffButton {
                     objectName: "confirmAddSourceButton"
@@ -155,7 +159,11 @@ Page {
         anchors.centerIn: parent; width: Math.min(page.width - 48, 520)
         title: qsTr("Remove source?"); modal: true
         contentItem: Label {
-            text: qsTr("Remove %1 from your account? Installed apps and the system-wide source will not be removed. Sources still used by installed apps cannot be removed.").arg(page.selectedSource ? page.selectedSource.name : "")
+            text: (page.selectedSource && page.selectedSource.hasSystem
+                ? qsTr("Remove %1, including its system-wide copy? This affects all users and requires administrator authentication. If authentication is cancelled, no copies will be removed.")
+                : qsTr("Remove %1 from your account?"))
+                .arg(page.selectedSource ? page.selectedSource.title || page.selectedSource.name : "")
+                + "\n\n" + qsTr("Installed apps will not be removed. Sources still used by installed apps cannot be removed.")
             textFormat: Text.PlainText; wrapMode: Text.Wrap
         }
         footer: DialogButtonBox {
@@ -172,7 +180,8 @@ Page {
         title: qsTr("Source details"); modal: true
         contentItem: Label {
             text: page.selectedSource ? qsTr("Name: %1\nAddress: %2\nInstallation: %3\nSignature verification: %4")
-                .arg(page.selectedSource.name).arg(page.selectedSource.url).arg(page.selectedSource.scope)
+                .arg(page.selectedSource.name).arg(page.selectedSource.url)
+                .arg(page.selectedSource.scope === "merged" ? qsTr("User and System") : page.selectedSource.scope)
                 .arg(page.selectedSource.verified ? qsTr("Enabled") : qsTr("Disabled by source configuration")) : ""
             textFormat: Text.PlainText; wrapMode: Text.WrapAnywhere
         }

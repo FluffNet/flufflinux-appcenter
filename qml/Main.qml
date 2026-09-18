@@ -183,9 +183,10 @@ ApplicationWindow {
                 source: window.appIconUrl; fillMode: Image.PreserveAspectFit
             }
             Label { text: qsTr("App Center"); font.pixelSize: 26; font.bold: true; Layout.alignment: Qt.AlignHCenter }
-            Label { text: qsTr("Version %1").arg(Qt.application.version || "0.1.0"); Layout.alignment: Qt.AlignHCenter }
+            Label { objectName: "aboutVersion"; text: qsTr("Version %1").arg(Qt.application.version || "2026.09 (Beta)"); Layout.alignment: Qt.AlignHCenter }
             Label { text: qsTr("Discover and manage Flatpak apps on Fluff Linux."); Layout.fillWidth: true; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
-            Label { text: "FluffNet"; Layout.alignment: Qt.AlignHCenter }
+            Label { objectName: "aboutCopyright"; text: "© 2026 FluffNet LLC"; Layout.alignment: Qt.AlignHCenter }
+            Label { objectName: "aboutLicense"; text: qsTr("License: MIT"); Layout.alignment: Qt.AlignHCenter }
         }
     }
     TransactionReview { backend: window.backend }

@@ -40,8 +40,8 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     QGuiApplication application(argc, argv);
     QCoreApplication::setApplicationName("flufflinux-appcenter");
     QGuiApplication::setApplicationDisplayName("App Center");
-    QCoreApplication::setApplicationVersion("0.1.0");
-    QCoreApplication::setOrganizationName("FluffNet");
+    QCoreApplication::setApplicationVersion(APPCENTER_DISPLAY_VERSION);
+    QCoreApplication::setOrganizationName("FluffNet LLC");
     QGuiApplication::setDesktopFileName("flufflinux-appcenter");
     application.setWindowIcon(QIcon(QString::fromUtf8(icon_path)));
     QJsonArray incoming;

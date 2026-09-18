@@ -6,6 +6,8 @@
 #include <QFile>
 #include <QJsonArray>
 #include <QJsonObject>
+#include <QJsonDocument>
+#include <QSet>
 #include <QSettings>
 #include <QUrl>
 
@@ -56,6 +58,73 @@ inline bool suppressed(FlatpakInstallation *system, FlatpakRemote *remote) {
     QSettings settings(configPath(), QSettings::IniFormat);
     return settings.value("Sources/removedSystemSources").toStringList().contains(token(identity(system, remote)));
 }
+// Repository identity is independent of local names, enabled state and visual
+// metadata, but includes signing keys and every other configured policy option.
+// In particular, two endpoints with different keys/filters must never merge.
+inline QString sourceKey(FlatpakInstallation *installation, FlatpakRemote *remote) {
+    g_autoptr(GFile) path = g_file_get_child(flatpak_installation_get_path(installation), "repo");
+    g_autoptr(OstreeRepo) repo = ostree_repo_new(path);
+    if (!ostree_repo_open(repo, nullptr, nullptr)) return {};
+    g_autoptr(GKeyFile) config = ostree_repo_copy_config(repo);
+    const auto group = QByteArray("remote \"") + flatpak_remote_get_name(remote) + '"';
+    g_auto(GStrv) keys = g_key_file_get_keys(config, group, nullptr, nullptr);
+    if (!keys) return {};
+    const QSet<QByteArray> localOptions{"xa.title", "xa.comment", "xa.description", "xa.homepage", "xa.icon",
+        "xa.disable", "xa.prio", "xa.fluff-system-source", "gpgkeypath"};
+    QJsonObject options;
+    for (int i = 0; keys[i]; ++i) {
+        if (localOptions.contains(keys[i])) continue;
+        g_autofree char *value = g_key_file_get_string(config, group, keys[i], nullptr);
+        options[text(keys[i])] = text(value);
+    }
+    g_autoptr(GPtrArray) trustedKeys = nullptr;
+    if (!ostree_repo_remote_get_gpg_keys(repo, flatpak_remote_get_name(remote), nullptr, &trustedKeys, nullptr, nullptr)) return {};
+    QStringList signatures;
+    for (guint i = 0; i < trustedKeys->len; ++i) {
+        g_autofree char *key = g_variant_print(static_cast<GVariant *>(g_ptr_array_index(trustedKeys, i)), true);
+        signatures.append(text(key));
+    }
+    signatures.sort();
+    options["signing-keys"] = QJsonArray::fromStringList(signatures);
+    // A filter's contents, not merely its path, determine the available apps.
+    const auto filterPath = options.value("xa.filter").toString();
+    if (!filterPath.isEmpty()) {
+        QFile filter(filterPath);
+        if (!filter.open(QIODevice::ReadOnly)) return {};
+        options["xa.filter"] = QString::fromLatin1(QCryptographicHash::hash(filter.readAll(), QCryptographicHash::Sha256).toHex());
+    }
+    return token(QString::fromUtf8(QJsonDocument(options).toJson(QJsonDocument::Compact)));
+}
+inline QJsonArray group(const QJsonArray &sources) {
+    QJsonArray result;
+    for (const auto &entry : sources) {
+        const auto source = entry.toObject();
+        int match = -1;
+        for (int i = 0; i < result.size(); ++i) {
+            const auto candidate = result[i].toObject();
+            if (source["sourceKey"].toString().isEmpty() || candidate["sourceKey"] != source["sourceKey"]) continue;
+            bool sameScope = false;
+            for (const auto &member : candidate["members"].toArray())
+                sameScope |= member.toObject()["scope"] == source["scope"];
+            if (!sameScope) { match = i; break; }
+        }
+        auto row = match < 0 ? source : result[match].toObject();
+        auto members = row["members"].toArray(); members.append(source); row["members"] = members;
+        const bool user = source["scope"] == "user";
+        row["hasUser"] = row["hasUser"].toBool() || user;
+        row["hasSystem"] = row["hasSystem"].toBool() || !user;
+        if (row["hasUser"].toBool() && row["hasSystem"].toBool()) row["scope"] = "merged";
+        if (user) row["enabled"] = source["enabled"]; // The toggle governs the user's copy.
+        QStringList identities;
+        for (const auto &member : members) {
+            const auto m = member.toObject();
+            identities.append(m["scope"].toString() + ":" + m["name"].toString() + ":" + m["url"].toString() + ":" + m["sourceKey"].toString());
+        }
+        identities.sort(); row["id"] = token(identities.join('\n'));
+        if (match < 0) result.append(row); else result[match] = row;
+    }
+    return result;
+}
 inline QJsonArray list() {
     QJsonArray result;
     auto append = [&](FlatpakInstallation *installation) {
@@ -67,6 +136,7 @@ inline QJsonArray list() {
             result.append(QJsonObject{{"name", text(flatpak_remote_get_name(remote))},
                 {"title", text(title)}, {"url", url(remote)}, {"scope", scope(installation)},
                 {"enabled", !flatpak_remote_get_disabled(remote)},
+                {"sourceKey", sourceKey(installation, remote)},
                 {"verified", bool(flatpak_remote_get_gpg_verify(remote))}});
         }
     };

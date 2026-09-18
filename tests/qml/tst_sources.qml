@@ -19,11 +19,12 @@ TestCase {
         property bool busy: false
         property bool sourcesBusy: false
         property string sourcesError: ""
-        property var repositories: [
-            {name: "flathub", title: "Flathub", url: "https://dl.flathub.org/repo/", scope: "user", enabled: true, verified: true},
+        readonly property var initialRepositories: [
+            {name: "flathub", title: "Flathub", url: "https://dl.flathub.org/repo/", scope: "merged", hasUser: true, hasSystem: true, enabled: true, verified: true},
             {name: "testing", title: "Testing", url: "https://example.org/testing", scope: "user", enabled: false, verified: true},
             {name: "flathub", title: "Flathub", url: "https://dl.flathub.org/repo/", scope: "default", enabled: true, verified: true}
         ]
+        property var repositories: initialRepositories
         property var installSizes: ({})
         property var lastInstall: null
         property var lastEstimate: null
@@ -34,6 +35,7 @@ TestCase {
         function setSourceEnabled(source, enabled) { request = "enable:" + source.name + ":" + enabled }
         function removeSource(source) { request = "remove:" + source.name }
         function openSource(source) { request = "add:" + source }
+        function addDefaultSources() { request = "defaults" }
         signal appOpened(var app)
         signal inputError(string message)
     }
@@ -45,6 +47,7 @@ TestCase {
         main.width = 1180; main.height = 760
         backend.busy = false; backend.sourcesBusy = false; backend.installedApps = []
         backend.request = ""; backend.lastInstall = null; backend.lastEstimate = null
+        backend.repositories = backend.initialRepositories
         main.requestActivate(); wait(50)
     }
     function test_menu_layout_data() { return [{tag:"wide", width:1180}, {tag:"narrow", width:720}] }
@@ -63,7 +66,11 @@ TestCase {
         compare(menu.itemAt(1).text, "Settings"); verify(menu.itemAt(1).icon.name.length > 0)
         menu.itemAt(0).triggered(); menu.close()
         const about = findChild(main, "aboutDialog")
-        tryCompare(about, "opened", true); about.close(); tryCompare(about, "visible", false)
+        tryCompare(about, "opened", true)
+        compare(findChild(about, "aboutVersion").text, "Version 2026.09 (Beta)")
+        compare(findChild(about, "aboutCopyright").text, "© 2026 FluffNet LLC")
+        compare(findChild(about, "aboutLicense").text, "License: MIT")
+        about.close(); tryCompare(about, "visible", false)
     }
     function test_settings_controls_and_no_priority() {
         main.showSettings(); tryCompare(stack(), "busy", false)
@@ -71,6 +78,7 @@ TestCase {
         compare(page().sources.length, 3)
         compare(findChild(page(), "sourcePriorityUp"), null)
         const row = findChild(page(), "sourceRow")
+        compare(findChild(row, "sourceTitle").text, "Flathub")
         const checkbox = findChild(row, "sourceEnabled")
         verify(checkbox.checked); mouseClick(checkbox)
         compare(backend.request, "enable:flathub:false")
@@ -80,6 +88,7 @@ TestCase {
         mouseClick(findChild(page(), "addSourceButton"))
         const add = findChild(page(), "addSourceDialog")
         tryCompare(add, "opened", true)
+        verify(!findChild(page(), "addDefaultSourcesButton").visible)
         findChild(page(), "sourceInput").text = "https://example.org/testing.flatpakrepo"
         mouseClick(findChild(page(), "confirmAddSourceButton"))
         compare(backend.request, "add:https://example.org/testing.flatpakrepo")
@@ -87,11 +96,27 @@ TestCase {
         mouseClick(findChild(row, "removeSourceButton"))
         const remove = findChild(page(), "removeSourceDialog")
         tryCompare(remove, "opened", true)
+        verify(remove.contentItem.text.indexOf("administrator authentication") !== -1)
         verify(backend.request.indexOf("remove:") !== 0) // Showing confirmation must not remove anything.
         remove.reject(); tryCompare(remove, "visible", false)
         backend.busy = true
         verify(!findChild(page(), "addSourceButton").enabled)
         verify(!checkbox.enabled)
+    }
+    function test_empty_sources_default_button_data() { return [{tag:"wide", width:1180}, {tag:"narrow", width:720}] }
+    function test_empty_sources_default_button(data) {
+        main.width = data.width; backend.repositories = []
+        main.showSettings(); tryCompare(stack(), "busy", false)
+        mouseClick(findChild(page(), "addSourceButton"))
+        const add = findChild(page(), "addSourceDialog")
+        tryCompare(add, "opened", true)
+        const defaults = findChild(page(), "addDefaultSourcesButton")
+        const custom = findChild(page(), "confirmAddSourceButton")
+        verify(defaults.visible && defaults.enabled)
+        verify(defaults.mapToItem(add.contentItem, 0, 0).x < custom.mapToItem(add.contentItem, 0, 0).x)
+        verify(defaults.mapToItem(add.contentItem, 0, 0).y === custom.mapToItem(add.contentItem, 0, 0).y)
+        mouseClick(defaults); compare(backend.request, "defaults")
+        tryCompare(add, "visible", false)
     }
     function test_source_selection_data() { return [{tag:"wide", width:1180}, {tag:"narrow", width:720}] }
     function test_source_selection(data) {

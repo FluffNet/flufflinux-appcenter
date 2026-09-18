@@ -1,5 +1,9 @@
 # App Center
 
+**2026.09 (Beta)** · Copyright © 2026 FluffNet LLC · MIT License.
+The Cargo package uses the equivalent SemVer `2026.9.0-beta`; `VERSION` holds
+the user-facing release name shown by About.
+
 A native Flatpak software center for Fluff Linux, built with Rust (standard
 library only), QML, and the system Qt 6 and libflatpak libraries. There are no
 background update services, notifications, or tray components. Settings currently
@@ -95,8 +99,21 @@ for Discord and AAT, and leaves AAT's page open.
   Flatpaks are installed. The catalog's source and branch are preserved.
 - The three-dot menu beside Search opens **About** and **Settings**. Settings
   opens to **Flatpak Sources**, with Add Source, enable/disable, remove, details,
-  and refresh controls. There are no priority controls. System originals are
-  read-only here; their user copies can be managed without administrator access.
+  and refresh controls. There are no priority controls. Identical user/system
+  sources appear as one row, based on repository URL, signing keys and policy
+  configuration rather than display name. User-only sources remain unprivileged;
+  system or merged-source removal invokes Polkit action `com.flufflinux.appcenter`.
+  The checkbox controls the user copy. Source details retain the installation scope.
+- Removing a merged source covers both copies. A dedicated root-owned helper
+  can only remove explicitly validated system repositories; it cannot execute
+  arbitrary commands, install apps or change trust policy. Administrator
+  authentication is required each time, cancellation leaves both copies intact,
+  and sources still used by installed apps/runtimes are refused without forcing
+  removal. Source removal never uninstalls apps. The user copy is removed only
+  after system removal succeeds; partial failures remain visible.
+- With no configured repositories, the Add Source dialog offers **Add Default
+  Sources** at its bottom-left to restore signed official Flathub explicitly,
+  including after the user previously removed it.
 - On first run with no repositories, the official signed Flathub repository is
   added automatically. Existing system repositories are copied into the user
   installation with their public signing keys, verification policy, filters and
@@ -258,7 +275,7 @@ and links to the existing App Center window, keeping one session's queue.
 Fluff Linux (Arch-based), KDE Plasma 6, Wayland. No macOS or Windows builds.
 
 ```sh
-sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree gzip make desktop-file-utils gtk-update-icon-cache kservice xdg-utils
+sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree polkit gzip make desktop-file-utils gtk-update-icon-cache kservice xdg-utils
 cargo run
 ```
 
@@ -324,7 +341,11 @@ zoom and touch-screen pinch/drag behavior are unchanged.
 Source-management tests never install or remove real apps. The native mirror
 test writes only temporary repositories; the integration worker uses a
 compile-time test settings path and Flatpak's temporary-installation overrides.
-The optional online check downloads official Flathub metadata only.
+The optional online check downloads official Flathub metadata only. Merged-source
+tests cover signing/policy equality, altered-source refusal, cancelled/denied
+authorization preserving both copies, and explicitly restoring default sources.
+The production helper rejects non-root execution and arbitrary installation paths;
+the policy requires active-session administrator authentication without cached grants.
 
 ```sh
 c++ -std=c++17 -fPIC tests/native/test_sources.cpp -o target/test-sources $(pkg-config --cflags --libs Qt6Core flatpak ostree-1)
@@ -336,6 +357,11 @@ python3 tests/integration/test_sources.py target/test-source-worker /var/lib/fla
 `tst_sources.qml` covers menu placement, Settings controls, removal confirmation,
 single/multiple source choices, metadata switching, installed origins and small
 windows. `SourcesSmoke.qml` captures native-themed pages without changing sources.
+`BetaSourcesSmoke.qml` checks the real version, merged Flathub row and the empty
+source dialog. `python3 tests/integration/test_source_policy.py` validates the
+dedicated [Polkit executable action](https://polkit.pages.freedesktop.org/polkit/pkexec.1.html)
+and authentication requirements; pass a staged installation root to check the
+installed policy, helper permissions and MIT license too.
 
 On Fluff Linux:
 

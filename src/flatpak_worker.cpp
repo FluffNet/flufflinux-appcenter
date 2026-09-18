@@ -5,6 +5,7 @@
 #include "transaction_status.h"
 #include "download_size.h"
 #include "flatpak_sources.h"
+#include "source_removal.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -380,6 +381,62 @@ bool ensureUserRemote(FlatpakInstallation *installation, const QString &name, co
     return false;
 }
 
+bool removeRepositories(FlatpakInstallation *user, const QJsonArray &members, Worker &w) {
+    std::vector<SourceRemoval::Target> targets;
+    if (!SourceRemoval::resolve(user, members, false, targets, w.problem)) return false;
+    QJsonArray systems;
+    for (const auto &target : targets)
+        if (target.expected["scope"] != "user") systems.append(target.expected);
+    if (!systems.isEmpty()) {
+        // Only the root-owned, narrowly scoped helper runs with privileges.
+        auto prefix = QDir(QCoreApplication::applicationDirPath());
+        const auto helper = prefix.dirName() == "bin" && prefix.cdUp()
+            ? prefix.filePath("lib/flufflinux-appcenter/source-helper") : QString("/usr/lib/flufflinux-appcenter/source-helper");
+        QString pkexec = "/usr/bin/pkexec";
+#ifndef APPCENTER_SOURCE_TEST_CONFIG
+        const QFileInfo helperInfo(helper);
+        if (!helperInfo.isExecutable() || helperInfo.ownerId() != 0
+            || (helperInfo.permissions() & (QFile::WriteGroup | QFile::WriteOther))) {
+            w.problem = "The system-source helper is missing or not securely installed. Reinstall App Center.";
+            return false;
+        }
+#endif
+#ifdef APPCENTER_SOURCE_TEST_CONFIG
+        // Test worker only: a local fake authorizer can prove denied/cancelled
+        // authentication leaves user sources untouched, without changing Polkit.
+        if (!qEnvironmentVariable("APPCENTER_TEST_PKEXEC").isEmpty()) pkexec = qEnvironmentVariable("APPCENTER_TEST_PKEXEC");
+#endif
+        QProcess process;
+        process.start(pkexec, {"--disable-internal-agent", helper,
+            QString::fromUtf8(QJsonDocument(systems).toJson(QJsonDocument::Compact))});
+        if (!process.waitForStarted()) { w.problem = "Could not start administrator authentication."; return false; }
+        while (!process.waitForFinished(100)) {
+            if (g_cancellable_is_cancelled(w.cancel)) { process.terminate(); process.waitForFinished(1000); return false; }
+        }
+        if (process.exitStatus() != QProcess::NormalExit || process.exitCode() != 0) {
+            if (process.exitStatus() == QProcess::NormalExit && (process.exitCode() == 126 || process.exitCode() == 127)) {
+                w.declined = true; return false;
+            }
+            w.problem = QString::fromUtf8(process.readAllStandardError()).trimmed();
+            if (w.problem.isEmpty()) w.problem = "Could not remove the system software source.";
+            return false;
+        }
+    }
+    // Do not remove a user copy until system authorization/removal succeeds.
+    for (const auto &target : targets) {
+        if (target.expected["scope"] != "user") continue;
+        g_autoptr(FlatpakRemote) remote = flatpak_installation_get_remote_by_name(user, target.expected["name"].toString().toUtf8(), w.cancel, nullptr);
+        if (!SourceRemoval::remove(target, w.cancel, w.problem)) {
+            if (!systems.isEmpty()) w.problem += " System copies were removed; the user copy remains.";
+            return false;
+        }
+        if (remote) Sources::rememberRemoval(user, remote);
+    }
+    QSettings settings(Sources::configPath(), QSettings::IniFormat);
+    settings.setValue("Sources/initialized", true);
+    return true;
+}
+
 bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker &w) {
     const auto operation = request["operation"].toString();
     g_autoptr(GError) error = nullptr;
@@ -404,25 +461,29 @@ bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker 
             problems.append(w.problem);
         if (problems.isEmpty()) settings.setValue("Sources/initialized", true);
         else w.problem = problems.join('\n');
-    } else if (operation == "enable" || operation == "remove") {
+    } else if (operation == "defaults") {
+        if (!Sources::list().isEmpty()) { w.problem = "Default sources can only be added when no sources are configured."; return false; }
+        if (!addOfficialRemote(user, "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo", w)) return false;
+        QSettings settings(Sources::configPath(), QSettings::IniFormat);
+        settings.setValue("Sources/initialized", true);
+    } else if (operation == "remove") {
+        const bool removed = removeRepositories(user, request["members"].toArray(), w);
+        send({{"type", "sources"}, {"sources", Sources::group(Sources::list())}});
+        return removed;
+    } else if (operation == "enable") {
         const auto name = request["remote"].toString();
         g_autoptr(FlatpakRemote) remote = flatpak_installation_get_remote_by_name(user, name.toUtf8(), w.cancel, &error);
         if (!remote) { w.problem = str(error->message); return false; }
-        if (Sources::url(remote) != request["url"].toString()) {
+        if (Sources::url(remote) != request["url"].toString()
+            || Sources::sourceKey(user, remote) != request["sourceKey"].toString()) {
             w.problem = "The source has changed. Refresh Settings before trying again."; return false;
         }
-        if (operation == "enable") {
-            flatpak_remote_set_disabled(remote, !request["enabled"].toBool());
-            if (!flatpak_installation_modify_remote(user, remote, w.cancel, &error)) { w.problem = str(error->message); return false; }
-        } else {
-            // No force removal: libflatpak refuses sources still used by apps.
-            if (!flatpak_installation_remove_remote(user, name.toUtf8(), w.cancel, &error)) { w.problem = str(error->message); return false; }
-            Sources::rememberRemoval(user, remote);
-        }
+        flatpak_remote_set_disabled(remote, !request["enabled"].toBool());
+        if (!flatpak_installation_modify_remote(user, remote, w.cancel, &error)) { w.problem = str(error->message); return false; }
     } else if (operation != "list" && operation != "refresh") {
         w.problem = "Unknown source operation."; return false;
     }
-    send({{"type", "sources"}, {"sources", Sources::list()}});
+    send({{"type", "sources"}, {"sources", Sources::group(Sources::list())}});
     if (operation == "list" || operation == "remove") return w.problem.isEmpty();
     // Fetch only missing catalogs on launch; explicit Refresh updates all.
     // This runs in the child, never on the GUI thread.

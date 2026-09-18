@@ -52,6 +52,7 @@ public:
     Q_INVOKABLE void refreshSources(bool refreshCatalogs = false);
     Q_INVOKABLE void setSourceEnabled(QVariantMap source, bool enabled);
     Q_INVOKABLE void removeSource(QVariantMap source);
+    Q_INVOKABLE void addDefaultSources();
 signals:
     void jobsChanged();
     void reviewChanged();
