@@ -4,6 +4,8 @@ import QtQuick.Layouts
 
 // Shared touch-friendly actions for app details and Downloads.
 Button {
+    focusPolicy: Qt.TabFocus
+    PointerFocusHandler {}
     id: control
     property bool downloadArrow: false
     hoverEnabled: true

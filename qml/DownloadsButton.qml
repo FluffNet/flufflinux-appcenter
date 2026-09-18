@@ -5,7 +5,8 @@ ToolButton {
     id: control
     hoverEnabled: true
     objectName: "downloadsButton"
-    focusPolicy: Qt.NoFocus
+    focusPolicy: Qt.TabFocus
+    PointerFocusHandler {}
     width: Math.max(146, implicitWidth); height: 48
     text: qsTr("Queue")
     display: AbstractButton.TextBesideIcon
@@ -39,9 +40,9 @@ ToolButton {
     onClicked: window.showDownloads()
     background: Rectangle {
         radius: window.cornerRadius
-        border.width: control.activeFocus ? 2 : 1
+        border.width: control.visualFocus ? 2 : 1
         color: control.hovered ? window.hoverColor : window.raisedSurfaceColor
-        border.color: control.activeFocus ? window.accentColor : window.borderColor
+        border.color: control.visualFocus ? window.accentColor : window.borderColor
         Rectangle {
             visible: window.downloadQueue.activeCount > 0
             x: 6; y: parent.height - 7

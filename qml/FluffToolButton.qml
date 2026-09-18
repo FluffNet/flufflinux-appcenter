@@ -2,6 +2,8 @@ import QtQuick
 import QtQuick.Controls
 
 ToolButton {
+    focusPolicy: Qt.TabFocus
+    PointerFocusHandler {}
     hoverEnabled: true
     palette.buttonText: window.textColor
     leftPadding: 10; rightPadding: 10

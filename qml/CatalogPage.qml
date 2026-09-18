@@ -320,12 +320,15 @@ Page {
                 Accessible.name: qsTr("Application menu")
                 onClicked: {
                     applicationMenu.restoreKeyboardFocus = visualFocus
-                    applicationMenu.open()
+                    if (applicationMenu.visible) applicationMenu.close()
+                    else applicationMenu.open()
                 }
                 Menu {
                     id: applicationMenu
                     objectName: "applicationMenu"
                     property bool restoreKeyboardFocus: false
+                    modal: false
+                    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
                     y: applicationMenuButton.height + 6
                     width: 210
                     Overlay.onPressed: restoreKeyboardFocus = false
@@ -339,7 +342,12 @@ Page {
                             applicationMenuButton.focus = false
                             if (wasActive && page.StackView.status === StackView.Active)
                                 page.forceActiveFocus(Qt.OtherFocusReason)
-                        }
+                        } else Qt.callLater(function() {
+                            if (!applicationMenu.visible && applicationMenu.restoreKeyboardFocus && applicationMenuButton.activeFocus) {
+                                applicationMenuButton.focus = false
+                                applicationMenuButton.forceActiveFocus(Qt.TabFocusReason)
+                            }
+                        })
                     }
                     MenuItem {
                         objectName: "settingsMenuItem"
@@ -390,6 +398,8 @@ Page {
                     width: parent.width
                     spacing: sidebar.sectionGap
                     ItemDelegate {
+                        focusPolicy: Qt.TabFocus
+                        PointerFocusHandler {}
                         id: installedButton
                         hoverEnabled: true
                         objectName: "installedButton"
@@ -468,6 +478,8 @@ Page {
                     scrollTarget: categoryList
                 }
                 delegate: ItemDelegate {
+                    focusPolicy: Qt.TabFocus
+                    PointerFocusHandler {}
                     id: categoryButton
                     hoverEnabled: true
                     objectName: "categoryButton-" + modelData.name

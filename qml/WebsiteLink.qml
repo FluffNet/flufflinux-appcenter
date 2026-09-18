@@ -10,7 +10,8 @@ AbstractButton {
     padding: 0
     background: null
     hoverEnabled: true
-    focusPolicy: Qt.StrongFocus
+    focusPolicy: Qt.TabFocus
+    PointerFocusHandler {}
     font.underline: hovered || visualFocus
     Accessible.role: Accessible.Link
     Accessible.name: text

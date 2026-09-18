@@ -22,7 +22,10 @@ Dialog {
     closePolicy: Popup.CloseOnEscape
     onAccepted: if (backend) backend.answerReview(plan.token, true)
     onRejected: if (backend) backend.answerReview(plan.token, false)
-    onOpened: rejectButton.forceActiveFocus()
+    onOpened: {
+        rejectButton.focus = false
+        rejectButton.forceActiveFocus(Qt.TabFocusReason)
+    }
     header: Label {
         text: dialog.title; textFormat: Text.PlainText
         wrapMode: Text.Wrap

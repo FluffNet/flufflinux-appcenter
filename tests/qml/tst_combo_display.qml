@@ -69,15 +69,24 @@ TestCase {
         mouseClick(sort); tryCompare(sort.popup, "opened", true)
         keyClick(Qt.Key_Down); keyClick(Qt.Key_Return)
         tryCompare(sort.popup, "visible", false)
+        tryCompare(sort, "activeFocus", false)
         compare(page().installedSortIndex, 1); assertPainted(sort)
+        sort.forceActiveFocus(Qt.TabFocusReason)
+        keyClick(Qt.Key_Space); tryCompare(sort.popup, "opened", true)
+        keyClick(Qt.Key_Down); keyClick(Qt.Key_Return)
+        tryCompare(sort.popup, "visible", false)
+        verify(sort.activeFocus && sort.visualFocus)
+        compare(page().installedSortIndex, 2)
         main.selectedCategory = "All Apps"; main.searchText = "test"
         main.searchCategoryFilter = "All Apps"
         const filter = findChild(page(), "searchCategoryFilter")
         mouseClick(filter); tryCompare(filter.popup, "opened", true)
         const list = filter.popup.contentItem
         tryVerify(() => list.itemAtIndex(2) !== null)
+        waitForPolish(list); waitForRendering(list)
         mouseClick(list.itemAtIndex(2))
         tryCompare(filter.popup, "visible", false)
+        tryCompare(filter, "activeFocus", false)
         compare(main.searchCategoryFilter, "Development"); assertPainted(filter)
     }
 }

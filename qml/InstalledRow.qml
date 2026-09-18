@@ -4,6 +4,8 @@ import QtQuick.Layouts
 
 AbstractButton {
     id: row
+    focusPolicy: Qt.TabFocus
+    PointerFocusHandler {}
     required property var app
     readonly property var job: typeof window.jobForApp === "function" ? window.jobForApp(app) : null
     readonly property bool removing: !!job && job.action === "uninstall" && job.active === true
@@ -19,8 +21,8 @@ AbstractButton {
     background: Rectangle {
         radius: window.cornerRadius
         color: row.hovered ? window.hoverColor : window.surfaceColor
-        border.color: row.activeFocus ? window.accentColor : window.borderColor
-        border.width: row.activeFocus ? 2 : 1
+        border.color: row.visualFocus ? window.accentColor : window.borderColor
+        border.width: row.visualFocus ? 2 : 1
     }
     contentItem: RowLayout {
         spacing: 16

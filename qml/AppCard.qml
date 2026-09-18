@@ -4,6 +4,8 @@ import QtQuick.Layouts
 
 AbstractButton {
     id: card
+    focusPolicy: Qt.TabFocus
+    PointerFocusHandler {}
     required property var app
     hoverEnabled: true
     implicitWidth: 250; implicitHeight: 142; padding: 18
@@ -12,8 +14,8 @@ AbstractButton {
     background: Rectangle {
         radius: window.cornerRadius
         color: card.down || card.hovered ? window.hoverColor : window.surfaceColor
-        border.color: card.activeFocus ? window.accentColor : card.hovered ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, 0.55) : window.borderColor
-        border.width: card.activeFocus ? 2 : 1
+        border.color: card.visualFocus ? window.accentColor : card.hovered ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, 0.55) : window.borderColor
+        border.width: card.visualFocus ? 2 : 1
         Behavior on color { ColorAnimation { duration: 120 } }
     }
     contentItem: RowLayout {

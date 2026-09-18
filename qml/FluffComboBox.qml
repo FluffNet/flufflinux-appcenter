@@ -7,6 +7,14 @@ import QtQuick.Controls.Basic as Basic
 // standard ComboBox keyboard, popup, selection and accessibility behavior.
 Basic.ComboBox {
     id: control
+    // ComboBox routes popup arrow/Enter keys through the control, including
+    // after opening with the mouse. Keep that temporary focus until it closes.
+    Connections {
+        target: control.popup
+        function onClosed() {
+            if (!control.visualFocus) control.focus = false
+        }
+    }
     hoverEnabled: true
     leftPadding: 12; rightPadding: 36
     topPadding: 8; bottomPadding: 8
@@ -43,7 +51,7 @@ Basic.ComboBox {
         implicitWidth: 210; implicitHeight: 42
         radius: window.cornerRadius
         color: control.hovered || control.down ? window.hoverColor : window.raisedSurfaceColor
-        border.color: control.activeFocus ? window.accentColor : window.borderColor
-        border.width: control.activeFocus ? 2 : 1
+        border.color: control.visualFocus ? window.accentColor : window.borderColor
+        border.width: control.visualFocus ? 2 : 1
     }
 }

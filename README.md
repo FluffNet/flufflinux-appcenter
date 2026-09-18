@@ -32,10 +32,18 @@ Installed rows use a stronger neutral border for the nested removal button so
 it remains visible over the row's hover tint. App-view Back has an outer inset
 that keeps its whole hover background away from the window edge.
 Clicking/tapping empty page or header space clears the previously focused
-control. Interactive controls keep their normal focus and click handling;
-scroll drags, photo gestures and modal dialogs retain their existing behavior.
+control. Buttons accept keyboard focus via Tab, but mouse/touch presses clear
+any previous keyboard focus without leaving a focus outline. Passive pointer
+handlers preserve clicks, scroll drags and photo gestures. Text inputs still
+accept pointer focus; dropdowns keep temporary focus for arrow/Enter selection
+and clear pointer focus on dismissal. Modal Cancel defaults retain their focus.
 Closing the application menu with a mouse/touch action clears its opener's stale
 focus; keyboard dismissal with Escape keeps focus for continued navigation.
+The application/source menu buttons toggle closed when pressed again. Outside
+press dismissal excludes the opener so releasing it cannot reopen the menu.
+The source arrow is a centered, font-independent chevron. The read-only native
+`tests/integration/PointerFocusSmoke.qml` checks that interaction and captures
+the arrow and app page without starting any Flatpak operations.
 
 Installed and every category fit the sidebar's available logical height without
 scrolling. Spacing, row heights, text and icons adapt as the window shrinks or

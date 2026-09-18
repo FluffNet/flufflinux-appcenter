@@ -41,6 +41,7 @@ TestCase {
         signal inputError(string message)
     }
     AppCenter.Main { id: main; backend: backend; visible: true }
+    SignalSpy { id: sourceMenuClosed; signalName: "closed" }
     function stack() { return findChild(main, "navigationStack") }
     function page() { return stack().currentItem }
     function init() {
@@ -205,6 +206,7 @@ TestCase {
         compare(control.background.border.width, 2)
         mouseClick(control, 3, 3) // Entire target, not just the indicator, is clickable.
         compare(backend.request, "enable:testing:" + !data.checked)
+        verify(!control.activeFocus && !control.visualFocus)
         backend.busy = true; verify(!control.enabled)
         verify(indicator.opacity < 1)
         main.palette.window = oldWindow; main.palette.windowText = oldText
@@ -279,6 +281,65 @@ TestCase {
         tryCompare(add, "visible", false)
     }
     function test_source_selection_data() { return [{tag:"wide", width:1180}, {tag:"narrow", width:720}] }
+    function test_source_menu_toggle_data() {
+        const cases = []
+        for (const width of [720, 1180])
+            for (const touch of [false, true])
+                cases.push({tag:width + (touch ? "-touch" : "-mouse"), width:width, touch:touch})
+        return cases
+    }
+    function test_source_menu_toggle(data) {
+        main.width = data.width
+        const beta = Object.assign({}, app, {remote:"beta", flatpakRef:"app/org.example.App/x86_64/beta"})
+        main.openApp(Object.assign({}, app, {sources:[app,beta]})); tryCompare(stack(), "busy", false)
+        const button = findChild(page(), "installSourceButton")
+        const menu = findChild(page(), "installSourceMenu")
+        const arrow = findChild(button, "installSourceChevron")
+        waitForPolish(button)
+        const center = arrow.mapToItem(button, arrow.width / 2, arrow.height / 2)
+        fuzzyCompare(center.x, button.width / 2, 0.01)
+        fuzzyCompare(center.y, button.height / 2, 0.01)
+        verify(arrow.width > 0 && arrow.height > 0)
+        sourceMenuClosed.target = menu; sourceMenuClosed.clear()
+        for (let attempt = 0; attempt < 3; ++attempt) {
+            button.forceActiveFocus(Qt.TabFocusReason)
+            for (const open of [true, false]) {
+                if (data.touch) {
+                    const sequence = touchEvent(button)
+                    sequence.press(0, button).commit()
+                    sequence.release(0, button).commit()
+                } else mouseClick(button)
+                if (open) tryCompare(menu, "opened", true)
+                else {
+                    tryCompare(sourceMenuClosed, "count", attempt + 1)
+                    verify(!menu.visible)
+                    verify(!button.activeFocus)
+                    verify(button.background.border.width !== 2)
+                }
+            }
+        }
+        // Keyboard use still opens, navigates and dismisses the source menu.
+        button.forceActiveFocus(Qt.TabFocusReason)
+        keyClick(Qt.Key_Space); tryCompare(menu, "opened", true)
+        verify(menu.restoreKeyboardFocus, "Keyboard opener must be remembered")
+        keyClick(Qt.Key_Down); keyClick(Qt.Key_Escape)
+        tryCompare(sourceMenuClosed, "count", 4)
+        tryCompare(button, "activeFocus", true)
+        tryCompare(button, "visualFocus", true)
+        compare(main.selectedApp.remote, "stable")
+        compare(backend.lastInstall, null)
+        keyClick(Qt.Key_Space); tryCompare(menu, "opened", true)
+        for (let step = 0; step < 3 && menu.currentIndex !== 1; ++step) keyClick(Qt.Key_Down)
+        compare(menu.currentIndex, 1)
+        keyClick(Qt.Key_Return); tryCompare(sourceMenuClosed, "count", 5)
+        compare(main.selectedApp.remote, "beta")
+        tryCompare(button, "visualFocus", true)
+        mouseClick(button); tryCompare(menu, "opened", true)
+        waitForRendering(menu.contentItem)
+        mouseClick(menu.itemAt(0)); tryCompare(sourceMenuClosed, "count", 6)
+        compare(main.selectedApp.remote, "stable")
+        tryCompare(button, "activeFocus", false)
+    }
     function test_source_selection(data) {
         main.width = data.width
         const beta = Object.assign({}, app, {remote:"beta", sourceUrl:"https://example.org/beta", flatpakRef:"app/org.example.App/x86_64/beta", version:"2.0-beta"})

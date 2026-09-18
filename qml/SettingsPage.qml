@@ -91,6 +91,8 @@ Page {
                         spacing: 14
                         CheckBox {
                             id: sourceEnabled
+                            focusPolicy: Qt.TabFocus
+                            PointerFocusHandler {}
                             objectName: "sourceEnabled"
                             implicitWidth: 44; implicitHeight: 44
                             Layout.alignment: Qt.AlignVCenter

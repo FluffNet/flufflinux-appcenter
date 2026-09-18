@@ -112,26 +112,84 @@ TestCase {
         keyClick(Qt.Key_Space); tryCompare(menu, "opened", true)
         keyClick(Qt.Key_Escape); tryCompare(menu, "visible", false)
         tryCompare(button, "activeFocus", true)
+        tryCompare(button, "visualFocus", true)
         keyClick(Qt.Key_Tab); verify(!button.activeFocus)
     }
-    function test_clicking_a_control_keeps_its_focus_data() {
-        return [{tag: "header", scroll: false}, {tag: "scroll", scroll: true}]
+    function test_pointer_activation_clears_focus_data() {
+        const cases = []
+        for (const scroll of [false, true])
+            for (const touch of [false, true])
+                for (const kind of ["button", "tool", "action", "card", "row", "link"])
+                    cases.push({tag:kind + (scroll ? "-scroll" : "-header") + (touch ? "-touch" : "-mouse"),
+                                scroll:scroll, touch:touch, kind:kind})
+        return cases
     }
-    function test_clicking_a_control_keeps_its_focus(data) {
+    function test_pointer_activation_clears_focus(data) {
         if (data.scroll) { main.openApp(app); settle() }
         const host = data.scroll ? findChild(stack().currentItem, "detailsFlickable").contentItem
                                  : stack().currentItem.header
-        const button = createTemporaryObject(buttonFixture, host)
+        const fixture = {button:buttonFixture, tool:toolFixture, action:actionFixture,
+                         card:cardFixture, row:rowFixture, link:linkFixture}[data.kind]
+        const button = createTemporaryObject(fixture, host)
         waitForPolish(main.contentItem); wait(20)
         button.forceActiveFocus(Qt.TabFocusReason)
-        mouseClick(button)
-        wait(20)
-        compare(button.clicks, 1)
-        verify(button.activeFocus)
-        mouseClick(button)
-        wait(20)
-        verify(button.activeFocus)
-        compare(button.clicks, 2)
+        verify(button.visualFocus)
+        for (let attempt = 1; attempt <= 2; ++attempt) {
+            if (data.touch) {
+                const sequence = touchEvent(button)
+                sequence.press(0, button).commit()
+                sequence.release(0, button).commit()
+            } else mouseClick(button)
+            tryCompare(button, "clicks", attempt)
+            tryCompare(button, "activeFocus", false)
+            if (button.background) verify(button.background.border.width !== 2)
+        }
+        // The pointer policy must not disable keyboard activation or its ring.
+        button.forceActiveFocus(Qt.TabFocusReason)
+        keyClick(Qt.Key_Space)
+        compare(button.clicks, 3)
+        verify(button.activeFocus && button.visualFocus)
+        if (button.background) compare(button.background.border.width, 2)
+    }
+    function test_navigation_pointer_focus_data() {
+        const cases = []
+        for (const name of ["Installed"].concat(stack().get(0).categories.map(c => c.name)))
+            for (const touch of [false, true])
+                cases.push({tag:name + (touch ? "-touch" : "-mouse"), name:name, touch:touch})
+        return cases
+    }
+    function test_navigation_pointer_focus(data) {
+        const button = findChild(stack().currentItem, data.name === "Installed" ? "installedButton" : "categoryButton-" + data.name)
+        button.forceActiveFocus(Qt.TabFocusReason)
+        if (data.touch) {
+            const sequence = touchEvent(button)
+            sequence.press(0, button).commit()
+            sequence.release(0, button).commit()
+        } else mouseClick(button)
+        compare(main.selectedCategory, data.name)
+        verify(!button.activeFocus && !button.visualFocus)
+    }
+    function test_application_menu_opener_toggles_data() {
+        return [{tag:"mouse", touch:false}, {tag:"touch", touch:true}]
+    }
+    function test_application_menu_opener_toggles(data) {
+        const button = findChild(stack().currentItem, "applicationMenuButton")
+        const menu = findChild(stack().currentItem, "applicationMenu")
+        menuClosed.target = menu; menuClosed.clear()
+        for (let attempt = 0; attempt < 3; ++attempt) {
+            for (const open of [true, false]) {
+                if (data.touch) {
+                    const sequence = touchEvent(button)
+                    sequence.press(0, button).commit()
+                    sequence.release(0, button).commit()
+                } else mouseClick(button)
+                if (open) tryCompare(menu, "opened", true)
+                else {
+                    tryCompare(menuClosed, "count", attempt + 1)
+                    verify(!menu.visible && !button.activeFocus)
+                }
+            }
+        }
     }
     function test_empty_space_does_not_grab_a_drag() {
         main.openApp(app); settle()
@@ -161,6 +219,53 @@ TestCase {
             property int clicks: 0
             x: 300; y: 20; text: "Test action"
             onClicked: ++clicks
+        }
+    }
+    Component {
+        id: toolFixture
+        AppCenter.FluffToolButton {
+            property var window: main
+            property int clicks: 0
+            x: 300; y: 20; text: "Test tool"
+            onClicked: ++clicks
+        }
+    }
+    Component {
+        id: actionFixture
+        AppCenter.AppActionButton {
+            property var window: main
+            property int clicks: 0
+            x: 300; y: 20; text: "Test action"
+            onClicked: ++clicks
+        }
+    }
+    Component {
+        id: cardFixture
+        AppCenter.AppCard {
+            property var window: main
+            property int clicks: 0
+            x: 300; y: 20
+            app: ({name:"Card", summary:"Pointer test", category:"Utilities", icon:""})
+            onClicked: ++clicks
+        }
+    }
+    Component {
+        id: rowFixture
+        AppCenter.InstalledRow {
+            property var window: main
+            property int clicks: 0
+            x: 300; y: 20; width: 400
+            app: ({name:"Installed row", installedSize:"2 MiB", installedOrigin:"test", installation:"user", icon:""})
+            onClicked: ++clicks
+        }
+    }
+    Component {
+        id: linkFixture
+        AppCenter.WebsiteLink {
+            property var window: main
+            property int clicks: 0
+            x: 300; y: 20; text: "https://example.org"
+            onActivated: ++clicks
         }
     }
     Component {

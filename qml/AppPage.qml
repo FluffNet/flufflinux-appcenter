@@ -431,6 +431,8 @@ Page {
                 }
                 delegate: AbstractButton {
                     id: screenshotButton
+                    focusPolicy: Qt.TabFocus
+                    PointerFocusHandler {}
                     objectName: "screenshotButton"
                     required property int index
                     required property string modelData
@@ -446,10 +448,10 @@ Page {
                     background: Rectangle {
                         radius: window.cornerRadius
                         color: window.raisedSurfaceColor
-                        border.color: screenshotButton.activeFocus || screenshotButton.hovered
+                        border.color: screenshotButton.visualFocus || screenshotButton.hovered
                                       ? window.accentColor
                                       : window.borderColor
-                        border.width: screenshotButton.activeFocus ? 2 : 1
+                        border.width: screenshotButton.visualFocus ? 2 : 1
                     }
                     contentItem: Item {
                         clip: true

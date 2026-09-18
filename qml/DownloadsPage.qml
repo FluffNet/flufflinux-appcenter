@@ -115,6 +115,8 @@ Page {
                             Layout.fillWidth: true
                             spacing: 14
                             AbstractButton {
+                                focusPolicy: Qt.TabFocus
+                                PointerFocusHandler {}
                                 id: detailsButton
                                 objectName: "downloadAppDetailsButton"
                                 Layout.fillWidth: true
