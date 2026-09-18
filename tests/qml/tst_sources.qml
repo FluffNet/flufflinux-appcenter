@@ -68,7 +68,7 @@ TestCase {
         const about = findChild(main, "aboutDialog")
         tryCompare(about, "opened", true)
         compare(findChild(about, "aboutVersion").text, "Version 2026.09 (Beta)")
-        compare(findChild(about, "aboutCopyright").text, "© 2026 FluffNet LLC")
+        compare(findChild(about, "aboutCopyright").text, "Copyright © 2026 FluffNet LLC")
         compare(findChild(about, "aboutLicense").text, "License: MIT")
         about.close(); tryCompare(about, "visible", false)
     }
