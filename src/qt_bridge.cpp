@@ -1,5 +1,6 @@
 #include "flatpak_manager.h"
 #include "window_preferences.h"
+#include "ui_typography.h"
 #include <QFile>
 #include <QApplication>
 #include <QIcon>
@@ -43,6 +44,7 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     if (!qEnvironmentVariableIsSet("PLASMA_INTEGRATION_USE_PORTAL"))
         qputenv("PLASMA_INTEGRATION_USE_PORTAL", "1");
     QApplication application(argc, argv);
+    configureDesktopTypography(application);
     QCoreApplication::setApplicationName("flufflinux-appcenter");
     QGuiApplication::setApplicationDisplayName("App Center");
     QCoreApplication::setApplicationVersion(APPCENTER_DISPLAY_VERSION);

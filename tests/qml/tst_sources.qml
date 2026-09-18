@@ -89,6 +89,7 @@ TestCase {
         const checkbox = findChild(row, "sourceEnabled")
         verify(checkbox.checked); mouseClick(checkbox)
         compare(backend.request, "enable:flathub:false")
+        compare(findChild(row, "sourceDetailsButton").icon.name, "dialog-information")
         mouseClick(findChild(row, "sourceDetailsButton"))
         const details = findChild(page(), "sourceDetailsDialog")
         tryCompare(details, "opened", true)
@@ -115,6 +116,24 @@ TestCase {
         backend.busy = true
         verify(!findChild(page(), "addSourceButton").enabled)
         verify(!checkbox.enabled)
+    }
+    function test_information_never_autofocuses_close_data() {
+        return [{tag:"pointer", keyboard:false}, {tag:"keyboard", keyboard:true}]
+    }
+    function test_information_never_autofocuses_close(data) {
+        main.showSettings(); tryCompare(stack(), "busy", false)
+        const trigger = findChild(page(), "sourceDetailsButton")
+        const dialog = findChild(page(), "sourceDetailsDialog")
+        const close = findChild(dialog, "closeSourceDetailsButton")
+        for (let attempt = 0; attempt < 2; ++attempt) {
+            if (data.keyboard) { trigger.forceActiveFocus(Qt.TabFocusReason); keyClick(Qt.Key_Space) }
+            else mouseClick(trigger)
+            tryCompare(dialog, "opened", true)
+            verify(!close.activeFocus)
+            verify(close.background.border.width !== 2)
+            keyClick(Qt.Key_Tab); tryCompare(close, "activeFocus", true)
+            keyClick(Qt.Key_Escape); tryCompare(dialog, "visible", false)
+        }
     }
     function test_checkbox_geometry_and_states_data() {
         return [{tag:"dark-checked", dark:true, checked:true}, {tag:"dark-unchecked", dark:true, checked:false},

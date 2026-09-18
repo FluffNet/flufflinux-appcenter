@@ -16,8 +16,10 @@ dialogs share one subtly raised, opaque surface derived from it, without
 independent blue-gray tints. Custom panels and controls use an 8-unit corner
 radius; normal borders are 1 unit and keyboard-focus outlines are 2. Header
 and sidebar separators meet once instead of stacking rectangle outlines, and
-align to physical pixels at fractional scaling. The small application count
-uses native font rendering while retaining the system's chosen font.
+align to physical pixels at fractional scaling. All text inherits the desktop's
+general font (Noto Sans on Fluff Linux), with native rendering and grayscale
+antialiasing to avoid RGB fringes on fractional-scale glyphs. The configured
+desktop font family and size are retained; individual headings keep their sizing.
 Navigation, categories, action buttons and preview controls use the same hover
 color, with a visible background tint and explicit hover support even after touch
 input. Hover does not add focus outlines. Shared buttons render
@@ -30,6 +32,13 @@ that keeps its whole hover background away from the window edge.
 Clicking/tapping empty page or header space clears the previously focused
 control. Interactive controls keep their normal focus and click handling;
 scroll drags, photo gestures and modal dialogs retain their existing behavior.
+Closing the application menu with a mouse/touch action clears its opener's stale
+focus; keyboard dismissal with Escape keeps focus for continued navigation.
+
+Installed and every category fit the sidebar's available logical height without
+scrolling. Spacing, row heights, text and icons adapt as the window shrinks or
+desktop scaling increases. Labels can shrink further to fit the available width.
+This lays out actual font/icon sizes rather than scaling a rendered text texture.
 
 App Center defaults to maximized. It creates and updates
 `~/.config/flufflinux-appcenter.conf` automatically, recording `width`, `height`
@@ -106,7 +115,9 @@ for Discord and AAT, and leaves AAT's page open.
   The checkbox controls the user copy. Source details retain the installation scope.
   Source checkboxes have centered 24px indicators inside 44px touch targets,
   contrasting unchecked borders, neutral hover tint and keyboard-focus outlines.
-  Details have a top-right Close button; Add Source's Cancel includes its glyph.
+  The information icon opens Source details with a top-right Close button. Opening
+  it focuses the information, not Close; Tab still reaches Close and Escape dismisses
+  the dialog. Add Source's Cancel includes its glyph.
   User-source names omit the redundant `(User)` suffix in Settings, Installed
   and app details; system-only names retain `(System)`. Installed metadata uses
   native font rendering for consistent small bold text at fractional scaling.
@@ -428,7 +439,26 @@ target/test-window-preferences "$PWD/qml/Main.qml"
 
 `tests/qml/tst_focus.qml` checks mouse/touch empty-space focus clearing on
 Catalog, Installed, app details and Queue, plus retained button/search
-input, keyboard traversal, scroll drags and modal focus.
+input, keyboard traversal, scroll drags and modal focus. Repeated menu dismissal
+covers mouse/touch input on empty areas, Search and categories, including menus
+opened by keyboard. Source tests cover initial/reopened information-dialog focus.
+
+`tests/qml/tst_navigation_fit.qml` checks all 12 categories plus Installed across
+six window sizes from 540 × 300 to 1920 × 1080, including resize recovery, label
+bounds and working click targets. Run at 100%, 125%, 150%, 175% and 200% scaling.
+The native typography test checks resolved system font families, bold metadata,
+native rendering and grayscale glyph pixels (including the count digit 7), across
+resizes and fractional scroll offsets. It can also run in the real Wayland session:
+
+```sh
+c++ -std=c++17 -fPIC tests/native/test_typography.cpp -o target/test-typography $(pkg-config --cflags --libs Qt6Widgets Qt6Quick Qt6Qml)
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_SCALE_FACTOR=1.5 target/test-typography "$PWD/tests/native/TypographyFixture.qml" target/typography-1.5.png
+QT_QPA_PLATFORM=wayland target/test-typography "$PWD/tests/native/TypographyFixture.qml" target/typography-wayland.png
+```
+
+`tests/integration/NavigationFontSmoke.qml` uses the real launcher with fixture
+data to capture wide/compact/short layouts, the information icon/dialog and a
+dismissed menu. It performs no Flatpak operations or preference writes.
 
 The native-touchpad regression sends Qt gesture events through the production
 preview handler, including repeated releases, incremental updates and changing

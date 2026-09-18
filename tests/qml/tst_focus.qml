@@ -7,6 +7,7 @@ TestCase {
     name: "EmptySpaceFocus"
     when: main.visible
     AppCenter.Main { id: main }
+    SignalSpy { id: menuClosed; signalName: "closed" }
     readonly property var app: ({id: "org.example.Focus", name: "Focus test", summary: "", description: "",
         icon: "", developer: "", category: "Utilities", license: "", homepage: "", screenshots: []})
     function stack() { return findChild(main, "navigationStack") }
@@ -64,6 +65,54 @@ TestCase {
         mouseClick(findChild(stack().currentItem, "searchClearButton"))
         verify(field.activeFocus)
         compare(field.text, "")
+    }
+    function test_menu_pointer_dismissal_clears_opener_data() {
+        const cases = []
+        for (const keyboard of [false, true])
+            for (const touch of [false, true])
+                for (const target of ["header", "body", "search", "category"])
+                    cases.push({tag:(keyboard ? "keyboard-open" : "pointer-open") + "-" + (touch ? "touch" : "mouse") + "-" + target,
+                                keyboard:keyboard, touch:touch, target:target})
+        return cases
+    }
+    function test_menu_pointer_dismissal_clears_opener(data) {
+        const page = stack().currentItem
+        const button = findChild(page, "applicationMenuButton")
+        const menu = findChild(page, "applicationMenu")
+        const search = findChild(page, "searchField")
+        menuClosed.target = menu; menuClosed.clear()
+        for (let attempt = 0; attempt < 2; ++attempt) {
+            if (data.keyboard) { button.forceActiveFocus(Qt.TabFocusReason); keyClick(Qt.Key_Space) }
+            else mouseClick(button)
+            tryCompare(menu, "opened", true)
+            let target = page, point = Qt.point(page.width - 20, page.height - 20)
+            if (data.target === "header") { target = page.header; point = Qt.point(20, 8) }
+            else if (data.target === "search") { target = search; point = Qt.point(search.width / 2, search.height / 2) }
+            else if (data.target === "category") { target = findChild(page, "categoryButton-Games"); point = Qt.point(12, target.height / 2) }
+            if (data.touch) {
+                const seq = touchEvent(target)
+                seq.press(0, target, point.x, point.y).commit()
+                seq.release(0, target, point.x, point.y).commit()
+            } else mouseClick(target, point.x, point.y)
+            tryCompare(menu, "visible", false)
+            tryCompare(menuClosed, "count", attempt + 1)
+            tryCompare(button, "activeFocus", false)
+            verify(button.background.border.width !== 2)
+            if (data.target === "search") {
+                mouseClick(search); keyClick(Qt.Key_A)
+                verify(search.activeFocus); compare(search.text, "a")
+                page.openCategory("All Apps")
+            }
+        }
+    }
+    function test_keyboard_menu_escape_preserves_navigation() {
+        const button = findChild(stack().currentItem, "applicationMenuButton")
+        const menu = findChild(stack().currentItem, "applicationMenu")
+        button.forceActiveFocus(Qt.TabFocusReason)
+        keyClick(Qt.Key_Space); tryCompare(menu, "opened", true)
+        keyClick(Qt.Key_Escape); tryCompare(menu, "visible", false)
+        tryCompare(button, "activeFocus", true)
+        keyClick(Qt.Key_Tab); verify(!button.activeFocus)
     }
     function test_clicking_a_control_keeps_its_focus_data() {
         return [{tag: "header", scroll: false}, {tag: "scroll", scroll: true}]

@@ -280,10 +280,10 @@ TestCase {
         verify(homeButton !== null)
         compare(sidebar.width, catalogPage.categorySidebarWidth)
         verify(sidebar.width >= 240)
-        verify(homeButton.height >= 52)
-        compare(homeButton.icon.width, 24)
-        compare(homeButton.icon.height, 24)
-        compare(homeButton.font.pixelSize, 16)
+        compare(homeButton.height, sidebar.navigationRowHeight)
+        compare(homeButton.icon.width, sidebar.navigationIconSize)
+        compare(homeButton.icon.height, sidebar.navigationIconSize)
+        compare(homeButton.font.pixelSize, sidebar.navigationFontSize)
 
         const shortWidth = catalogPage.categoryWidthForLabels(["Home"])
         const translatedWidth = catalogPage.categoryWidthForLabels([

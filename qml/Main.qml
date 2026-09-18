@@ -10,6 +10,9 @@ ApplicationWindow {
     // Standalone QML fixtures keep their explicit, non-persistent geometry.
     visible: typeof fluffWindowManaged === "undefined" || !fluffWindowManaged
     title: "App Center"
+    // Inherit the native launcher's desktop font and rendering preferences,
+    // not a control style's independent default family.
+    font: Qt.application.font
     color: backgroundColor
 
     readonly property bool darkMode: palette.window.hslLightness < 0.5

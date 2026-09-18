@@ -113,6 +113,7 @@ fn main() {
     println!("cargo:rerun-if-changed=VERSION");
     println!("cargo:rerun-if-changed=src/source_removal.h");
     println!("cargo:rerun-if-changed=src/window_preferences.h");
+    println!("cargo:rerun-if-changed=src/ui_typography.h");
     println!("cargo:rerun-if-changed=src/flatpak_manager.h");
     println!("cargo:rerun-if-changed=src/flatpak_sources.h");
     println!("cargo:rerun-if-changed=src/flatpak_catalog.cpp");

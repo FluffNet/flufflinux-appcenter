@@ -133,7 +133,7 @@ Page {
                         FluffToolButton {
                             objectName: "sourceDetailsButton"
                             width: 44; height: 44
-                            icon.name: "go-next"
+                            icon.name: "dialog-information"
                             Accessible.name: qsTr("Details for %1").arg(sourceRow.modelData.name)
                             onClicked: { page.selectedSource = sourceRow.modelData; detailsDialog.open() }
                         }
@@ -213,6 +213,9 @@ Page {
         objectName: "sourceDetailsDialog"
         anchors.centerIn: parent; width: Math.min(page.width - 48, 560)
         title: qsTr("Source details"); modal: true
+        // Opening information is not an action on Close. Start at the text;
+        // Tab can still reach Close and Escape still dismisses the dialog.
+        onOpened: contentItem.forceActiveFocus(Qt.OtherFocusReason)
         header: Control {
             leftPadding: 18; rightPadding: 8; topPadding: 8; bottomPadding: 8
             contentItem: RowLayout {

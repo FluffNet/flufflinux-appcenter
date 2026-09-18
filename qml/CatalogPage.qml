@@ -107,7 +107,9 @@ Page {
 
     FontMetrics {
         id: categoryFontMetrics
-        font.pixelSize: 16
+        font.family: window.font.family
+        font.pixelSize: sidebar.navigationFontSize
+        font.weight: Font.DemiBold
     }
 
     function categoryIndex(category) {
@@ -313,12 +315,29 @@ Page {
                 width: 44; height: 44
                 text: "⋮"; font.pixelSize: 28
                 Accessible.name: qsTr("Application menu")
-                onClicked: applicationMenu.open()
+                onClicked: {
+                    applicationMenu.restoreKeyboardFocus = visualFocus
+                    applicationMenu.open()
+                }
                 Menu {
                     id: applicationMenu
                     objectName: "applicationMenu"
+                    property bool restoreKeyboardFocus: false
                     y: applicationMenuButton.height + 6
                     width: 210
+                    Overlay.onPressed: restoreKeyboardFocus = false
+                    onClosed: {
+                        // Popup dismissal restores its opener's focus after
+                        // swallowing an outside pointer click. Do not leave a
+                        // focused menu button behind, or steal focus from the
+                        // search field/new page. Keyboard Escape keeps its place.
+                        if (!restoreKeyboardFocus) {
+                            const wasActive = applicationMenuButton.activeFocus
+                            applicationMenuButton.focus = false
+                            if (wasActive && page.StackView.status === StackView.Active)
+                                page.forceActiveFocus(Qt.OtherFocusReason)
+                        }
+                    }
                     MenuItem {
                         objectName: "settingsMenuItem"
                         text: qsTr("Settings"); icon.name: "settings-configure"
@@ -336,11 +355,23 @@ Page {
     RowLayout {
         anchors.fill: parent; spacing: 0
         Pane {
+            id: sidebar
             focusPolicy: Qt.ClickFocus
             objectName: "categorySidebar"
             Layout.fillHeight: true
             Layout.preferredWidth: page.categorySidebarWidth
-            padding: 12
+            padding: Math.min(12, height / 30)
+            // Fit every destination, not a clipped/scrolling subset. Re-layout
+            // actual sizes (never scale an already-rendered text texture).
+            readonly property real navigationGap: Math.min(4, availableHeight / 100)
+            readonly property real sectionGap: Math.min(12, availableHeight / 40)
+            readonly property real navigationRowHeight: Math.max(1, Math.min(52,
+                (availableHeight - navigationSeparator.height - sectionGap * 2
+                 - navigationGap * (page.categories.length - 1)) / (page.categories.length + 1)))
+            readonly property int navigationFontSize: Math.max(1, Math.floor(Math.min(16, navigationRowHeight * 0.52)))
+            readonly property int navigationIconSize: Math.max(1, Math.floor(Math.min(24, navigationRowHeight * 0.7)))
+            readonly property real navigationPadding: Math.min(16, navigationRowHeight / 3)
+            readonly property real navigationSpacing: Math.min(12, navigationRowHeight / 4)
             background: Rectangle {
                 objectName: "sidebarBackground"
                 color: window.sidebarColor
@@ -354,33 +385,37 @@ Page {
                 Column {
                     id: installedNavigation
                     width: parent.width
-                    y: 12
-                    spacing: 12
+                    spacing: sidebar.sectionGap
                     ItemDelegate {
                         id: installedButton
                         hoverEnabled: true
                         objectName: "installedButton"
                         width: parent.width
-                        height: Math.max(52, categoryFontMetrics.height + 24)
+                        height: sidebar.navigationRowHeight
                         text: qsTr("Installed")
                         icon.name: "view-list-details"
-                        icon.width: 24; icon.height: 24
+                        icon.width: sidebar.navigationIconSize; icon.height: sidebar.navigationIconSize
                         icon.color: window.textColor
                         palette.buttonText: window.textColor
-                        font.pixelSize: 16
+                        font.pixelSize: sidebar.navigationFontSize
                         font.weight: page.installedView ? Font.DemiBold : Font.Normal
-                        leftPadding: 16; rightPadding: 16; spacing: 12
+                        leftPadding: sidebar.navigationPadding; rightPadding: sidebar.navigationPadding
+                        topPadding: 0; bottomPadding: 0; spacing: sidebar.navigationSpacing
                         // KDE adds native list-item insets. Our custom shape
                         // should cover the entire clickable/hoverable button.
                         leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
                         contentItem: RowLayout {
-                            spacing: 12
+                            spacing: sidebar.navigationSpacing
                             Canvas {
                                 id: installedIcon
-                                Layout.preferredWidth: 24; Layout.preferredHeight: 24
+                                Layout.preferredWidth: sidebar.navigationIconSize; Layout.preferredHeight: sidebar.navigationIconSize
+                                onWidthChanged: requestPaint()
+                                onHeightChanged: requestPaint()
                                 onPaint: {
                                     const ctx = getContext("2d")
                                     ctx.clearRect(0, 0, width, height)
+                                    ctx.save()
+                                    ctx.scale(width / 24, height / 24)
                                     ctx.strokeStyle = window.textColor
                                     ctx.lineWidth = 1.6
                                     ctx.lineJoin = "round"
@@ -388,6 +423,7 @@ Page {
                                     ctx.beginPath()
                                     ctx.moveTo(7, 12); ctx.lineTo(10.5, 15.5); ctx.lineTo(17, 8.5)
                                     ctx.stroke()
+                                    ctx.restore()
                                 }
                                 Connections {
                                     target: window
@@ -399,7 +435,7 @@ Page {
                                 text: installedButton.text
                                 font: installedButton.font
                                 color: window.textColor
-                                elide: Text.ElideRight
+                                fontSizeMode: Text.Fit; minimumPixelSize: 1
                             }
                         }
                         onClicked: page.openCategory("Installed")
@@ -412,13 +448,18 @@ Page {
                         }
                     }
                     FluffSeparator {
+                        id: navigationSeparator
                         width: parent.width - 16; x: 8
                     }
-                    Item { width: 1; height: 4 }
                 }
             ListView {
                 id: categoryList
-                anchors.fill: parent; anchors.topMargin: installedNavigation.y + installedNavigation.height; spacing: 4; clip: true; model: page.categories
+                objectName: "categoryList"
+                anchors.fill: parent; anchors.topMargin: installedNavigation.height + sidebar.sectionGap
+                spacing: sidebar.navigationGap; clip: true; model: page.categories
+                interactive: false
+                boundsBehavior: Flickable.StopAtBounds
+                onHeightChanged: contentY = 0
                 NaturalWheelScroll {
                     objectName: "categoryNaturalScroll"
                     scrollTarget: categoryList
@@ -429,11 +470,11 @@ Page {
                     objectName: "categoryButton-" + modelData.name
                     required property var modelData
                     width: ListView.view.width
-                    height: Math.max(52, categoryFontMetrics.height + 24)
+                    height: sidebar.navigationRowHeight
                     text: modelData.label
                     icon.name: modelData.icon
-                    icon.width: 24
-                    icon.height: 24
+                    icon.width: sidebar.navigationIconSize
+                    icon.height: sidebar.navigationIconSize
                     display: AbstractButton.TextBesideIcon
                     // Do not use the style's highlighted state here: Breeze
                     // deliberately substitutes highlightedText (usually
@@ -444,10 +485,11 @@ Page {
                         searchField.text.trim().length === 0
                         && window.selectedCategory === modelData.name
                     onClicked: page.openCategory(modelData.name)
-                    leftPadding: 16
-                    rightPadding: 16
+                    leftPadding: sidebar.navigationPadding
+                    rightPadding: sidebar.navigationPadding
+                    topPadding: 0; bottomPadding: 0
                     leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
-                    spacing: 12
+                    spacing: sidebar.navigationSpacing
                     readonly property color foregroundColor: categorySelected
                                                                ? (window.darkMode
                                                                   ? window.accentColor
@@ -457,8 +499,25 @@ Page {
                     palette.text: foregroundColor
                     palette.highlightedText: foregroundColor
                     icon.color: categorySelected ? foregroundColor : "transparent"
-                    font.pixelSize: 16
+                    font.pixelSize: sidebar.navigationFontSize
                     font.weight: categorySelected ? Font.DemiBold : Font.Normal
+                    contentItem: RowLayout {
+                        spacing: sidebar.navigationSpacing
+                        Image {
+                            Layout.preferredWidth: sidebar.navigationIconSize
+                            Layout.preferredHeight: sidebar.navigationIconSize
+                            sourceSize: Qt.size(sidebar.navigationIconSize * 2, sidebar.navigationIconSize * 2)
+                            source: window.iconSource(modelData.icon)
+                            fillMode: Image.PreserveAspectFit
+                        }
+                        Label {
+                            objectName: "categoryLabel"
+                            Layout.fillWidth: true
+                            text: categoryButton.text; font: categoryButton.font
+                            color: categoryButton.categorySelected && !window.darkMode ? "#000000" : window.textColor
+                            fontSizeMode: Text.Fit; minimumPixelSize: 1
+                        }
+                    }
                     background: Rectangle {
                         radius: window.cornerRadius
                         color: categoryButton.hovered || categoryButton.down ? window.hoverColor : categoryButton.categorySelected
