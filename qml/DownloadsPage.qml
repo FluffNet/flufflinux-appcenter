@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 Page {
+    focusPolicy: Qt.ClickFocus
     id: page
     objectName: "downloadsPage"
     // Keep delegates alive while the backend replaces its progress snapshots.
@@ -29,8 +30,9 @@ Page {
             if (page.StackView.status === StackView.Active) window.downloadQueue.markViewed()
         }
     }
-    background: null
+    background: Control { focusPolicy: Qt.ClickFocus }
     header: ToolBar {
+        focusPolicy: Qt.ClickFocus
         height: 72
         background: Rectangle {
             color: window.backgroundColor
@@ -76,6 +78,7 @@ Page {
     }
     Flickable {
         id: scroll
+        EmptySpaceFocus { parent: scroll }
         anchors.fill: parent
         contentWidth: width
         contentHeight: content.implicitHeight + 48
@@ -90,6 +93,7 @@ Page {
                 objectName: "downloadJobs"
                 model: jobRows
                 delegate: Pane {
+                    focusPolicy: Qt.ClickFocus
                     id: downloadCard
                     required property int jobIndex
                     readonly property var modelData: window.downloadQueue.jobs.find(job => job.index === jobIndex)

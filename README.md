@@ -2,7 +2,7 @@
 
 A native Flatpak software center for Fluff Linux, built with Rust (standard
 library only), QML, and the system Qt 6 and libflatpak libraries. There are no
-background update services, notifications, settings, or tray components.
+background update services, notifications, settings window, or tray components.
 
 ## Appearance
 
@@ -22,6 +22,19 @@ native list-item insets so the edges have the same hover tint as the center.
 Installed rows use a stronger neutral border for the nested removal button so
 it remains visible over the row's hover tint. App-view Back has an outer inset
 that keeps its whole hover background away from the window edge.
+Clicking/tapping empty page or header space clears the previously focused
+control. Interactive controls keep their normal focus and click handling;
+scroll drags, photo gestures and modal dialogs retain their existing behavior.
+
+App Center defaults to maximized. It creates and updates
+`~/.config/flufflinux-appcenter.conf` automatically, recording `width`, `height`
+and `maximized` in a `[Window]` section. Width/height are the normal, restored
+window's logical-pixel size, not the maximized size. Resizing and switching
+between maximized/windowed update the saved preference while the app runs;
+minimizing is not a startup preference. On launch, a size larger than the
+screen's available area opens maximized instead. Invalid/missing values use
+safe defaults, and unrelated config keys are preserved. Custom test QML does
+not read or change the user's window settings.
 
 Catalog and Installed scrollbars sit at the outer right edge for the full page
 content height, with a persistent contrasting thumb and a minimum 44-pixel
@@ -304,6 +317,21 @@ target/test-flatpak-sizes --installed # Read-only validation against real deploy
 c++ -std=c++17 -fPIC tests/native/test_transaction_status.cpp -o target/test-transaction-status $(pkg-config --cflags --libs Qt6Core glib-2.0)
 target/test-transaction-status
 ```
+
+Window preferences are tested using a temporary config (including creation,
+live state changes, restart, minimizing, smaller screens and invalid values).
+The same test can run under Wayland without any Flatpak operations or changing
+the real user's preferences:
+
+```sh
+c++ -std=c++17 -fPIC tests/native/test_window_preferences.cpp -o target/test-window-preferences $(pkg-config --cflags --libs Qt6Quick Qt6Test)
+QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software target/test-window-preferences "$PWD/qml/Main.qml"
+target/test-window-preferences "$PWD/qml/Main.qml"
+```
+
+`tests/qml/tst_focus.qml` checks mouse/touch empty-space focus clearing on
+Catalog, Installed, app details and Downloads, plus retained button/search
+input, keyboard traversal, scroll drags and modal focus.
 
 The native-touchpad regression sends Qt gesture events through the production
 preview handler, including repeated releases, incremental updates and changing

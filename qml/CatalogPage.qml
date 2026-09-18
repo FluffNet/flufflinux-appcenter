@@ -3,9 +3,10 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 Page {
+    focusPolicy: Qt.ClickFocus
     id: page
     StackView.onActivated: searchField.forceActiveFocus()
-    background: null
+    background: Control { focusPolicy: Qt.ClickFocus }
     readonly property bool installedView: window.selectedCategory === "Installed"
     property int installedSortIndex: 0
     readonly property var installedSortOptions: [
@@ -169,6 +170,7 @@ Page {
         return 120
     }
     header: Control {
+        focusPolicy: Qt.ClickFocus
         id: headerControl
         height: 88
         padding: 0
@@ -307,6 +309,7 @@ Page {
     RowLayout {
         anchors.fill: parent; spacing: 0
         Pane {
+            focusPolicy: Qt.ClickFocus
             objectName: "categorySidebar"
             Layout.fillHeight: true
             Layout.preferredWidth: page.categorySidebarWidth
@@ -520,6 +523,7 @@ Page {
                 }
                 GridView {
                     id: catalogGrid
+                    EmptySpaceFocus { parent: catalogGrid }
                     objectName: "catalogGrid"
                     visible: !page.installedView
                     Layout.fillWidth: true; Layout.fillHeight: true
@@ -554,6 +558,7 @@ Page {
                 }
                 ListView {
                     id: installedList
+                    EmptySpaceFocus { parent: installedList }
                     objectName: "installedList"
                     visible: page.installedView
                     Layout.fillWidth: true; Layout.fillHeight: true

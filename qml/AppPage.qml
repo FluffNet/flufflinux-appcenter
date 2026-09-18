@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 
 Page {
+    focusPolicy: Qt.ClickFocus
     id: page
     required property var app
     property string previewScreenshot: ""
@@ -253,8 +254,9 @@ Page {
                                                     - fingerDistanceX * scale))
     }
 
-    background: null
+    background: Control { focusPolicy: Qt.ClickFocus }
     header: Control {
+        focusPolicy: Qt.ClickFocus
         height: 70; padding: 0
         leftPadding: 14; rightPadding: 24
         background: Rectangle {
@@ -280,6 +282,7 @@ Page {
     }
     Flickable {
         id: detailsFlickable
+        EmptySpaceFocus { parent: detailsFlickable }
         objectName: "detailsFlickable"
         anchors.fill: parent
         clip: true

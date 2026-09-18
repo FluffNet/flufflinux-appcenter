@@ -6,7 +6,9 @@ ApplicationWindow {
     id: window
     width: 1180; height: 760
     minimumWidth: 720; minimumHeight: 520
-    visible: true
+    // The native launcher restores geometry before showing the real window.
+    // Standalone QML fixtures keep their explicit, non-persistent geometry.
+    visible: typeof fluffWindowManaged === "undefined" || !fluffWindowManaged
     title: "App Center"
     color: backgroundColor
 
@@ -116,6 +118,25 @@ ApplicationWindow {
             stack.pop(stack.get(0))
     }
     FluffBackground { anchors.fill: parent }
+    MouseArea {
+        anchors.fill: parent
+        z: 100
+        acceptedButtons: Qt.LeftButton
+        onPressed: function(mouse) {
+            // Observe the press, then pass it through untouched. Clearing
+            // before delivery lets the clicked control take focus normally.
+            // This also works with KDE controls that swallow empty-area clicks.
+            const focused = window.activeFocusItem
+            let ancestor = focused
+            while (ancestor && ancestor !== stack) ancestor = ancestor.parent
+            if (ancestor && focused !== stack
+                    && !focused.contains(focused.mapFromItem(this, mouse.x, mouse.y))) {
+                focused.focus = false
+                window.contentItem.forceActiveFocus(Qt.MouseFocusReason)
+            }
+            mouse.accepted = false
+        }
+    }
     StackView {
         id: stack
         objectName: "navigationStack"

@@ -1,4 +1,5 @@
 #include "flatpak_manager.h"
+#include "window_preferences.h"
 #include <QFile>
 #include <QGuiApplication>
 #include <QIcon>
@@ -13,6 +14,7 @@
 #include <QQuickWindow>
 #include <QStandardPaths>
 #include <QUrl>
+#include <memory>
 #include <unistd.h>
 
 class ThemeIconProvider final : public QQuickImageProvider {
@@ -64,17 +66,33 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     const auto document = QJsonDocument::fromJson(catalog.readAll());
     if (!document.isArray()) return 3;
     FlatpakManager manager(document.array().toVariantList());
+    // Custom QML is used by read-only UI fixtures; it must not read/write the
+    // desktop user's window preferences or override fixture geometry.
+    const bool manageWindow = !qEnvironmentVariableIsSet("FLUFF_APP_CENTER_QML");
+    std::unique_ptr<WindowPreferences> windowPreferences;
+    if (manageWindow) windowPreferences = std::make_unique<WindowPreferences>();
     QQmlApplicationEngine engine;
     engine.addImageProvider("icon", new ThemeIconProvider);
     engine.rootContext()->setContextProperty("fluffBackend", &manager);
     engine.rootContext()->setContextProperty("fluffAppIconUrl", QUrl::fromLocalFile(QString::fromUtf8(icon_path)));
     engine.rootContext()->setContextProperty("fluffInitialCatalog", document.array().toVariantList());
+    engine.rootContext()->setContextProperty("fluffWindowManaged", manageWindow);
     engine.load(QUrl::fromLocalFile(QString::fromUtf8(qml_path)));
     if (engine.rootObjects().isEmpty()) return 4;
+    if (manageWindow) {
+        if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()))
+            windowPreferences->restore(window);
+    }
     auto dispatch = [&](const QJsonArray &sources) {
         for (int i = 0; i < sources.size() && i < 16; ++i) manager.openSource(sources[i].toString());
         if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-            window->show(); window->raise(); window->requestActivate();
+            // Raising an existing instance must not undo its maximized state.
+            if (window->visibility() == QWindow::Minimized) {
+                if (windowPreferences ? windowPreferences->maximized()
+                                      : window->windowStates().testFlag(Qt::WindowMaximized)) window->showMaximized();
+                else window->showNormal();
+            } else window->show();
+            window->raise(); window->requestActivate();
         }
     };
     QObject::connect(&server, &QLocalServer::newConnection, &engine, [&] {
