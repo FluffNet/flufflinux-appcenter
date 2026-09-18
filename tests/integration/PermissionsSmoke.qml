@@ -63,7 +63,19 @@ AppCenter.Main {
                 if (main.backend.appPermissions.state === "loading") return
                 if (main.backend.appPermissions.state !== "ready" || !main.backend.appPermissions.installed) { main.capture(dialog.contentItem.parent, "error", 11); return }
                 main.capture(dialog.contentItem.parent, "system", 14)
-            } else if (main.stage === 14) { dialog.close(); Qt.quit() }
+            } else if (main.stage === 14) {
+                dialog.close()
+                const zeroad = main.catalog.find(app => String(app.flatpakRef).indexOf("app/com.play0ad.zeroad/") === 0)
+                if (!zeroad) { Qt.exit(8); return }
+                main.openApp(zeroad); main.stage = 15
+            } else if (main.stage === 15) { dialog.open(); main.stage = 16 }
+            else if (main.stage === 16) {
+                if (main.backend.appPermissions.state === "loading") return
+                if (main.backend.appPermissions.state !== "ready") { main.capture(dialog.contentItem.parent, "error", 11); return }
+                main.capture(dialog.contentItem.parent, "zeroad", 17)
+            } else if (main.stage === 17) { main.width = 720; main.height = 540; main.stage = 18 }
+            else if (main.stage === 18) main.capture(dialog.contentItem.parent, "narrow", 19)
+            else if (main.stage === 19) { dialog.close(); Qt.quit() }
         }
     }
     Timer { interval: 60000; running: true; onTriggered: Qt.exit(6) }

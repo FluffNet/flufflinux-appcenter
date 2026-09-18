@@ -1,10 +1,14 @@
 import QtQuick
-import QtQuick.Controls
+import QtQuick.Templates as T
 
-ScrollBar {
+// This is fully painted here; using the template prevents KDE's internal
+// groove padding and delayed visibility bindings from overriding our geometry.
+T.ScrollBar {
     id: control
+    property color surfaceColor: window.backgroundColor
     orientation: Qt.Vertical
-    policy: ScrollBar.AlwaysOn
+    policy: T.ScrollBar.AlwaysOn
+    stepSize: 0.02
     // Breeze otherwise disables dragging after detecting touchscreen input.
     interactive: true
     hoverEnabled: true
@@ -18,10 +22,10 @@ ScrollBar {
         implicitHeight: 44
         radius: 4
         color: control.pressed || control.hovered ? window.textColor
-             : Qt.tint(window.backgroundColor, Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.55))
+             : Qt.tint(control.surfaceColor, Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.55))
     }
     background: Rectangle {
-        color: window.backgroundColor
+        color: control.surfaceColor
         Rectangle {
             anchors.centerIn: parent
             width: 8; height: parent.height - 8; radius: 4

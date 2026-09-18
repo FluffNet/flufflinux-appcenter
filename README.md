@@ -12,7 +12,11 @@ contains Flatpak source management.
 App details includes **View App Permissions**, a read-only, scrollable dialog
 with grouped icons, explanations and a centered Close button. It fills the app
 window with a 32px outer margin, resizes with it, and keeps Close visible while
-the permission list scrolls. Network, audio,
+the permission list scrolls using the same edge scrollbar as the main app list.
+The heading is `App Permissions - App name`, with the app name bold and no
+introductory subtitle. Groups fill two equal-width, independently stacked
+columns, so a long section cannot create a gap in its neighbour. Narrow windows
+fall back to one column in the original order. Network, audio,
 devices, display, shared memory, files, persistent storage, session/system bus,
 extra capabilities and USB portal rules are kept in a consistent order; entries
 within each group are sorted. File access modes and explicit denials remain
@@ -26,7 +30,7 @@ metadata fetch when necessary. Local `.flatpak` bundles can provide their own
 metadata. Loading, unavailable data, retry and a 30-second timeout are explicit;
 closing a dialog cancels only its own request. This work never enters Queue or
 installs apps/adds sources. Dynamic access granted through portals is separate
-from these sandbox permissions, as explained in the dialog.
+from these sandbox permissions.
 
 ## Appearance
 
