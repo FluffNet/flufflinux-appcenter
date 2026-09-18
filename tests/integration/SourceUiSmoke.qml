@@ -25,6 +25,7 @@ AppCenter.Main {
         property int iconRevision: 0
         property bool busy: false
         property bool sourcesBusy: false
+        property string sourceInputStatus: ""
         property string sourcesError: ""
         property var repositories: [
             {name:"flathub", title:"Flathub", scope:"user", enabled:true, verified:true, url:"https://dl.flathub.org/repo/"},
@@ -45,13 +46,18 @@ AppCenter.Main {
         onTriggered: {
             const stack = probe.findChild(main, "navigationStack")
             if (main.stage < 0 || stack.busy || fixture.installedLoading) return
-            if (main.stage === 0) { stack.background = main.snapshotBackground.createObject(stack); main.showSettings(); main.stage = 1 }
+            if (main.stage === 0) {
+                stack.background = main.snapshotBackground.createObject(stack)
+                probe.mouseClick(probe.findChild(main, "applicationMenuButton")); main.stage = 13
+            }
+            else if (main.stage === 13) { main.capture(probe.findChild(main, "applicationMenu").contentItem.parent, "menu", 14) }
+            else if (main.stage === 14) { probe.findChild(main, "applicationMenu").close(); main.showSettings(); main.stage = 1 }
             else if (main.stage === 1) { main.capture(stack, "checkboxes", 2) }
             else if (main.stage === 2) { probe.findChild(stack.currentItem, "sourceDetailsButton").clicked(); main.stage = 3 }
             else if (main.stage === 3) { main.capture(probe.findChild(main, "sourceDetailsDialog").contentItem.parent, "details", 4) }
             else if (main.stage === 4) {
                 probe.findChild(main, "closeSourceDetailsButton").clicked()
-                probe.findChild(main, "addSourceButton").clicked(); main.stage = 5
+                fixture.sourceInputStatus = "Checking software source…"; fixture.busy = true; main.stage = 11
             } else if (main.stage === 5) { main.capture(probe.findChild(main, "addSourceDialog").contentItem.parent, "add", 6) }
             else if (main.stage === 6) {
                 probe.findChild(main, "cancelAddSourceButton").clicked()
@@ -63,6 +69,11 @@ AppCenter.Main {
                 main.showDownloads(); main.stage = 9
             } else if (main.stage === 9) { main.capture(stack, "queue", 10) }
             else if (main.stage === 10) { Qt.quit() }
+            else if (main.stage === 11) { main.capture(stack, "checking", 12) }
+            else if (main.stage === 12) {
+                fixture.sourceInputStatus = ""; fixture.busy = false
+                probe.findChild(main, "addSourceButton").clicked(); main.stage = 5
+            }
         }
     }
     Timer { interval: 30000; running: true; onTriggered: Qt.exit(5) }

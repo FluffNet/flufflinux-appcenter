@@ -18,6 +18,7 @@ TestCase {
         property int iconRevision: 0
         property bool busy: false
         property bool sourcesBusy: false
+        property string sourceInputStatus: ""
         property string sourcesError: ""
         readonly property var initialRepositories: [
             {name: "flathub", title: "Flathub", url: "https://dl.flathub.org/repo/", scope: "merged", hasUser: true, hasSystem: true, enabled: true, verified: true},
@@ -45,7 +46,7 @@ TestCase {
     function init() {
         main.showCatalog(); tryCompare(stack(), "busy", false)
         main.width = 1180; main.height = 760
-        backend.busy = false; backend.sourcesBusy = false; backend.installedApps = []
+        backend.busy = false; backend.sourcesBusy = false; backend.sourceInputStatus = ""; backend.sourcesError = ""; backend.installedApps = []
         backend.request = ""; backend.lastInstall = null; backend.lastEstimate = null
         backend.repositories = backend.initialRepositories
         main.requestActivate(); wait(50)
@@ -119,6 +120,45 @@ TestCase {
     }
     function test_information_never_autofocuses_close_data() {
         return [{tag:"pointer", keyboard:false}, {tag:"keyboard", keyboard:true}]
+    }
+    function test_information_dismissal_clears_opener_data() {
+        return [{tag:"close", method:"close"}, {tag:"escape", method:"escape"}, {tag:"outside", method:"outside"}]
+    }
+    function test_information_dismissal_clears_opener(data) {
+        main.showSettings(); tryCompare(stack(), "busy", false)
+        const trigger = findChild(page(), "sourceDetailsButton")
+        const dialog = findChild(page(), "sourceDetailsDialog")
+        for (let attempt = 0; attempt < 2; ++attempt) {
+            mouseClick(trigger); tryCompare(dialog, "opened", true)
+            if (data.method === "close") mouseClick(findChild(dialog, "closeSourceDetailsButton"))
+            else if (data.method === "escape") keyClick(Qt.Key_Escape)
+            else mouseClick(main.contentItem, main.width - 10, main.height - 10)
+            tryCompare(dialog, "visible", false)
+            tryCompare(trigger, "activeFocus", false)
+            verify(trigger.background.border.width !== 2)
+            wait(100)
+        }
+    }
+    function test_source_input_progress_is_visible_without_queue_entries() {
+        main.showSettings(); tryCompare(stack(), "busy", false)
+        const status = findChild(page(), "sourcesStatus")
+        const spinner = findChild(page(), "sourceWorkSpinner")
+        verify(!status.visible); verify(!spinner.running)
+        for (const text of ["Waiting to check software source…", "Checking software source…", "Waiting for source confirmation…"]) {
+            backend.sourceInputStatus = text; backend.busy = true
+            tryCompare(status, "visible", true); compare(status.text, text)
+            verify(spinner.visible && spinner.running)
+            verify(!findChild(page(), "addSourceButton").enabled)
+            compare(main.downloadQueue.activeCount, 0)
+            compare(backend.jobs.length, 0)
+        }
+        backend.sourceInputStatus = ""; backend.busy = false
+        verify(!status.visible); verify(!spinner.running)
+        backend.sourcesBusy = true
+        compare(status.text, "Updating software sources…"); verify(spinner.running)
+        backend.sourcesBusy = false; backend.sourcesError = "Source update failed"
+        compare(status.text, "Source update failed"); verify(status.visible); verify(!spinner.running)
+        compare(status.color, main.accentColor)
     }
     function test_information_never_autofocuses_close(data) {
         main.showSettings(); tryCompare(stack(), "busy", false)

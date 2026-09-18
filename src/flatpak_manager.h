@@ -22,6 +22,7 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(QVariantList catalog READ catalog NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList repositories READ repositories NOTIFY repositoriesChanged)
     Q_PROPERTY(bool sourcesBusy READ sourcesBusy NOTIFY repositoriesChanged)
+    Q_PROPERTY(QString sourceInputStatus READ sourceInputStatus NOTIFY jobsChanged)
     Q_PROPERTY(QString sourcesError READ sourcesError NOTIFY repositoriesChanged)
 public:
     explicit FlatpakManager(const QVariantList &catalog, QObject *parent = nullptr);
@@ -47,6 +48,7 @@ public:
     QVariantList catalog() const { return m_catalog; }
     QVariantList repositories() const { return m_repositories; }
     bool sourcesBusy() const { return m_sourceProcess.state() != QProcess::NotRunning; }
+    QString sourceInputStatus() const;
     QString sourcesError() const { return m_sourcesError; }
     void initializeSources();
     Q_INVOKABLE void refreshSources(bool refreshCatalogs = false);

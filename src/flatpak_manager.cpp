@@ -323,6 +323,19 @@ bool FlatpakManager::busy() const {
     return m_installWorker.process.state() != QProcess::NotRunning
         || m_removalWorker.process.state() != QProcess::NotRunning || sourcesBusy() || m_refreshingCaches;
 }
+QString FlatpakManager::sourceInputStatus() const {
+    // File/link inspection is deliberately hidden from Queue. Publish its
+    // lifetime separately so Settings still shows work during network waits.
+    for (const auto &entry : m_jobs) {
+        const auto job = entry.toMap();
+        if (!active(job) || !job.value("prepareOnly").toBool()) continue;
+        if (job.value("queued").toBool()) return tr("Waiting to check software source…");
+        if (job.value("status").toString() == tr("Waiting for confirmation"))
+            return tr("Waiting for source confirmation…");
+        return tr("Checking software source…");
+    }
+    return {};
+}
 QVariantMap FlatpakManager::metadata(const QString &id) const {
     auto app = m_metadata.value(id);
     if (app.isEmpty()) app = {{"id", id}, {"name", id}, {"icon", id}, {"summary", ""},

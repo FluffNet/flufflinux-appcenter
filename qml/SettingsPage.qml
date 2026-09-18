@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs as FileDialogs
+import org.kde.kirigami as Kirigami
 
 Page {
     id: page
@@ -11,6 +12,9 @@ Page {
     readonly property var sources: window.backend && window.backend.repositories || []
     readonly property bool busy: !!window.backend && !!window.backend.busy
     property var selectedSource: null
+    property Item detailsOpener: null
+    readonly property string inputStatus: window.backend && window.backend.sourceInputStatus || ""
+    readonly property bool sourceWorkPending: !!inputStatus || !!(window.backend && window.backend.sourcesBusy)
     header: Control {
         focusPolicy: Qt.ClickFocus
         height: 70; leftPadding: 24; rightPadding: 24
@@ -53,14 +57,26 @@ Page {
                     onClicked: { sourceInput.text = ""; addDialog.open() }
                 }
             }
-            Label {
-                objectName: "sourcesStatus"
+            RowLayout {
                 Layout.fillWidth: true; Layout.leftMargin: 24; Layout.rightMargin: 24
-                visible: !!text
-                text: window.backend && window.backend.sourcesBusy ? qsTr("Updating software sources…")
-                      : window.backend && window.backend.sourcesError || ""
-                textFormat: Text.PlainText; wrapMode: Text.Wrap
-                color: window.backend && window.backend.sourcesError ? window.accentColor : window.mutedTextColor
+                spacing: 10
+                visible: !!sourceStatusLabel.text
+                LoadingSpinner {
+                    objectName: "sourceWorkSpinner"
+                    Layout.preferredWidth: 24; Layout.preferredHeight: 24
+                    running: page.sourceWorkPending
+                    color: window.textColor
+                }
+                Label {
+                    id: sourceStatusLabel
+                    objectName: "sourcesStatus"
+                    Layout.fillWidth: true
+                    text: page.inputStatus || (window.backend && window.backend.sourcesBusy ? qsTr("Updating software sources…")
+                          : window.backend && window.backend.sourcesError || "")
+                    textFormat: Text.PlainText; wrapMode: Text.Wrap
+                    color: page.sourceWorkPending ? window.mutedTextColor : window.accentColor
+                    Accessible.role: Accessible.StaticText
+                }
             }
             Repeater {
                 model: page.sources
@@ -131,11 +147,26 @@ Page {
                             onClicked: { page.selectedSource = sourceRow.modelData; removeDialog.open() }
                         }
                         FluffToolButton {
+                            id: sourceDetailsButton
                             objectName: "sourceDetailsButton"
                             width: 44; height: 44
                             icon.name: "dialog-information"
+                            // Use the menu's Kirigami icon renderer and logical
+                            // size. A QIcon pixmap request at fractional DPR can
+                            // choose the unrelated large blue information asset.
+                            contentItem: Item {
+                                Kirigami.Icon {
+                                    objectName: "sourceInformationIcon"
+                                    anchors.centerIn: parent
+                                    source: sourceDetailsButton.icon.name
+                                    width: Kirigami.Settings.hasTransientTouchInput ? Kirigami.Units.iconSizes.smallMedium : Kirigami.Units.iconSizes.small
+                                    height: width
+                                    color: sourceDetailsButton.icon.color
+                                    selected: sourceDetailsButton.pressed
+                                }
+                            }
                             Accessible.name: qsTr("Details for %1").arg(sourceRow.modelData.name)
-                            onClicked: { page.selectedSource = sourceRow.modelData; detailsDialog.open() }
+                            onClicked: { page.detailsOpener = sourceDetailsButton; page.selectedSource = sourceRow.modelData; detailsDialog.open() }
                         }
                     }
                 }
@@ -216,6 +247,15 @@ Page {
         // Opening information is not an action on Close. Start at the text;
         // Tab can still reach Close and Escape still dismisses the dialog.
         onOpened: contentItem.forceActiveFocus(Qt.OtherFocusReason)
+        onClosed: {
+            const opener = page.detailsOpener
+            page.detailsOpener = null
+            if (!opener) return
+            const wasActive = opener.activeFocus
+            opener.focus = false
+            if (wasActive && page.StackView.status === StackView.Active)
+                page.forceActiveFocus(Qt.OtherFocusReason)
+        }
         header: Control {
             leftPadding: 18; rightPadding: 8; topPadding: 8; bottomPadding: 8
             contentItem: RowLayout {

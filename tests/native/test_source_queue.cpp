@@ -38,8 +38,8 @@ int main(int argc, char **argv) {
         const QString source = request["source"].toString();
         const bool preparation = request["prepareOnly"].toBool();
         if (source.contains("crash")) return 7;
-        QTimer::singleShot(40, &child, [&] {
-            const bool fail = source.contains("fail"), cancel = source.contains("cancel");
+        QTimer::singleShot(source == "https://2" ? 250 : 40, &child, [&] {
+            const bool fail = source.contains("fail") || source == "https://2", cancel = source.contains("cancel");
             if (!fail && !cancel && !source.endsWith("flatpakrepo")) {
                 send({{"type", "plan"}, {"appId", "org.example.Local"}, {"operations", QJsonArray{QJsonObject{
                     {"ref", "app/org.example.Local/x86_64/stable"}, {"action", "install-bundle"}}}}});
@@ -66,15 +66,20 @@ int main(int argc, char **argv) {
     QObject::connect(&manager, &FlatpakManager::inputError, &app, [&](const QString &message) { error = message; });
     QObject::connect(&manager, &FlatpakManager::appOpened, &app, [&](const QVariantMap &value) { opened = value; });
     bool preparing = true;
+    bool sawQueued = false, sawChecking = false;
     QObject::connect(&manager, &FlatpakManager::jobsChanged, &app, [&] {
         if (preparing) assert(manager.jobs().isEmpty()); // Includes every transient state.
+        sawQueued |= manager.sourceInputStatus() == "Waiting to check software source…";
+        sawChecking |= manager.sourceInputStatus() == "Checking software source…";
     });
     for (const auto &name : {"source.flatpakrepo", "fail.flatpakrepo", "fail.flatpakref", "fail.flatpak",
                             "cancel.flatpakrepo", "crash.flatpakrepo", "local.flatpak"}) {
         error.clear();
         script(temporary.filePath(name), "fixture");
         manager.openSource(temporary.filePath(name));
+        assert(!manager.sourceInputStatus().isEmpty());
         until([&] { return !manager.busy(); });
+        assert(manager.sourceInputStatus().isEmpty());
         assert(manager.jobs().isEmpty());
         const QString file(name);
         assert(error.isEmpty() == (!file.startsWith("fail") && !file.startsWith("crash")));
@@ -84,10 +89,17 @@ int main(int argc, char **argv) {
     manager.installApp(opened);
     assert(manager.jobs().size() == 1);
     assert(manager.jobs().first().toMap().value("active").toBool());
+    // The exact invalid URL reproducer must immediately expose queued/checking
+    // feedback, while remaining absent from app history even on timeout.
+    error.clear();
+    manager.openSource("https://2");
+    assert(manager.sourceInputStatus() == "Waiting to check software source…");
     until([&] { return !manager.busy(); });
+    assert(!error.isEmpty()); assert(manager.sourceInputStatus().isEmpty());
+    assert(sawQueued && sawChecking);
     assert(manager.jobs().size() == 1);
     assert(!manager.jobs().first().toMap().value("failed").toBool());
     assert(!manager.jobs().first().toMap().value("active").toBool());
     manager.clearDownloadHistory(); assert(manager.jobs().isEmpty());
-    qInfo("PASS: source success/failure/cancellation/crash stay out of Queue; errors are reported; local installation is visible");
+    qInfo("PASS: queued/checking source feedback; success/failure/cancellation/crash clear it and stay out of Queue; local installation is visible");
 }

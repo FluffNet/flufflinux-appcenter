@@ -120,7 +120,12 @@ for Discord and AAT, and leaves AAT's page open.
   contrasting unchecked borders, neutral hover tint and keyboard-focus outlines.
   The information icon opens Source details with a top-right Close button. Opening
   it focuses the information, not Close; Tab still reaches Close and Escape dismisses
-  the dialog. Add Source's Cancel includes its glyph.
+  the dialog. Closing it also clears the opener's focus. The information button
+  uses the same Kirigami renderer and logical icon size as About in the menu, so
+  fractional scaling does not select the unrelated large blue icon variant.
+  Add Source's Cancel includes its glyph. Settings shows a spinner with queued,
+  checking or confirmation status throughout source-file/URL preparation,
+  including network waits and eventual errors; that work stays out of Queue.
   User-source names omit the redundant `(User)` suffix in Settings, Installed
   and app details; system-only names retain `(System)`. Installed metadata uses
   the same scalable text rendering as the rest of the interface.
@@ -303,7 +308,7 @@ and links to the existing App Center window, keeping one session's queue.
 Fluff Linux (Arch-based), KDE Plasma 6, Wayland. No macOS or Windows builds.
 
 ```sh
-sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree polkit gzip make desktop-file-utils gtk-update-icon-cache kservice xdg-utils plasma-integration xdg-desktop-portal xdg-desktop-portal-kde
+sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree polkit gzip make desktop-file-utils gtk-update-icon-cache kservice kirigami xdg-utils plasma-integration xdg-desktop-portal xdg-desktop-portal-kde
 cargo run
 ```
 
