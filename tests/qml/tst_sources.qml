@@ -235,7 +235,7 @@ TestCase {
         tryCompare(dialog, "opened", true)
         compare(dialog.contentItem.text, data.hasSystem
             ? "Remove Flathub for all users?\n\nAdministrator authentication is required. Installed apps won’t be removed."
-            : "Remove Flathub from your account?\n\nInstalled apps won’t be removed.")
+            : "Remove Flathub?\n\nInstalled apps won’t be removed.")
         mouseClick(findChild(dialog, "cancelRemoveSourceButton"))
         tryCompare(dialog, "visible", false)
         verify(backend.request.indexOf("remove:") !== 0)

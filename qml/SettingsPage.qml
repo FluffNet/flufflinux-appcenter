@@ -223,7 +223,7 @@ Page {
         contentItem: Label {
             text: (page.selectedSource && page.selectedSource.hasSystem
                 ? qsTr("Remove %1 for all users?\n\nAdministrator authentication is required. Installed apps won’t be removed.")
-                : qsTr("Remove %1 from your account?\n\nInstalled apps won’t be removed."))
+                : qsTr("Remove %1?\n\nInstalled apps won’t be removed."))
                 .arg(page.selectedSource ? page.selectedSource.title || page.selectedSource.name : "")
             textFormat: Text.PlainText; wrapMode: Text.Wrap
         }
