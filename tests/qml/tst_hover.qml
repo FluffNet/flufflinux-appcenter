@@ -155,6 +155,10 @@ TestCase {
             button = list.itemAtIndex(index)
         }
         waitForPolish(main.contentItem); wait(20)
+        compare(button.background.x, 0)
+        compare(button.background.y, 0)
+        compare(button.background.width, button.width)
+        compare(button.background.height, button.height)
         exercise(button, data.dark && !data.selected && data.name === "Games" ? "category" : "")
     }
     function test_regular_buttons_data() {

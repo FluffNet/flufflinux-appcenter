@@ -17,6 +17,8 @@ Navigation, categories, action buttons and preview controls use the same hover
 color, with a visible background tint and explicit hover support even after touch
 input. Hover does not add focus outlines. Shared buttons render
 their own text/icons so KDE's background-drawn labels remain visible.
+Category backgrounds explicitly cover their full hit area, overriding KDE's
+native list-item insets so the edges have the same hover tint as the center.
 
 Catalog and Installed scrollbars sit at the outer right edge for the full page
 content height, with a persistent contrasting thumb and a minimum 44-pixel
@@ -142,7 +144,7 @@ for Discord and AAT, and leaves AAT's page open.
   Clicking an app's icon or title opens its information page; Back returns to
   the same Downloads page. Progress updates preserve each card and its pressed
   state, so updates between press/release cannot interrupt title/icon or Cancel
-  clicks. Clear History at the top right hides finished entries
+  clicks. Clear History at the top right uses KDE's clear-history icon and hides finished entries
   only, preserving active/pending work, stable cancellation IDs and installation
   dates. The Downloads title stays centered between the header controls.
   Errors, cancellation and confirmation messages remain visible.

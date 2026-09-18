@@ -110,6 +110,29 @@ TestCase {
         mouseClick(clear)
         compare(findChild(stack().currentItem, "downloadJobs").count, 0)
     }
+    function test_clear_history_icon_and_header_alignment_data() {
+        return [{tag: "wide", width: 1180}, {tag: "narrow", width: 720}]
+    }
+    function test_clear_history_icon_and_header_alignment(data) {
+        main.width = data.width
+        backend.jobs = [Object.assign({}, job, {active: false})]
+        const page = stack().currentItem
+        const clear = findChild(page, "clearDownloadHistoryButton")
+        const icon = findChild(clear, "fluffButtonIcon")
+        const label = findChild(clear, "fluffButtonLabel")
+        const title = findChild(page, "downloadsTitle")
+        waitForPolish(main.contentItem)
+        compare(clear.icon.name, "edit-clear-history")
+        verify(icon.visible && label.visible)
+        compare(icon.source.toString(), main.iconSource("edit-clear-history"))
+        compare(icon.width, 20); compare(icon.height, 20)
+        verify(icon.mapToItem(clear, icon.width, 0).x < label.mapToItem(clear, 0, 0).x)
+        verify(Math.abs(icon.mapToItem(clear, 0, icon.height / 2).y
+                        - label.mapToItem(clear, 0, label.height / 2).y) < 1)
+        verify(Math.abs(title.mapToItem(page, title.width / 2, 0).x - page.width / 2) < 1)
+        verify(title.mapToItem(page, title.width, 0).x <= clear.mapToItem(page, 0, 0).x)
+        verify(clear.mapToItem(page, clear.width, 0).x <= page.width - 11)
+    }
     function test_history_changes_preserve_surviving_cards_and_ids() {
         const rows = findChild(stack().currentItem, "downloadJobs")
         const original = card()

@@ -84,6 +84,12 @@ AppCenter.Main {
                 main.showDownloads()
                 main.stage = 5
             } else if (main.stage === 5) {
+                const clear = main.find(stack.currentItem, "clearDownloadHistoryButton")
+                const icon = main.find(clear, "fluffButtonIcon")
+                if (!icon || !icon.visible || icon.status !== Image.Ready
+                        || clear.icon.name !== "edit-clear-history") {
+                    console.error("DOWNLOADS_SORT_FAIL: Clear History icon did not load"); Qt.exit(1); return
+                }
                 main.capture("downloads", 6)
             } else if (main.stage === 6) {
                 main.visibility = Window.Windowed

@@ -15,6 +15,7 @@ Item {
         anchors.centerIn: parent
         spacing: 8
         Image {
+            objectName: "fluffButtonIcon"
             visible: content.control.icon.name.length > 0 || content.control.icon.source.toString().length > 0
             Layout.preferredWidth: 20; Layout.preferredHeight: 20
             sourceSize: Qt.size(20, 20)

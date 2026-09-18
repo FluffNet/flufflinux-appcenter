@@ -67,6 +67,7 @@ Page {
                     objectName: "clearDownloadHistoryButton"
                     anchors.right: parent.right; anchors.verticalCenter: parent.verticalCenter
                     text: qsTr("Clear History")
+                    icon.name: "edit-clear-history"
                     enabled: window.downloadQueue.jobs.some(function(job) { return !job.active })
                     onClicked: if (window.backend) window.backend.clearDownloadHistory()
                 }

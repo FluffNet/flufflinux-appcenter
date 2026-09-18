@@ -340,6 +340,9 @@ Page {
                         font.pixelSize: 16
                         font.weight: page.installedView ? Font.DemiBold : Font.Normal
                         leftPadding: 16; rightPadding: 16; spacing: 12
+                        // KDE adds native list-item insets. Our custom shape
+                        // should cover the entire clickable/hoverable button.
+                        leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
                         contentItem: RowLayout {
                             spacing: 12
                             Canvas {
@@ -413,6 +416,7 @@ Page {
                     onClicked: page.openCategory(modelData.name)
                     leftPadding: 16
                     rightPadding: 16
+                    leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
                     spacing: 12
                     readonly property color foregroundColor: categorySelected
                                                                ? (window.darkMode
