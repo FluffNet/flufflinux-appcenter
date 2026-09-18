@@ -58,7 +58,7 @@ TestCase {
         tryVerify(function() { return findVisual(main.contentItem, "categoryButton-All Apps") !== null })
         compare(findVisual(main.contentItem, "categoryButton-All Apps").background.radius, main.cornerRadius)
     }
-    function test_single_seams_and_native_count() {
+    function test_single_seams_and_scalable_count() {
         const header = findChild(main, "catalogHeaderBackground")
         const sidebar = findChild(main, "sidebarBackground")
         const horizontal = findChild(main, "catalogHeaderSeparator")
@@ -74,7 +74,7 @@ TestCase {
         const top = vertical.mapToItem(main.contentItem, 0, 0)
         verify(Math.abs(bottom.y - top.y) < 0.001) // Meet once, never two boxed outlines.
         const count = findChild(main, "catalogCountLabel")
-        compare(count.renderType, Text.NativeRendering)
+        compare(count.renderType, Text.QtRendering)
         compare(count.text, "1 application")
         compare(count.font.family, main.font.family)
     }

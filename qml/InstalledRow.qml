@@ -13,9 +13,8 @@ AbstractButton {
     height: Math.max(108, contentItem.implicitHeight + topPadding + bottomPadding)
     padding: 16
     hoverEnabled: true
-    // Small bold metadata should use the desktop font rasterizer, rather than
-    // distance-field glyphs whose weight can vary at fractional scale/positions.
-    component MetadataLabel: Label { renderType: Text.NativeRendering }
+    // Use the same scalable glyph rendering as text inputs and other labels.
+    component MetadataLabel: Label { renderType: Text.QtRendering }
     Accessible.name: app.name + ", " + app.installedSize
     background: Rectangle {
         radius: window.cornerRadius

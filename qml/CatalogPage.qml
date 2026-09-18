@@ -192,7 +192,10 @@ Page {
 
                 RowLayout {
                     id: brandLockup
-                    anchors.centerIn: parent
+                    objectName: "brandLockup"
+                    anchors.left: parent.left
+                    anchors.leftMargin: 16
+                    anchors.verticalCenter: parent.verticalCenter
                     spacing: 12
 
                     Image {
@@ -548,13 +551,13 @@ Page {
                             readonly property int count: page.installedView ? page.installedMatches.length : page.visibleApps.length
                             text: count + (count === 1 ? " application" : " applications")
                             color: window.mutedTextColor
-                            // Static small text should use the desktop font's
-                            // native rasterization, including at 150% scaling.
-                            renderType: Text.NativeRendering
+                            // Match typed text: native hinted glyphs change the
+                            // shape of small digits at fractional display scales.
+                            renderType: Text.QtRendering
                         }
                     }
                     Item { Layout.fillWidth: true }
-                    ComboBox {
+                    FluffComboBox {
                         id: installedSort
                         hoverEnabled: true
                         objectName: "installedSort"
@@ -563,23 +566,12 @@ Page {
                         Layout.preferredHeight: 42
                         model: page.installedSortOptions
                         currentIndex: page.installedSortIndex
-                        onActivated: page.installedSortIndex = index
+                        onActivated: function(index) { page.installedSortIndex = index }
                         Accessible.name: qsTr("Sort installed apps")
-                        palette.button: window.raisedSurfaceColor
-                        palette.buttonText: window.textColor
-                        palette.window: window.raisedSurfaceColor
-                        palette.text: window.textColor
-                        palette.highlight: window.accentColor
-                        palette.highlightedText: "white"
-                        background: Rectangle {
-                            radius: window.cornerRadius
-                            color: installedSort.hovered || installedSort.down ? window.hoverColor : window.raisedSurfaceColor
-                            border.color: installedSort.activeFocus ? window.accentColor : window.borderColor
-                            border.width: installedSort.activeFocus ? 2 : 1
-                        }
                     }
-                    ComboBox {
+                    FluffComboBox {
                         id: searchCategoryFilter
+                        objectName: "searchCategoryFilter"
                         hoverEnabled: true
                         visible: !page.installedView && window.searchText.length > 0
                         Layout.preferredWidth: 210
@@ -590,21 +582,7 @@ Page {
                         displayText: currentIndex === 0
                                      ? "Category: All"
                                      : "Category: " + currentText
-                        onActivated: window.searchCategoryFilter = page.categories[index].name
-                        palette.button: window.raisedSurfaceColor
-                        palette.buttonText: window.textColor
-                        palette.window: window.raisedSurfaceColor
-                        palette.text: window.textColor
-                        palette.highlight: window.accentColor
-                        palette.highlightedText: "white"
-                        background: Rectangle {
-                            radius: window.cornerRadius
-                            color: searchCategoryFilter.hovered || searchCategoryFilter.down ? window.hoverColor : window.raisedSurfaceColor
-                            border.color: searchCategoryFilter.activeFocus
-                                          ? window.accentColor
-                                          : window.borderColor
-                            border.width: searchCategoryFilter.activeFocus ? 2 : 1
-                        }
+                        onActivated: function(index) { window.searchCategoryFilter = page.categories[index].name }
                     }
                 }
                 GridView {

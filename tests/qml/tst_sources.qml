@@ -273,7 +273,7 @@ TestCase {
         tryVerify(function() { return list.itemAtIndex(0) !== null })
         const source = findChild(list.itemAtIndex(0), "installedSourceValue")
         compare(source.text, "installed-repo")
-        compare(source.renderType, Text.NativeRendering)
+        compare(source.renderType, Text.QtRendering)
         backend.installedApps = [Object.assign({}, backend.installedApps[0], {installation:"default"})]
         tryVerify(function() { return list.itemAtIndex(0) !== null })
         compare(findChild(list.itemAtIndex(0), "installedSourceValue").text, "installed-repo (System)")

@@ -17,8 +17,10 @@ independent blue-gray tints. Custom panels and controls use an 8-unit corner
 radius; normal borders are 1 unit and keyboard-focus outlines are 2. Header
 and sidebar separators meet once instead of stacking rectangle outlines, and
 align to physical pixels at fractional scaling. All text inherits the desktop's
-general font (Noto Sans on Fluff Linux), with native rendering and grayscale
-antialiasing to avoid RGB fringes on fractional-scale glyphs. The configured
+general font (Noto Sans on Fluff Linux), using the same scalable Qt rendering
+as typed text. Small count/metadata labels must not opt into native hinted
+bitmaps: those produce visibly different glyphs, including 7, at fractional
+scaling even with identical font family and size. The configured
 desktop font family and size are retained; individual headings keep their sizing.
 Navigation, categories, action buttons and preview controls use the same hover
 color, with a visible background tint and explicit hover support even after touch
@@ -39,6 +41,7 @@ Installed and every category fit the sidebar's available logical height without
 scrolling. Spacing, row heights, text and icons adapt as the window shrinks or
 desktop scaling increases. Labels can shrink further to fit the available width.
 This lays out actual font/icon sizes rather than scaling a rendered text texture.
+The App Center icon/title is left-aligned in its header with a 16px outer inset.
 
 App Center defaults to maximized. It creates and updates
 `~/.config/flufflinux-appcenter.conf` automatically, recording `width`, `height`
@@ -120,7 +123,7 @@ for Discord and AAT, and leaves AAT's page open.
   the dialog. Add Source's Cancel includes its glyph.
   User-source names omit the redundant `(User)` suffix in Settings, Installed
   and app details; system-only names retain `(System)`. Installed metadata uses
-  native font rendering for consistent small bold text at fractional scaling.
+  the same scalable text rendering as the rest of the interface.
   Choose File uses the desktop file chooser, preferring KDE's XDG portal path
   without changing the platform theme. An explicit
   `PLASMA_INTEGRATION_USE_PORTAL=0` override is respected.
@@ -447,14 +450,23 @@ opened by keyboard. Source tests cover initial/reopened information-dialog focus
 six window sizes from 540 × 300 to 1920 × 1080, including resize recovery, label
 bounds and working click targets. Run at 100%, 125%, 150%, 175% and 200% scaling.
 The native typography test checks resolved system font families, bold metadata,
-native rendering and grayscale glyph pixels (including the count digit 7), across
+scalable rendering and visible glyph pixels (including the count digit 7), across
 resizes and fractional scroll offsets. It can also run in the real Wayland session:
 
 ```sh
 c++ -std=c++17 -fPIC tests/native/test_typography.cpp -o target/test-typography $(pkg-config --cflags --libs Qt6Widgets Qt6Quick Qt6Qml)
 QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_SCALE_FACTOR=1.5 target/test-typography "$PWD/tests/native/TypographyFixture.qml" target/typography-1.5.png
 QT_QPA_PLATFORM=wayland target/test-typography "$PWD/tests/native/TypographyFixture.qml" target/typography-wayland.png
+c++ -std=c++17 -fPIC tests/native/test_glyph_parity.cpp -o target/test-glyph-parity $(pkg-config --cflags --libs Qt6Widgets Qt6Quick Qt6Qml)
+QT_QPA_PLATFORM=wayland target/test-glyph-parity "$PWD/tests/native/TypographyFixture.qml"
 ```
+
+The glyph-parity test compares actual production count/source label pixels with
+a TextInput reference at the same font, weight, color, baseline and position.
+It covers `3297 applications`, `7 applications`, all digits and bold source text.
+The optional `--native-labels` negative control intentionally restores the old
+renderer and must fail on the fractional-scale Wayland reproducer; checking only
+font family or absence of colored fringes was insufficient to detect this bug.
 
 `tests/integration/NavigationFontSmoke.qml` uses the real launcher with fixture
 data to capture wide/compact/short layouts, the information icon/dialog and a
@@ -485,9 +497,15 @@ QT_QPA_PLATFORM=offscreen QT_QUICK_CONTROLS_STYLE=org.kde.desktop /usr/lib/qt6/b
 QT_QPA_PLATFORM=offscreen QT_SCALE_FACTOR=1.5 QT_QUICK_CONTROLS_STYLE=org.kde.desktop /usr/lib/qt6/bin/qmltestrunner -input tests/qml/tst_hover.qml
 ```
 
-Known test caveat: with Qt 6.11.2's KDE desktop style, the offscreen Installed-sort
-keyboard test does not dismiss the menu. This also reproduces on the preceding
-release; the default-style keyboard test and real-window sorting smoke check pass.
+Sort and search-filter dropdowns own their label, arrow and background together.
+KDE normally paints the non-editable label and arrow in its native background;
+overriding only the background made both disappear. The shared control preserves
+standard ComboBox selection, keyboard and accessibility behavior, and defaults
+Installed sorting to Name: A–Z. The previous KDE keyboard-menu test failure is
+also resolved. `tst_combo_display.qml` checks actual painted label/arrow pixels
+for every sort and category choice in dark/light themes, plus keyboard and mouse
+selection. `TextDropdownSmoke.qml` captures both selected controls and the exact
+3297 input/count reproducer through the real launcher, without Flatpak operations.
 
 `target/test-flatpak-sizes com.onepassword.OnePassword` prints the actual local
 sizes and lookup time. `python3 tests/integration/test_local_sizes.py` compares
