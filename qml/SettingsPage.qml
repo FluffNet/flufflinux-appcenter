@@ -158,6 +158,7 @@ Page {
         objectName: "removeSourceDialog"
         anchors.centerIn: parent; width: Math.min(page.width - 48, 520)
         title: qsTr("Remove source?"); modal: true
+        onOpened: cancelRemoveSourceButton.forceActiveFocus(Qt.TabFocusReason)
         contentItem: Label {
             text: (page.selectedSource && page.selectedSource.hasSystem
                 ? qsTr("Remove %1, including its system-wide copy? This affects all users and requires administrator authentication. If authentication is cancelled, no copies will be removed.")
@@ -167,8 +168,15 @@ Page {
             textFormat: Text.PlainText; wrapMode: Text.Wrap
         }
         footer: DialogButtonBox {
-            FluffButton { text: qsTr("Cancel"); DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
-            FluffButton { text: qsTr("Remove"); icon.source: Qt.resolvedUrl("trash-red.svg"); DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
+            FluffButton {
+                id: cancelRemoveSourceButton
+                objectName: "cancelRemoveSourceButton"
+                text: qsTr("Cancel"); icon.name: "dialog-cancel"
+                DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+                Keys.onReturnPressed: clicked()
+                Keys.onEnterPressed: clicked()
+            }
+            FluffButton { objectName: "confirmRemoveSourceButton"; text: qsTr("Remove"); icon.source: Qt.resolvedUrl("trash-red.svg"); DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole }
             onAccepted: { window.backend.removeSource(page.selectedSource); removeDialog.close() }
             onRejected: removeDialog.close()
         }

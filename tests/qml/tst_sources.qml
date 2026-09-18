@@ -103,6 +103,31 @@ TestCase {
         verify(!findChild(page(), "addSourceButton").enabled)
         verify(!checkbox.enabled)
     }
+    function test_remove_source_defaults_to_cancel_data() {
+        return [{tag:"return", key:Qt.Key_Return}, {tag:"enter", key:Qt.Key_Enter},
+                {tag:"space", key:Qt.Key_Space}, {tag:"escape", key:Qt.Key_Escape}]
+    }
+    function test_remove_source_defaults_to_cancel(data) {
+        main.showSettings(); tryCompare(stack(), "busy", false)
+        const trigger = findChild(page(), "removeSourceButton")
+        const dialog = findChild(page(), "removeSourceDialog")
+        const cancel = findChild(dialog, "cancelRemoveSourceButton")
+        const confirm = findChild(dialog, "confirmRemoveSourceButton")
+        mouseClick(trigger); tryCompare(dialog, "opened", true)
+        tryCompare(cancel, "activeFocus", true)
+        compare(cancel.icon.name, "dialog-cancel")
+        verify(cancel.visualFocus); verify(!confirm.activeFocus)
+        keyClick(data.key); tryCompare(dialog, "visible", false)
+        verify(backend.request.indexOf("remove:") !== 0)
+        // A previous focus on Remove must not survive reopening the dialog.
+        mouseClick(trigger); tryCompare(dialog, "opened", true)
+        confirm.forceActiveFocus(Qt.TabFocusReason)
+        keyClick(Qt.Key_Escape); tryCompare(dialog, "visible", false)
+        mouseClick(trigger); tryCompare(dialog, "opened", true)
+        tryCompare(cancel, "activeFocus", true)
+        mouseClick(cancel); tryCompare(dialog, "visible", false)
+        verify(backend.request.indexOf("remove:") !== 0)
+    }
     function test_empty_sources_default_button_data() { return [{tag:"wide", width:1180}, {tag:"narrow", width:720}] }
     function test_empty_sources_default_button(data) {
         main.width = data.width; backend.repositories = []
