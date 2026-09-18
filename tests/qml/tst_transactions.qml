@@ -458,7 +458,7 @@ TestCase {
         backend.installSizes = ({})
     }
     function hasDownloadsText(item) {
-        if (item.text === "Downloads") return true
+        if (item.text === "Queue") return true
         const children = item.children || []
         for (let i = 0; i < children.length; ++i)
             if (hasDownloadsText(children[i])) return true
@@ -520,7 +520,7 @@ TestCase {
         waitForRendering(page)
         const title = findChild(page, "downloadsTitle")
         const back = findChild(page, "downloadsBackButton")
-        compare(title.text, "Downloads")
+        compare(title.text, "Queue")
         compare(title.horizontalAlignment, Text.AlignHCenter)
         fuzzyCompare(title.mapToItem(page, title.width / 2, 0).x, page.width / 2, 1,
                      "Downloads must be centered on the whole page")

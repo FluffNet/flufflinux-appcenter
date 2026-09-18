@@ -7,7 +7,7 @@ ToolButton {
     objectName: "downloadsButton"
     focusPolicy: Qt.NoFocus
     width: Math.max(146, implicitWidth); height: 48
-    text: qsTr("Downloads")
+    text: qsTr("Queue")
     display: AbstractButton.TextBesideIcon
     spacing: 10
     leftPadding: 14; rightPadding: 14
@@ -31,11 +31,11 @@ ToolButton {
     }
     bottomPadding: 8
     Accessible.name: window.downloadQueue.activeCount === 0
-        ? (window.downloadQueue.hasError ? qsTr("Downloads finished with errors") : qsTr("Downloads complete"))
-        : qsTr("Downloads: %1 active, %2% complete")
+        ? (window.downloadQueue.hasError ? qsTr("Queue finished with errors") : qsTr("Queue complete"))
+        : qsTr("Queue: %1 active, %2% complete")
         .arg(window.downloadQueue.activeCount).arg(Math.round(window.downloadQueue.progress * 100))
     ToolTip.visible: hovered
-    ToolTip.text: qsTr("Downloads")
+    ToolTip.text: qsTr("Queue")
     onClicked: window.showDownloads()
     background: Rectangle {
         radius: window.cornerRadius

@@ -51,13 +51,13 @@ Scrollbar thumbs remain directly draggable by touch as well as the mouse;
 KDE's transient-touch setting cannot turn off their interaction.
 
 `tests/integration/StyleSmoke.qml` is a read-only visual check in the real KDE
-session. It captures the catalog, Installed, app and Downloads pages plus native
+session. It captures the catalog, Installed, app and Queue pages plus native
 and Qt-rendered count comparisons in `target/style-*.png`, then leaves the
 catalog open. It does not start transactions or change the desktop theme, font
 or scale. The QML styling tests also cover dark, light and custom palettes.
 
 `tests/integration/DownloadsSortSmoke.qml` verifies sorting with real installed
-byte counts and captures Installed, empty results, and wide/narrow Downloads.
+byte counts and captures Installed, empty results, and wide/narrow Queue.
 Download progress is simulated; its completed card uses already-installed Steam.
 It also checks app-title navigation/back and clearing finished history while
 preserving an active fixture. The check never starts transactions, launches apps,
@@ -85,25 +85,34 @@ for Discord and AAT, and leaves AAT's page open.
   download estimate. Exact local Flatpak bytes use MiB/GiB throughout Installed
   and app details. Dependency totals remain hidden for installed apps, and
   unknown installed versions are omitted. No network lookup is needed.
-- App actions match the Downloads button's rounded neutral background, subtle
+- App actions match the Queue button's rounded neutral background, subtle
   border and icon-and-label layout. Install shares its arrow shape, in green;
   Open keeps the play icon and Uninstall the red trash icon. Hover, disabled and
   keyboard-focus states remain visible, without a solid accent fill.
 - Catalog artwork uses Flatpak's stable `active` deployment path, not the
   disposable snapshot directory. A catalog refresh can no longer leave an
   already-open page pointing at deleted icons. Missing artwork falls back to
-  the themed application icon on app pages, catalog cards, Installed and Downloads.
+  the themed application icon on app pages, catalog cards, Installed and Queue.
 - Install from an app's information page. New apps, dependencies and software
   sources are installed **for the current user**, without administrator prompts.
   App Center's system-wide default-handler registration is separate from where
   Flatpaks are installed. The catalog's source and branch are preserved.
-- The three-dot menu beside Search opens **About** and **Settings**. Settings
+- The three-dot menu beside Search lists **Settings** first, then **About**. Settings
   opens to **Flatpak Sources**, with Add Source, enable/disable, remove, details,
   and refresh controls. There are no priority controls. Identical user/system
   sources appear as one row, based on repository URL, signing keys and policy
   configuration rather than display name. User-only sources remain unprivileged;
   system or merged-source removal invokes Polkit action `com.flufflinux.appcenter`.
   The checkbox controls the user copy. Source details retain the installation scope.
+  Source checkboxes have centered 24px indicators inside 44px touch targets,
+  contrasting unchecked borders, neutral hover tint and keyboard-focus outlines.
+  Details have a top-right Close button; Add Source's Cancel includes its glyph.
+  User-source names omit the redundant `(User)` suffix in Settings, Installed
+  and app details; system-only names retain `(System)`. Installed metadata uses
+  native font rendering for consistent small bold text at fractional scaling.
+  Choose File uses the desktop file chooser, preferring KDE's XDG portal path
+  without changing the platform theme. An explicit
+  `PLASMA_INTEGRATION_USE_PORTAL=0` override is respected.
 - Removing a merged source covers both copies. A dedicated root-owned helper
   can only remove explicitly validated system repositories; it cannot execute
   arbitrary commands, install apps or change trust policy. Administrator
@@ -151,13 +160,16 @@ for Discord and AAT, and leaves AAT's page open.
   local metadata shows unavailable sizes, never a fake zero. Installation still
   resolves the current plan normally, so actual transfers can differ from the
   repository's published estimates.
-- Downloads keeps this session's jobs, overall progress, and
+- Queue (formerly Downloads) keeps this session's app installations, overall progress, and
   errors, with each app's icon beside its name (and a themed fallback when
-  artwork is unavailable). Cancelled jobs disappear immediately from both Downloads and the app page.
+  artwork is unavailable). Cancelled jobs disappear immediately from both Queue and the app page.
+  Source additions and file/source preparation never appear, including failures;
+  their errors use the source/input dialog instead. Opening a local Flatpak only
+  prepares its information page; its actual installation appears in Queue.
   Cancellation signals Flatpak and closes the worker's input; a 250 ms watchdog
   stops that dedicated worker if it fails to exit. Late progress cannot revive
   the cancelled job, and a retry waits for its worker to exit before starting.
-  Cancelling the only job also hides the Downloads
+  Cancelling the only job also hides the Queue
   button; other completed/failed jobs stay. Install/download work and removal
   have separate workers, so an app can be removed while another downloads.
   Each worker processes its own queue serially; Flatpak retains its normal
@@ -188,23 +200,23 @@ for Discord and AAT, and leaves AAT's page open.
   so a reduced language-pack transfer updates the page total and progress total
   together; the page never retains the old maximum while the bar shows less.
   Local bundles keep their separate file/import sizes, not a network-byte substitute.
-  Downloads uses the same compact progress display, without dependency/component
-  rows or introductory text. Completed apps offer Open directly from Downloads,
+  Queue uses the same compact progress display, without dependency/component
+  rows or introductory text. Completed apps offer Open directly from Queue,
   using their current installed record; there is no completion text. The action
   disappears if the app is removed or another operation starts for it.
   Clicking an app's icon or title opens its information page; Back returns to
-  the same Downloads page. Progress updates preserve each card and its pressed
+  the same Queue page. Progress updates preserve each card and its pressed
   state, so updates between press/release cannot interrupt title/icon or Cancel
   clicks. Clear History at the top right uses KDE's clear-history icon and hides finished entries
   only, preserving active/pending work, stable cancellation IDs and installation
-  dates. The Downloads title stays centered between the header controls.
+  dates. The Queue title stays centered between the header controls.
   Errors, cancellation and confirmation messages remain visible.
   Queued installs show only “Pending…” in the status area of both views, with
   no progress bar, percentage or transfer figures until their worker starts.
   Pending installs can still be cancelled.
   Successful installs leave Open/Uninstall actions, not completion text,
-  on the app page; their completed Downloads history remains available.
-- Removals never appear in Downloads or its badge. Their progress/errors are
+  on the app page; their completed Queue history remains available.
+- Removals never appear in Queue or its badge. Their progress/errors are
   shown in the Installed row and app view only; successful removal leaves no
   lingering completion text on the app page. Before Yes, both views show only
   “Waiting for confirmation”, without a progress bar. Confirmation is offered
@@ -215,7 +227,7 @@ for Discord and AAT, and leaves AAT's page open.
   Successful removal updates the installed record before completing the job,
   and discards older in-flight list results, so Open/Uninstall cannot flash back
   before Install appears.
-  It also hides that deployment's finished Downloads entries, leaving other
+  It also hides that deployment's finished Queue entries, leaving other
   apps/scopes/branches and active work alone. Failed or declined removal keeps
   the existing history.
 - Installed lists user and system applications, with version and installed size.
@@ -277,7 +289,7 @@ and links to the existing App Center window, keeping one session's queue.
 Fluff Linux (Arch-based), KDE Plasma 6, Wayland. No macOS or Windows builds.
 
 ```sh
-sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree polkit gzip make desktop-file-utils gtk-update-icon-cache kservice xdg-utils
+sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree polkit gzip make desktop-file-utils gtk-update-icon-cache kservice xdg-utils plasma-integration xdg-desktop-portal xdg-desktop-portal-kde
 cargo run
 ```
 
@@ -373,6 +385,23 @@ dedicated [Polkit executable action](https://polkit.pages.freedesktop.org/polkit
 and authentication requirements; pass a staged installation root to check the
 installed policy, helper permissions and MIT license too.
 
+`SourceUiSmoke.qml` captures source checkboxes, both dialogs, real Installed
+metadata and a pending local install in Queue; it changes no real repositories
+or apps. Use a separate `XDG_RUNTIME_DIR` so it does not contact the live instance.
+`test_source_picker.py` uses the real executable, QApplication and KDE platform
+integration on a private bus with a mocked XDG FileChooser. It verifies the
+repository filter, a real file containing spaces, selection, cancellation and
+no Queue/source changes (requires `python-gobject`). The native Queue test uses
+fake workers and temporary data to cover hidden source successes, failures,
+cancellation/crashes and a visible local installation:
+
+```sh
+dbus-run-session -- python3 tests/integration/test_source_picker.py target/release/flufflinux-appcenter
+"$(pkg-config --variable=libexecdir Qt6Core)/moc" src/flatpak_manager.h -o target/test-cancel-moc.cpp
+c++ -std=c++17 -fPIC -pthread tests/native/test_source_queue.cpp src/flatpak_manager.cpp src/flatpak_sizes.cpp target/test-cancel-moc.cpp -o target/test-source-queue $(pkg-config --cflags --libs Qt6Core Qt6Gui Qt6DBus flatpak)
+QT_QPA_PLATFORM=offscreen target/test-source-queue
+```
+
 On Fluff Linux:
 
 ```sh
@@ -398,7 +427,7 @@ target/test-window-preferences "$PWD/qml/Main.qml"
 ```
 
 `tests/qml/tst_focus.qml` checks mouse/touch empty-space focus clearing on
-Catalog, Installed, app details and Downloads, plus retained button/search
+Catalog, Installed, app details and Queue, plus retained button/search
 input, keyboard traversal, scroll drags and modal focus.
 
 The native-touchpad regression sends Qt gesture events through the production
@@ -412,7 +441,7 @@ QT_QPA_PLATFORM=offscreen target/test-pointer-gestures -input tests/native/gestu
 ```
 
 The hover suite covers every category, selected/unselected states, Back, app
-actions, Downloads controls, search/sort controls, confirmation buttons and
+actions, Queue controls, search/sort controls, confirmation buttons and
 preview controls in dark/light palettes. It sends enter/leave/re-enter events
 over icon, label and padding, including after touch input, and samples rendered
 page/popup pixels to verify the tint appears and disappears without changing focus
@@ -468,7 +497,7 @@ Picker. Completed dependencies and reusable partial download data are retained.
 progress text, and no completion count. It saves `target/binary-download-proof.png`.
 
 Installation dates are saved locally after successful App Center installations,
-separately from Downloads history. Installed and app details show the date in the
+separately from Queue history. Installed and app details show the date in the
 system's locale and timezone, including the time but not the weekday; existing
 apps without a record have no date row. App Center removes
 the record on successful uninstall, so reinstalling records a new date.

@@ -320,14 +320,14 @@ Page {
                     y: applicationMenuButton.height + 6
                     width: 210
                     MenuItem {
-                        objectName: "aboutMenuItem"
-                        text: qsTr("About"); icon.name: "dialog-information"
-                        onTriggered: window.showAbout()
-                    }
-                    MenuItem {
                         objectName: "settingsMenuItem"
                         text: qsTr("Settings"); icon.name: "settings-configure"
                         onTriggered: window.showSettings()
+                    }
+                    MenuItem {
+                        objectName: "aboutMenuItem"
+                        text: qsTr("About"); icon.name: "dialog-information"
+                        onTriggered: window.showAbout()
                     }
                 }
             }

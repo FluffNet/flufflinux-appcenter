@@ -1,7 +1,7 @@
 #include "flatpak_manager.h"
 #include "window_preferences.h"
 #include <QFile>
-#include <QGuiApplication>
+#include <QApplication>
 #include <QIcon>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -37,7 +37,12 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     int argc = 1;
     char name[] = "flufflinux-appcenter";
     char *argv[] = {name, nullptr};
-    QGuiApplication application(argc, argv);
+    // KDE only offers native file dialogs to QApplication instances. Prefer
+    // its XDG portal picker without replacing the desktop's platform theme;
+    // respect an explicit user override (including opting out with 0).
+    if (!qEnvironmentVariableIsSet("PLASMA_INTEGRATION_USE_PORTAL"))
+        qputenv("PLASMA_INTEGRATION_USE_PORTAL", "1");
+    QApplication application(argc, argv);
     QCoreApplication::setApplicationName("flufflinux-appcenter");
     QGuiApplication::setApplicationDisplayName("App Center");
     QCoreApplication::setApplicationVersion(APPCENTER_DISPLAY_VERSION);

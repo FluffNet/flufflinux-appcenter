@@ -5,6 +5,7 @@ use std::process::Command;
 const QT_PACKAGES: &[&str] = &[
     "Qt6Core",
     "Qt6Gui",
+    "Qt6Widgets",
     "Qt6Qml",
     "Qt6Quick",
     "Qt6Network",

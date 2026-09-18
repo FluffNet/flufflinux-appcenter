@@ -74,7 +74,7 @@ TestCase {
         compare(button.visible, true)
         compare(button.unreadResult, false)
         compare(queue.jobs.length, 2)
-        compare(button.text, "Downloads")
+        compare(button.text, "Queue")
         queue.jobs = [job("VLC", 0.3, false, true)]
         compare(queue.hasError, true)
         compare(queue.activeCount, 0)

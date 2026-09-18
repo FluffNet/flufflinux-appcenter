@@ -74,8 +74,35 @@ Page {
                     contentItem: RowLayout {
                         spacing: 14
                         CheckBox {
+                            id: sourceEnabled
                             objectName: "sourceEnabled"
                             implicitWidth: 44; implicitHeight: 44
+                            Layout.alignment: Qt.AlignVCenter
+                            padding: 0; spacing: 0; hoverEnabled: true
+                            contentItem: Item {}
+                            background: Rectangle {
+                                radius: window.cornerRadius
+                                color: sourceEnabled.enabled && (sourceEnabled.hovered || sourceEnabled.down)
+                                    ? window.hoverColor : "transparent"
+                                border.width: sourceEnabled.visualFocus ? 2 : 0
+                                border.color: window.accentColor
+                            }
+                            indicator: Rectangle {
+                                objectName: "sourceCheckIndicator"
+                                x: (sourceEnabled.width - width) / 2
+                                y: (sourceEnabled.height - height) / 2
+                                width: 24; height: 24; radius: 5
+                                opacity: sourceEnabled.enabled ? 1 : 0.45
+                                color: sourceEnabled.checked ? window.accentColor : "transparent"
+                                border.width: 2
+                                border.color: sourceEnabled.checked ? window.accentColor
+                                    : Qt.tint(window.surfaceColor, Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.4))
+                                Image {
+                                    anchors.centerIn: parent; width: 16; height: 16
+                                    visible: sourceEnabled.checked
+                                    source: "check-white.svg"; sourceSize: Qt.size(16, 16)
+                                }
+                            }
                             checked: sourceRow.modelData.enabled
                             enabled: !page.busy && (sourceRow.modelData.hasUser || sourceRow.modelData.scope === "user")
                             Accessible.name: qsTr("Enable %1").arg(sourceRow.modelData.name)
@@ -90,7 +117,7 @@ Page {
                                 Layout.fillWidth: true; color: window.textColor
                                 objectName: "sourceTitle"
                                 text: (sourceRow.modelData.title || sourceRow.modelData.name)
-                                      + (sourceRow.modelData.scope === "merged" ? "" : " (" + (sourceRow.modelData.scope === "user" ? qsTr("User") : qsTr("System")) + ")")
+                                      + (sourceRow.modelData.scope === "merged" || sourceRow.modelData.scope === "user" ? "" : " (" + qsTr("System") + ")")
                                 textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 18; font.bold: true
                             }
                             Label { Layout.fillWidth: true; text: sourceRow.modelData.url; textFormat: Text.PlainText; color: window.mutedTextColor; wrapMode: Text.WrapAnywhere }
@@ -126,7 +153,7 @@ Page {
             spacing: 14
             Label { Layout.fillWidth: true; text: qsTr("Enter an HTTPS .flatpakrepo address or choose a repository file."); wrapMode: Text.Wrap }
             TextField { id: sourceInput; objectName: "sourceInput"; Layout.fillWidth: true; placeholderText: "https://example.org/source.flatpakrepo"; selectByMouse: true }
-            FluffButton { text: qsTr("Choose File…"); icon.name: "document-open"; onClicked: sourceFile.open() }
+            FluffButton { objectName: "chooseSourceFileButton"; text: qsTr("Choose File…"); icon.name: "document-open"; onClicked: sourceFile.open() }
             RowLayout {
                 Layout.fillWidth: true
                 FluffButton {
@@ -137,7 +164,7 @@ Page {
                     onClicked: { window.backend.addDefaultSources(); addDialog.close() }
                 }
                 Item { Layout.fillWidth: true }
-                FluffButton { text: qsTr("Cancel"); onClicked: addDialog.close() }
+                FluffButton { objectName: "cancelAddSourceButton"; text: qsTr("Cancel"); icon.name: "dialog-cancel"; onClicked: addDialog.close() }
                 FluffButton {
                     objectName: "confirmAddSourceButton"
                     text: qsTr("Add Source"); icon.name: "list-add"
@@ -149,6 +176,7 @@ Page {
     }
     FileDialogs.FileDialog {
         id: sourceFile
+        objectName: "sourceFileDialog"
         title: qsTr("Choose a Flatpak repository")
         nameFilters: [qsTr("Flatpak repositories (*.flatpakrepo)")]
         onAccepted: sourceInput.text = selectedFile.toString()
@@ -185,6 +213,19 @@ Page {
         objectName: "sourceDetailsDialog"
         anchors.centerIn: parent; width: Math.min(page.width - 48, 560)
         title: qsTr("Source details"); modal: true
+        header: Control {
+            leftPadding: 18; rightPadding: 8; topPadding: 8; bottomPadding: 8
+            contentItem: RowLayout {
+                Label { text: detailsDialog.title; font.pixelSize: 20; Layout.fillWidth: true }
+                FluffToolButton {
+                    objectName: "closeSourceDetailsButton"
+                    Layout.preferredWidth: 44; Layout.preferredHeight: 44
+                    icon.name: "window-close"
+                    Accessible.name: qsTr("Close")
+                    onClicked: detailsDialog.close()
+                }
+            }
+        }
         contentItem: Label {
             text: page.selectedSource ? qsTr("Name: %1\nAddress: %2\nInstallation: %3\nSignature verification: %4")
                 .arg(page.selectedSource.name).arg(page.selectedSource.url)
@@ -192,6 +233,5 @@ Page {
                 .arg(page.selectedSource.verified ? qsTr("Enabled") : qsTr("Disabled by source configuration")) : ""
             textFormat: Text.PlainText; wrapMode: Text.WrapAnywhere
         }
-        footer: DialogButtonBox { standardButtons: Dialog.Close; delegate: FluffButton {} onRejected: detailsDialog.close() }
     }
 }

@@ -55,7 +55,7 @@ Page {
             Label {
                 objectName: "downloadsTitle"
                 Layout.fillWidth: true
-                text: qsTr("Downloads"); color: window.textColor
+                text: qsTr("Queue"); color: window.textColor
                 font.pixelSize: 24; font.bold: true
                 horizontalAlignment: Text.AlignHCenter
                 elide: Text.ElideRight

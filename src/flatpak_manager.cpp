@@ -176,6 +176,8 @@ void FlatpakManager::connectWorker(WorkerState &worker) {
         if (&worker == &m_installWorker) m_downloadRateTimer.stop();
         patchJob(worker.current, {{"active", false}, {"queued", false}, {"failed", true},
             {"status", tr("Could not start Flatpak worker")}});
+        if (m_requests[worker.current].toMap().value("prepareOnly").toBool() && !m_stopping)
+            emit inputError(tr("Could not start Flatpak worker"));
         clearReviewsForJob(worker.current);
         worker.current = -1;
         QTimer::singleShot(0, this, &FlatpakManager::startNext);
@@ -192,6 +194,9 @@ void FlatpakManager::connectWorker(WorkerState &worker) {
                 patchJob(index, {{"active", false}, {"queued", false}, {"failed", !cancelled}, {"cancelled", cancelled},
                     {"status", cancelled ? QString() : tr("The Flatpak worker stopped unexpectedly")},
                     {"error", cancelled ? QString() : QString::fromUtf8(worker.diagnostics)}});
+                if (!cancelled && !m_stopping && m_requests[index].toMap().value("prepareOnly").toBool())
+                    emit inputError(tr("The Flatpak worker stopped unexpectedly")
+                        + (worker.diagnostics.isEmpty() ? QString() : "\n" + QString::fromUtf8(worker.diagnostics)));
             }
             clearReviewsForJob(index);
             const bool preparation = m_requests[index].toMap().value("prepareOnly").toBool();
@@ -541,10 +546,9 @@ void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &messa
                     m_installHistory.installed("user", ref);
             }
         }
-        // A prepared app is not an installed download. Repository additions
-        // and failed source imports still get an honest session-history row.
-        if (preparation && !cancelled && (!ok || m_jobs[worker.current].toMap().value("id").toString().isEmpty()))
-            patchJob(worker.current, {{"hidden", false}});
+        // Source setup and file inspection never belong in the app queue,
+        // including failures. Report errors through the input dialog instead;
+        // installRequest creates a visible job only when installation starts.
         if (preparation && !ok && !cancelled) emit inputError(message["error"].toString());
         const bool removing = m_jobs[worker.current].toMap().value("action") == "uninstall";
         if (ok && removing) {

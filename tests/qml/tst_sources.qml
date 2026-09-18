@@ -62,9 +62,9 @@ TestCase {
         const menu = findChild(main, "applicationMenu")
         tryCompare(menu, "opened", true)
         compare(menu.count, 2)
-        compare(menu.itemAt(0).text, "About"); verify(menu.itemAt(0).icon.name.length > 0)
-        compare(menu.itemAt(1).text, "Settings"); verify(menu.itemAt(1).icon.name.length > 0)
-        menu.itemAt(0).triggered(); menu.close()
+        compare(menu.itemAt(0).text, "Settings"); verify(menu.itemAt(0).icon.name.length > 0)
+        compare(menu.itemAt(1).text, "About"); verify(menu.itemAt(1).icon.name.length > 0)
+        menu.itemAt(1).triggered(); menu.close()
         const about = findChild(main, "aboutDialog")
         tryCompare(about, "opened", true)
         compare(findChild(about, "aboutVersion").text, "Version 2026.09 (Beta)")
@@ -91,7 +91,13 @@ TestCase {
         compare(backend.request, "enable:flathub:false")
         mouseClick(findChild(row, "sourceDetailsButton"))
         const details = findChild(page(), "sourceDetailsDialog")
-        tryCompare(details, "opened", true); details.close(); tryCompare(details, "visible", false)
+        tryCompare(details, "opened", true)
+        const close = findChild(details, "closeSourceDetailsButton")
+        verify(close.visible); compare(close.icon.name, "window-close")
+        const topRight = close.mapToItem(details.background, close.width, 0)
+        verify(details.background.width - topRight.x >= 8)
+        verify(topRight.y >= 8)
+        mouseClick(close); tryCompare(details, "visible", false)
         mouseClick(findChild(page(), "addSourceButton"))
         const add = findChild(page(), "addSourceDialog")
         tryCompare(add, "opened", true)
@@ -109,6 +115,50 @@ TestCase {
         backend.busy = true
         verify(!findChild(page(), "addSourceButton").enabled)
         verify(!checkbox.enabled)
+    }
+    function test_checkbox_geometry_and_states_data() {
+        return [{tag:"dark-checked", dark:true, checked:true}, {tag:"dark-unchecked", dark:true, checked:false},
+                {tag:"light-checked", dark:false, checked:true}, {tag:"light-unchecked", dark:false, checked:false}]
+    }
+    function test_checkbox_geometry_and_states(data) {
+        const oldWindow = main.palette.window, oldText = main.palette.windowText
+        main.palette.window = data.dark ? "#202326" : "#eff0f1"
+        main.palette.windowText = data.dark ? "white" : "#202326"
+        backend.repositories = [{name:"testing", title:"Testing", url:"https://example.org/testing",
+            scope:"user", enabled:data.checked, verified:true}]
+        main.showSettings(); tryCompare(stack(), "busy", false)
+        const row = findChild(page(), "sourceRow")
+        const control = findChild(row, "sourceEnabled")
+        const indicator = findChild(control, "sourceCheckIndicator")
+        waitForRendering(control)
+        compare(findChild(row, "sourceTitle").text, "Testing")
+        verify(control.width >= 44 && control.height >= 44)
+        fuzzyCompare(indicator.x + indicator.width / 2, control.width / 2, 0.01)
+        fuzzyCompare(indicator.y + indicator.height / 2, control.height / 2, 0.01)
+        fuzzyCompare(control.mapToItem(row, 0, control.height / 2).y, row.height / 2, 0.5)
+        verify(indicator.border.width >= 2)
+        verify(indicator.border.color.toString() !== main.surfaceColor.toString())
+        mouseMove(control, 3, 3); tryCompare(control, "hovered", true)
+        compare(control.background.color, main.hoverColor)
+        compare(control.background.border.width, 0)
+        control.forceActiveFocus(Qt.TabFocusReason)
+        tryCompare(control, "visualFocus", true)
+        compare(control.background.border.width, 2)
+        mouseClick(control, 3, 3) // Entire target, not just the indicator, is clickable.
+        compare(backend.request, "enable:testing:" + !data.checked)
+        backend.busy = true; verify(!control.enabled)
+        verify(indicator.opacity < 1)
+        main.palette.window = oldWindow; main.palette.windowText = oldText
+    }
+    function test_add_source_cancel_icon() {
+        main.showSettings(); tryCompare(stack(), "busy", false)
+        mouseClick(findChild(page(), "addSourceButton"))
+        const add = findChild(page(), "addSourceDialog")
+        tryCompare(add, "opened", true)
+        const cancel = findChild(add, "cancelAddSourceButton")
+        compare(cancel.icon.name, "dialog-cancel")
+        mouseClick(cancel); tryCompare(add, "visible", false)
+        compare(backend.request, "list")
     }
     function test_remove_source_message_data() {
         return [{tag:"merged", scope:"merged", hasSystem:true},
@@ -196,14 +246,18 @@ TestCase {
         main.openApp(Object.assign({}, app, {sources:[app]})); tryCompare(stack(), "busy", false)
         verify(!findChild(page(), "installSourceButton").visible)
         backend.installedApps = [Object.assign({}, app, {installedOrigin:"installed-repo", installation:"user", installedVersion:"0.9", installedSize:"20 MiB"})]
-        compare(findChild(page(), "appSourceValue").text, "installed-repo (User)")
+        compare(findChild(page(), "appSourceValue").text, "installed-repo")
         verify(!findChild(page(), "installSourceButton").visible)
         main.showCatalog(); tryCompare(stack(), "busy", false)
         main.selectedCategory = "Installed"
         const list = findChild(page(), "installedList")
         tryVerify(function() { return list.itemAtIndex(0) !== null })
         const source = findChild(list.itemAtIndex(0), "installedSourceValue")
-        compare(source.text, "installed-repo (User)")
+        compare(source.text, "installed-repo")
+        compare(source.renderType, Text.NativeRendering)
+        backend.installedApps = [Object.assign({}, backend.installedApps[0], {installation:"default"})]
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        compare(findChild(list.itemAtIndex(0), "installedSourceValue").text, "installed-repo (System)")
         main.selectedCategory = "All Apps"
     }
 }

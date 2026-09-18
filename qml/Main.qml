@@ -221,7 +221,7 @@ ApplicationWindow {
             onAccepted: closeDialog.accept()
         }
         contentItem: ColumnLayout {
-            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: qsTr("Please wait for completion, or cancel the operations before closing App Center. Completed downloads stay in this session’s history.") }
+            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: qsTr("Please wait for completion, or cancel the operations before closing App Center. Finished installations stay in this session’s queue history.") }
             FluffButton { text: qsTr("Cancel operations"); onClicked: { backend.cancelAll(); closeDialog.close() } }
         }
     }

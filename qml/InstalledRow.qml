@@ -13,6 +13,9 @@ AbstractButton {
     height: Math.max(108, contentItem.implicitHeight + topPadding + bottomPadding)
     padding: 16
     hoverEnabled: true
+    // Small bold metadata should use the desktop font rasterizer, rather than
+    // distance-field glyphs whose weight can vary at fractional scale/positions.
+    component MetadataLabel: Label { renderType: Text.NativeRendering }
     Accessible.name: app.name + ", " + app.installedSize
     background: Rectangle {
         radius: window.cornerRadius
@@ -41,37 +44,37 @@ AbstractButton {
                 columns: 2
                 columnSpacing: 8
                 rowSpacing: 3
-                Label { text: qsTr("Version:"); color: window.mutedTextColor }
-                Label {
+                MetadataLabel { text: qsTr("Version:"); color: window.mutedTextColor }
+                MetadataLabel {
                     Layout.fillWidth: true
                     text: app.installedVersion || qsTr("Unavailable")
                     color: window.textColor
                     font.weight: Font.Bold
                     wrapMode: Text.WrapAnywhere
                 }
-                Label { text: qsTr("Size:"); color: window.mutedTextColor }
-                Label {
+                MetadataLabel { text: qsTr("Size:"); color: window.mutedTextColor }
+                MetadataLabel {
                     Layout.fillWidth: true
                     text: app.installedSize || qsTr("Unavailable")
                     color: window.textColor
                     font.weight: Font.Bold
                     wrapMode: Text.WrapAnywhere
                 }
-                Label { text: qsTr("Source:"); color: window.mutedTextColor }
-                Label {
+                MetadataLabel { text: qsTr("Source:"); color: window.mutedTextColor }
+                MetadataLabel {
                     objectName: "installedSourceValue"
                     Layout.fillWidth: true
-                    text: (app.installedOrigin || qsTr("Unavailable")) + (app.installedOrigin
-                        ? " (" + (app.installation === "user" ? qsTr("User") : qsTr("System")) + ")" : "")
+                    text: (app.installedOrigin || qsTr("Unavailable")) + (app.installedOrigin && app.installation !== "user"
+                        ? " (" + qsTr("System") + ")" : "")
                     textFormat: Text.PlainText; color: window.textColor; font.weight: Font.Bold
                     wrapMode: Text.WrapAnywhere
                 }
-                Label {
+                MetadataLabel {
                     objectName: "installedDateCaption"
                     visible: !!app.installedDate
                     text: qsTr("Installed on:"); color: window.mutedTextColor
                 }
-                Label {
+                MetadataLabel {
                     objectName: "installedDateValue"
                     visible: !!app.installedDate
                     Layout.fillWidth: true

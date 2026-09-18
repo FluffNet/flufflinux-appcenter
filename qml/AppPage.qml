@@ -493,7 +493,7 @@ Page {
                 Label {
                     objectName: "appSourceValue"
                     text: app ? (app.installedOrigin || app.remote || qsTr("Unavailable"))
-                          + (app.installedOrigin ? " (" + (app.installation === "user" ? qsTr("User") : qsTr("System")) + ")" : "") : ""
+                          + (app.installedOrigin && app.installation !== "user" ? " (" + qsTr("System") + ")" : "") : ""
                     textFormat: Text.PlainText; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere
                 }
                 Label { text: qsTr("Installed version"); color: window.mutedTextColor; visible: !!(app && app.installedSize) }
