@@ -18,11 +18,15 @@ static void until(const std::function<bool()> &condition) {
     assert(condition());
 }
 int main(int argc, char **argv) {
+    if (argc == 2 && QByteArray(argv[1]) == "--catalog") { std::cout << "[]\n"; return 0; }
     if (argc == 3 && QByteArray(argv[1]) == "--updates-worker") {
+        assert(QJsonDocument::fromJson(argv[2]).object()["restoreSystemFlathub"].toBool());
         const auto mode = qgetenv("UPDATE_TEST_MODE");
         if (mode == "crash") return 5;
         if (mode == "invalid") { std::cout << "bad json\n"; return 0; }
         if (mode == "slow") QThread::msleep(1500);
+        if (mode == "restored") send({{"type", "sources"}, {"sources", QJsonArray{
+            QJsonObject{{"name", "flathub"}, {"scope", "merged"}, {"hasUser", true}, {"hasSystem", true}}}}});
         QJsonArray rows;
         for (const auto &scope : {"user", "system", "extra"}) {
             const QString ref = "app/org.example.Test.desktop/x86_64/stable";
@@ -31,12 +35,18 @@ int main(int argc, char **argv) {
                 {"commit", QString(64, 'a')}, {"oldCommit", QString(64, 'b')}, {"plan", QJsonArray{}}});
         }
         send({{"type", "updates"}, {"updates", rows},
+            {"skipped", mode == "partial" ? QJsonArray{"Skipped missing-source app"} : QJsonArray{}},
             {"errors", mode == "partial" ? QJsonArray{"One source is offline"} : QJsonArray{}},
             {"checkedAt", "2026-09-23T12:00:00.000Z"}});
         return 0;
     }
     if (argc == 3 && QByteArray(argv[1]) == "--transaction-worker") {
         const auto request = QJsonDocument::fromJson(argv[2]).object();
+        if (request["action"] == "repositories") {
+            send({{"type", "sources"}, {"sources", QJsonArray{}}});
+            send({{"type", "result"}, {"success", true}});
+            return 0;
+        }
         assert(request["action"] == "update");
         assert(request["id"] == "org.example.Test.desktop");
         assert(request["installation"] != "system"); // Unselected deployment.
@@ -88,6 +98,7 @@ int main(int argc, char **argv) {
         assert(manager.updates()["items"].toList().isEmpty());
     }
     qputenv("UPDATE_TEST_MODE", "partial"); check();
+    assert(manager.updates()["skipped"].toStringList() == QStringList{"Skipped missing-source app"});
     assert(manager.updates()["state"] == "ready" && !manager.updates()["error"].toString().isEmpty());
     for (const auto &row : manager.updates()["items"].toList())
         if (row.toMap()["installation"] == "system") manager.selectUpdate(row.toMap()["key"].toString(), false);
@@ -98,5 +109,14 @@ int main(int argc, char **argv) {
     assert(manager.updates()["items"].toList().size() == 1);
     assert(manager.updates()["items"].toList()[0].toMap()["installation"] == "system");
     assert(manager.updates()["state"] == "ready"); // Completion never triggers a check.
+    qputenv("UPDATE_TEST_MODE", "restored"); manager.checkForUpdates();
+    until([&] { return !manager.busy(); });
+    assert(manager.repositories().size() == 1);
+    assert(manager.repositories()[0].toMap()["hasSystem"].toBool());
+    assert(manager.updates()["items"].toList().size() == 3);
+    manager.refreshSources(true);
+    assert(manager.updates()["state"] == "idle" && manager.updates()["items"].toList().isEmpty());
+    until([&] { return !manager.busy(); });
+    assert(manager.updates()["state"] == "idle"); // Source changes invalidate; they never trigger a check.
     std::cout << "PASS: no automatic checks, defaults, selection, scopes, exact .desktop ID, cancel, timeout, crash, malformed output, partial errors, selected jobs only, duplicate prevention\n";
 }

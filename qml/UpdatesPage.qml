@@ -9,6 +9,7 @@ Page {
     readonly property var updateData: window.backend && window.backend.updates || ({state: "idle", items: []})
     readonly property var rows: updateData.items || []
     readonly property bool checking: updateData.state === "checking"
+    readonly property var skipped: updateData.skipped || []
     readonly property bool busy: !!window.backend && window.backend.busy
     readonly property bool compact: width < 600
     onVisibleChanged: if (!visible) changesDialog.close()
@@ -73,6 +74,16 @@ Page {
             objectName: "updatesError"; visible: !!page.updateData.error
             Layout.fillWidth: true; maximumLineCount: 3
             text: page.updateData.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap; elide: Text.ElideRight; color: window.accentColor
+        }
+        Label {
+            objectName: "updatesSkipped"
+            visible: page.skipped.length > 0
+            Layout.fillWidth: true; maximumLineCount: 3
+            text: page.skipped.join("\n"); textFormat: Text.PlainText
+            wrapMode: Text.Wrap; elide: Text.ElideRight; color: window.mutedTextColor
+            HoverHandler { id: skippedHover }
+            ToolTip.visible: skippedHover.hovered
+            ToolTip.text: text
         }
         GridLayout {
             visible: page.rows.length > 0; Layout.fillWidth: true
@@ -162,7 +173,8 @@ Page {
                 objectName: "updatesEmpty"
                 anchors.centerIn: parent; width: parent.width; horizontalAlignment: Text.AlignHCenter
                 visible: page.rows.length === 0 && !page.checking
-                text: page.updateData.state === "ready" && !page.updateData.error ? qsTr("Everything is up to date.")
+                text: page.updateData.state === "ready" && !page.updateData.error
+                    ? (page.skipped.length ? qsTr("No updates available from the sources that could be checked.") : qsTr("Everything is up to date."))
                     : page.updateData.state === "cancelled" ? qsTr("Update check cancelled.")
                     : page.updateData.error ? qsTr("Could not check all updates. Please try again.") : qsTr("Press Check for Updates to see available updates.")
                 color: window.mutedTextColor; wrapMode: Text.Wrap

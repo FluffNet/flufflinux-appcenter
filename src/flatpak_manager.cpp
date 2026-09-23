@@ -49,6 +49,11 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
             m_updatesBuffer.remove(0, end + 1);
             if (m_updatesState != "checking") continue;
             if (message["type"] == "status") m_updatesStatus = message["message"].toString();
+            if (message["type"] == "sources") {
+                m_updateSourcesChanged = true;
+                m_repositories = message["sources"].toArray().toVariantList();
+                emit repositoriesChanged();
+            }
             if (message["type"] == "updates") {
                 m_updatesResult = true;
                 m_updates = message["updates"].toArray().toVariantList();
@@ -65,6 +70,8 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                 QStringList errors;
                 for (const auto &error : message["errors"].toArray()) errors.append(error.toString());
                 m_updatesError = errors.join('\n');
+                m_updatesSkipped.clear();
+                for (const auto &skipped : message["skipped"].toArray()) m_updatesSkipped.append(skipped.toString());
                 m_lastChecked = message["checkedAt"].toString();
             }
             emit updatesChanged();
@@ -78,6 +85,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                 if (m_updatesState == "error") { m_updates.clear(); m_updatesError = tr("Could not finish checking for updates. Try again."); }
             }
             emit updatesChanged(); emit jobsChanged();
+            if (m_updateSourcesChanged) { m_updateSourcesChanged = false; reloadCatalog(); }
         });
     connect(&m_updatesProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error != QProcess::FailedToStart) return;
@@ -91,7 +99,12 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
             const auto message = QJsonDocument::fromJson(m_sourceBuffer.left(end)).object();
             m_sourceBuffer.remove(0, end + 1);
             if (message["type"] == "sources") {
-                m_repositories = message["sources"].toArray().toVariantList();
+                const auto sources = message["sources"].toArray().toVariantList();
+                if (sources != m_repositories && m_updatesState == "ready") {
+                    m_updates.clear(); m_updatesState = "idle"; m_updatesSkipped.clear();
+                    m_updatesError.clear(); emit updatesChanged();
+                }
+                m_repositories = sources;
                 emit repositoriesChanged(); reloadCatalog();
             } else if (message["type"] == "result") {
                 m_sourceResult = true;
@@ -481,14 +494,16 @@ QVariantMap FlatpakManager::updates() const {
         if (date > last) last = date;
     }
     return {{"state", m_updatesState}, {"items", m_updates}, {"status", m_updatesStatus},
+        {"skipped", m_updatesSkipped},
         {"error", m_updatesError}, {"lastChecked", InstallHistory::displayDate(m_lastChecked)},
         {"lastUpdated", InstallHistory::displayDate(last)}};
 }
 void FlatpakManager::checkForUpdates() {
     if (busy()) return;
     m_updates.clear(); m_updatesBuffer.clear(); m_updatesError.clear(); m_updatesResult = false;
+    m_updatesSkipped.clear(); m_updateSourcesChanged = false;
     m_updatesState = "checking"; m_updatesStatus = tr("Checking for updates…");
-    m_updatesProcess.start(QCoreApplication::applicationFilePath(), {"--updates-worker", "{}"});
+    m_updatesProcess.start(QCoreApplication::applicationFilePath(), {"--updates-worker", "{\"restoreSystemFlathub\":true}"});
     m_updatesProcess.closeWriteChannel(); m_updatesTimeout.start(180000);
     emit updatesChanged(); emit jobsChanged();
 }
@@ -869,6 +884,10 @@ void FlatpakManager::addDefaultSources() { runSourceOperation({{"operation", "de
 void FlatpakManager::runSourceOperation(QVariantMap request) {
     if (m_stopping || busy()) return;
     m_sourceListing = request.value("operation") == "list";
+    if (!m_sourceListing && m_updatesState == "ready") {
+        m_updates.clear(); m_updatesState = "idle"; m_updatesSkipped.clear();
+        m_updatesError.clear(); emit updatesChanged();
+    }
     if (!m_sourceListing) m_sourcesError.clear();
     m_sourceBuffer.clear(); m_sourceResult = false;
     request["action"] = "repositories";

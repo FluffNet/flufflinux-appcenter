@@ -116,6 +116,8 @@ private:
     QTimer m_updatesTimeout;
     QByteArray m_updatesBuffer;
     QVariantList m_updates;
+    QStringList m_updatesSkipped;
+    bool m_updateSourcesChanged = false;
     QString m_updatesState = "idle", m_updatesStatus, m_updatesError, m_lastChecked;
     bool m_updatesResult = false;
     QHash<QString, QVariantMap> m_sources;

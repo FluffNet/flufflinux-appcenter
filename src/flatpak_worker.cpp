@@ -548,7 +548,7 @@ bool execute(const QJsonObject &request, Worker &w) {
     if (!w.appId.isEmpty() && !validId(w.appId)) { w.problem = "Invalid Flatpak app ID."; return false; }
     w.systemRemoval = w.removing && scope != "user";
     // New apps, bundles, references and repositories ALWAYS belong to the
-    // current user. Only removal of an existing system app uses that scope.
+    // current user. Updates/removals keep an existing app's installation scope.
     g_autoptr(FlatpakInstallation) installation = !(w.systemRemoval || (w.updating && scope != "user"))
         ? flatpak_installation_new_user(w.cancel, &error)
         : scope != "system" && !scope.isEmpty()

@@ -1,8 +1,10 @@
-// Explicit, metadata-only scan. This process never deploys a transaction.
+// Explicit scan. May restore official system Flathub when requested, but never
+// deploys an app/runtime transaction or replaces an existing source.
 #include <flatpak.h>
 #include "update_plan.h"
 #include "download_size.h"
 #include "flatpak_sources.h"
+#include "update_sources.h"
 #include <QCoreApplication>
 #include <QJsonDocument>
 #include <QProcess>
@@ -42,7 +44,9 @@ gboolean resolved(FlatpakTransaction *tx, gpointer data) {
         g_autoptr(FlatpakRemote) remote = flatpak_installation_get_remote_by_name(plan.installation,
             remoteName.toUtf8(), nullptr, nullptr);
         const auto commit = text(flatpak_transaction_operation_get_commit(op));
-        if (!remote || !Updates::validCommit(commit)) { plan.error = "Could not verify the update source."; break; }
+        if (!remote || flatpak_remote_get_disabled(remote) || !Updates::validCommit(commit)) {
+            plan.error = "The update source is missing, disabled, or could not be verified."; break;
+        }
         QJsonObject row{{"ref", ref}, {"commit", commit}, {"remote", remoteName},
             {"sourceUrl", Sources::url(remote)}, {"sourceKey", Sources::sourceKey(plan.installation, remote)},
             {"action", text(flatpak_transaction_operation_type_to_string(action))},
@@ -61,7 +65,7 @@ gboolean rejectRemote(FlatpakTransaction *, FlatpakTransactionRemoteReason,
                        const char *, const char *, const char *, gpointer) { return false; }
 
 QJsonObject scan(const QJsonObject &request) {
-    QJsonArray rows, errors;
+    QJsonArray rows, errors, skipped;
     g_autoptr(GError) installationError = nullptr;
     g_autoptr(FlatpakInstallation) user = flatpak_installation_new_user(nullptr, &installationError);
     if (!user && installationError) errors.append("user: " + text(installationError->message));
@@ -82,14 +86,56 @@ QJsonObject scan(const QJsonObject &request) {
         if (!installedRefs) { errors.append(scope + ": " + text(error ? error->message : "Could not read installed apps")); continue; }
         g_autoptr(GPtrArray) refs = g_ptr_array_new_with_free_func(g_object_unref);
         QMap<QString, QMap<QString, QString>> published;
+        auto skippedSource = [&](const QString &origin, const QString &reason) {
+            QStringList names;
+            for (guint j = 0; j < installedRefs->len; ++j) {
+                auto ref = FLATPAK_INSTALLED_REF(g_ptr_array_index(installedRefs, j));
+                if (text(flatpak_installed_ref_get_origin(ref)) != origin
+                    || flatpak_ref_get_kind(FLATPAK_REF(ref)) != FLATPAK_REF_KIND_APP) continue;
+                const auto name = text(flatpak_installed_ref_get_appdata_name(ref));
+                names.append(name.isEmpty() ? text(flatpak_ref_get_name(FLATPAK_REF(ref))) : name);
+            }
+            names.removeDuplicates(); names.sort();
+            const auto label = origin + (scope == "user" ? "" : " (" + (scope == "system" ? "System" : scope) + ")");
+            skipped.append("Skipped " + (names.isEmpty() ? QString("installed components") : names.join(", "))
+                + ": " + label + " " + reason);
+        };
         for (guint i = 0; i < installedRefs->len; ++i) {
             auto installed = FLATPAK_INSTALLED_REF(g_ptr_array_index(installedRefs, i));
             const auto origin = text(flatpak_installed_ref_get_origin(installed));
             if (!published.contains(origin)) {
                 published[origin] = {};
                 g_autoptr(FlatpakRemote) remote = flatpak_installation_get_remote_by_name(installation, origin.toUtf8(), nullptr, nullptr);
-                if (!remote) { errors.append(scope + ": Source " + origin + " is not configured."); continue; }
-                if (flatpak_remote_get_disabled(remote)) continue;
+                if (!remote && request["restoreSystemFlathub"].toBool()) {
+                    const auto definition = UpdateSources::restorationDefinition(scope, origin, Sources::list());
+                    if (!definition.isEmpty()) {
+                        send({{"type", "status"}, {"message", "Adding " + origin + " for existing system apps… Authorization may be required."}});
+                        QProcess restore;
+                        restore.setChildProcessModifier([] {
+                            prctl(PR_SET_PDEATHSIG, SIGTERM);
+                            if (getppid() == 1) _exit(1);
+                        });
+                        // Flatpak's system service handles authorization. Never run
+                        // App Center as root or overwrite name collisions.
+                        restore.start("flatpak", UpdateSources::restoreArguments(scope, origin, definition));
+                        restore.closeWriteChannel();
+                        const bool finished = restore.waitForFinished(120000);
+                        if (!finished) { restore.kill(); restore.waitForFinished(); }
+                        flatpak_installation_drop_caches(installation, nullptr, nullptr);
+                        remote = flatpak_installation_get_remote_by_name(installation, origin.toUtf8(), nullptr, nullptr);
+                        send({{"type", "sources"}, {"sources", Sources::group(Sources::list())}});
+                        if (!remote) {
+                            const auto detail = QString::fromUtf8(restore.readAllStandardError()).trimmed();
+                            skippedSource(origin, !finished
+                                ? "could not be added before authorization or the connection timed out. Press Check for Updates to retry."
+                                : "could not be added. " + (detail.isEmpty() ? QString("Authorization was not completed. Press Check for Updates to retry.") : detail));
+                            continue;
+                        }
+                        send({{"type", "status"}, {"message", "Checking " + origin + " system updates…"}});
+                    }
+                }
+                if (!remote) { skippedSource(origin, "is missing. Add it in Settings to check these updates."); continue; }
+                if (flatpak_remote_get_disabled(remote)) { skippedSource(origin, "is disabled."); continue; }
                 g_clear_error(&error);
                 // Do not use list_installed_refs_for_update: its internal
                 // transaction can ignore an unavailable remote as nonfatal.
@@ -98,7 +144,7 @@ QJsonObject scan(const QJsonObject &request) {
                 g_autoptr(GPtrArray) available = flatpak_installation_list_remote_refs_sync_full(installation,
                     origin.toUtf8(), FLATPAK_QUERY_FLAGS_NONE, nullptr, &error);
                 if (!available) {
-                    errors.append(scope + ": " + origin + ": " + text(error ? error->message : "Could not check this source"));
+                    skippedSource(origin, "is unavailable. " + text(error ? error->message : "Could not check this source"));
                     continue;
                 }
                 for (guint j = 0; j < available->len; ++j) {
@@ -185,7 +231,7 @@ QJsonObject scan(const QJsonObject &request) {
                 {"plan", plan.operations}, {"permissions", QJsonObject::fromVariantMap(plan.permissions)}});
         }
     }
-    return {{"type", "updates"}, {"updates", rows}, {"errors", errors},
+    return {{"type", "updates"}, {"updates", rows}, {"errors", errors}, {"skipped", skipped},
         {"checkedAt", QDateTime::currentDateTimeUtc().toString(Qt::ISODateWithMs)}};
 }
 }

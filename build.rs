@@ -132,4 +132,5 @@ fn main() {
     println!("cargo:rerun-if-changed=src/flatpak_permissions.h");
     println!("cargo:rerun-if-changed=src/flatpak_updates.cpp");
     println!("cargo:rerun-if-changed=src/update_plan.h");
+    println!("cargo:rerun-if-changed=src/update_sources.h");
 }

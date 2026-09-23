@@ -6,6 +6,8 @@ for name in update_plan permissions install_history; do
     c++ -std=c++17 -fPIC "tests/native/test_$name.cpp" -o "target/update-tests/$name" $(pkg-config --cflags --libs Qt6Core glib-2.0)
     "target/update-tests/$name"
 done
+c++ -std=c++17 -fPIC tests/native/test_update_sources.cpp -o target/update-tests/update_sources $(pkg-config --cflags --libs Qt6Core flatpak ostree-1)
+target/update-tests/update_sources
 "$(pkg-config --variable=libexecdir Qt6Core)/moc" src/flatpak_manager.h -o target/update-tests/moc_manager.cpp
 c++ -std=c++17 -fPIC tests/native/test_updates_manager.cpp src/flatpak_manager.cpp src/flatpak_sizes.cpp src/flatpak_catalog.cpp target/update-tests/moc_manager.cpp -o target/update-tests/manager $(pkg-config --cflags --libs Qt6Gui Qt6DBus Qt6Network flatpak ostree-1)
 QT_QPA_PLATFORM=offscreen target/update-tests/manager

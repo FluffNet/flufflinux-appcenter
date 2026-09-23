@@ -175,14 +175,23 @@ def test(root):
     reset(root)
     assert len(scan(env)) == 3, "The preserved older releases cannot be retested"
     command(env, "flatpak", "remote-modify", "--user", "--disable", "update-fixture")
+    disabled = json.loads(command(env, str(BINARY), "--updates-worker", '{"userOnly":true,"restoreSystemFlathub":true}').splitlines()[-1])
+    assert not disabled["updates"] and disabled["skipped"], disabled
     assert not worker(env, request)[-1]["success"], "Disabled source was used for updating"
     command(env, "flatpak", "remote-modify", "--user", "--enable", "update-fixture")
     command(env, "flatpak", "remote-modify", "--user", "--url=" + (root / "offline-repo").as_uri(), "update-fixture")
     try:
         offline = json.loads(command(env, str(BINARY), "--updates-worker", '{"userOnly":true}').splitlines()[-1])
-        assert offline["errors"], "Offline source was reported as up-to-date"
+        assert not offline["updates"] and offline["skipped"], "Offline source offered updates or was reported as up-to-date"
     finally:
         command(env, "flatpak", "remote-modify", "--user", "--url=" + (root / "repo").as_uri(), "update-fixture")
+    assert len(scan(env)) == 3
+    command(env, "flatpak", "remote-delete", "--user", "--force", "update-fixture")
+    missing = json.loads(command(env, str(BINARY), "--updates-worker", '{"userOnly":true,"restoreSystemFlathub":true}').splitlines()[-1])
+    assert not missing["updates"] and missing["skipped"], missing
+    assert "missing" in missing["skipped"][0]
+    assert not command(env, "flatpak", "remotes", "--user", "--columns=name"), "Unexpected source restoration"
+    command(env, "flatpak", "remote-add", "--user", "--no-gpg-verify", "update-fixture", str(root / "repo"))
     assert len(scan(env)) == 3
     print("PASS: manual metadata-only scan, versions, sizes, permission diff, cancel, stale source/plan, selected apps only, shared runtime, persistent dates, no-op, empty scan, v1 restore, disabled/offline sources", flush=True)
 

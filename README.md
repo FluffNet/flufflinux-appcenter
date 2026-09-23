@@ -16,8 +16,22 @@ window, keeping the sidebar and header visible. Search is grayed out and disable
 while Updates is selected.
 Opening/reopening the page, starting App Center, refreshing Installed, and
 finishing transactions do **not** check for updates. Only **Check for Updates**
-starts the metadata-only check. Loading, cancellation, timeout, and partial
-source errors are visible; checking never enters Queue or deploys a transaction.
+starts the check. Loading, cancellation, timeout, and partial source errors are
+visible; checking never enters Queue or deploys an app/runtime transaction.
+
+User and system apps appear together; new installs continue to prefer the user
+installation, while updates target each app's existing installation. Matching
+user/system repositories with identical signing and source policy appear as one
+source in Settings. During an explicit check, a missing system `flathub` (or
+`flathub-beta`) source used by installed apps/components is restored from the
+official repository definition only when the matching, enabled, verified user
+source exists. Flatpak handles system authorization; adding the source may ask
+for an administrator password. Existing, disabled, differently named, or
+third-party sources are never overwritten or automatically enabled.
+
+Missing, disabled and unreachable origins are listed as skipped, not selectable
+updates. A partial check does not claim every app is up to date. Source changes
+invalidate prior update candidates and require another explicit check.
 
 Apps and runtimes are listed A–Z (apps first), selected by default. Each row
 shows the installed and available version, source/branch, and maximum download

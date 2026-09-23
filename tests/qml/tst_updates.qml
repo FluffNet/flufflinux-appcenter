@@ -135,6 +135,18 @@ TestCase {
         verify(!findChild(page(), "installUpdatesButton").enabled)
         verify(!findChild(page(), "selectAllUpdates").enabled)
     }
+    function test_unavailable_sources_are_not_offered() {
+        open()
+        backend.updates = {state:"ready", items:[], skipped:["Skipped Firefox: flathub (System) is missing."]}
+        verify(findChild(page(), "updatesSkipped").visible)
+        verify(findChild(page(), "updatesSkipped").text.indexOf("Firefox") >= 0)
+        verify(!findChild(page(), "updatesError").visible)
+        verify(findChild(page(), "updatesEmpty").text.indexOf("Everything is up to date") < 0)
+        verify(!findChild(page(), "installUpdatesButton").enabled)
+        backend.updates = Object.assign({}, backend.updates, {items:[row("Available app", "user")]})
+        compare(page().selected.length, 1)
+        verify(findChild(page(), "installUpdatesButton").enabled)
+    }
     function test_layout_data() { return [{tag:"small", width:720, height:520}, {tag:"normal", width:1180, height:760}, {tag:"large", width:1920, height:1080}] }
     function test_layout(data) {
         main.width = data.width; main.height = data.height; open(); ready()
