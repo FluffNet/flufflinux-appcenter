@@ -11,7 +11,9 @@ contains Flatpak source management.
 
 ## Manual updates
 
-**Updates**, directly below Installed, opens a separate installed-style list.
+**Updates**, directly below Installed, shows an installed-style list in the main
+window, keeping the sidebar and header visible. Search is grayed out and disabled
+while Updates is selected.
 Opening/reopening the page, starting App Center, refreshing Installed, and
 finishing transactions do **not** check for updates. Only **Check for Updates**
 starts the metadata-only check. Loading, cancellation, timeout, and partial

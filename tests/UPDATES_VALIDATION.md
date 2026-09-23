@@ -2,11 +2,19 @@
 
 Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
 
-- Full QML regression suite: **400 passed, 0 failed** across 17 suites.
-- Focused Updates QML suite: **10 passed at 100% and 10 passed at 150%**.
+- Full QML regression suite after main-window Updates integration: **402 passed,
+  0 failed** across 17 suites.
+- Focused Updates QML suite: **12 passed at 100% and 12 passed at 150%**.
   Covers explicit-only checking, re-entry, cancellation, all-selected default,
   mixed/select-none/select-all, duplicate component totals, installation scopes,
   dates, errors, busy state, permission changes, pointer focus and small/large layouts.
+  Also verifies the persistent sidebar/header, disabled and dimmed search,
+  cancellation of pending searches, navigation back from Settings/Queue,
+  selection preservation, matching native update icons and edge scrollbar.
+- Native KDE/Wayland preview rechecked with the embedded Updates section at
+  regular and minimum-size windows (150% display scaling), including actual
+  isolated fixture results and the permission-change dialog. No app updates
+  were applied; the preserved test releases remain available.
 - Rust tests: **9 passed**.
 - Native update-plan/permission/history assertions passed: additions, removals,
   missing metadata, environment-secret exclusion, changed commits/sources/actions,

@@ -111,7 +111,8 @@ ApplicationWindow {
     }
     function showAbout() { aboutDialog.open() }
     function showUpdates() {
-        if (stack.currentItem.objectName !== "updatesPage") stack.push(updatesPage)
+        stack.get(0).openCategory("Updates")
+        showCatalog()
     }
     function selectSource(source) {
         selectedApp = Object.assign({}, source, { sources: selectedApp.sources || [] })
@@ -172,7 +173,6 @@ ApplicationWindow {
     Component { id: appPage; AppPage { app: window.detailsFor(window.selectedApp) } }
     Component { id: downloadsPage; DownloadsPage {} }
     Component { id: settingsPage; SettingsPage {} }
-    Component { id: updatesPage; UpdatesPage {} }
     Dialog {
         id: aboutDialog
         objectName: "aboutDialog"

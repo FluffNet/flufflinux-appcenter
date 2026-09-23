@@ -10,6 +10,8 @@ Page {
     readonly property var rows: updateData.items || []
     readonly property bool checking: updateData.state === "checking"
     readonly property bool busy: !!window.backend && window.backend.busy
+    readonly property bool compact: width < 600
+    onVisibleChanged: if (!visible) changesDialog.close()
     readonly property var selected: rows.filter(row => row.selected)
     readonly property real selectedBytes: {
         const seen = {}; let total = 0
@@ -35,32 +37,23 @@ Page {
             + (row.runtime ? " - " + qsTr("Runtime") : "")
     }
     background: Control { focusPolicy: Qt.ClickFocus }
-    header: ToolBar {
-        height: 72
-        background: Rectangle {
-            color: window.backgroundColor
-            FluffSeparator { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom }
-        }
-        RowLayout {
-            anchors.fill: parent; anchors.margins: 12
-            FluffToolButton { text: qsTr("Back"); icon.name: "go-previous"; onClicked: window.goBack() }
-            Item { Layout.fillWidth: true }
-            FluffToolButton { text: qsTr("Queue"); icon.name: "view-list-details"; onClicked: window.showDownloads() }
-        }
-    }
     ColumnLayout {
-        anchors.fill: parent; anchors.margins: 24
+        anchors.fill: parent
+        anchors.leftMargin: 28; anchors.rightMargin: 28
+        anchors.topMargin: 26; anchors.bottomMargin: 20
         spacing: 14
         RowLayout {
             Layout.fillWidth: true
             Label { text: qsTr("Updates"); color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold; Layout.fillWidth: true }
             FluffButton {
                 objectName: "checkForUpdatesButton"
+                visible: !page.checking
                 text: qsTr("Check for Updates"); icon.name: "view-refresh"
                 enabled: !page.busy && !page.checking
                 onClicked: window.backend.checkForUpdates()
             }
             FluffButton {
+                objectName: "cancelUpdateCheckButton"
                 visible: page.checking; text: qsTr("Cancel"); icon.name: "dialog-cancel"
                 onClicked: window.backend.cancelUpdateCheck()
             }
@@ -78,12 +71,14 @@ Page {
         }
         Label {
             objectName: "updatesError"; visible: !!page.updateData.error
-            Layout.fillWidth: true; Layout.maximumHeight: 100
+            Layout.fillWidth: true; maximumLineCount: 3
             text: page.updateData.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap; elide: Text.ElideRight; color: window.accentColor
         }
-        RowLayout {
+        GridLayout {
             visible: page.rows.length > 0; Layout.fillWidth: true
+            columns: page.compact ? 2 : 3
             UpdateCheckBox {
+                Layout.row: 0; Layout.column: 0
                 objectName: "selectAllUpdates"
                 text: qsTr("Select All"); enabled: !page.busy && page.updateData.state === "ready"
                 checkState: page.selected.length === page.rows.length ? Qt.Checked : page.selected.length ? Qt.PartiallyChecked : Qt.Unchecked
@@ -91,31 +86,36 @@ Page {
                 onClicked: window.backend.selectAllUpdates(checkState === Qt.Checked)
             }
             Label {
+                Layout.row: page.compact ? 1 : 0; Layout.column: page.compact ? 0 : 1
+                Layout.columnSpan: page.compact ? 2 : 1
                 Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
                 text: qsTr("%1 selected - up to %2 download").arg(page.selected.length).arg(page.sizeText(page.selectedBytes))
+                HoverHandler { id: downloadSummaryHover }
+                ToolTip.visible: downloadSummaryHover.hovered
+                ToolTip.text: qsTr("Required components update with selected apps. Shared components are counted once; cached data may reduce the download.")
             }
             FluffButton {
+                Layout.row: 0; Layout.column: page.compact ? 1 : 2
+                Layout.alignment: Qt.AlignRight
                 objectName: "installUpdatesButton"
-                text: qsTr("Update Selected"); icon.name: "system-software-update"
+                text: qsTr("Update Selected"); icon.name: "system-upgrade"
                 enabled: page.selected.length > 0 && !page.busy && page.updateData.state === "ready"
                 onClicked: window.backend.installSelectedUpdates()
             }
-        }
-        Label {
-            visible: page.rows.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
-            text: qsTr("Required components update with selected apps. Shared components are counted once in the download estimate; cached data may reduce it.")
         }
         Item {
             Layout.fillWidth: true; Layout.fillHeight: true
             ListView {
                 id: list
                 objectName: "updatesList"
-                anchors.fill: parent; anchors.rightMargin: 16
+                anchors.fill: parent
                 clip: true; spacing: 12; model: page.rows; contentWidth: width
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: PageScrollBar {
-                    parent: list.parent; anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
-                    visible: size < 1
+                    objectName: "updatesPageScrollBar"
+                    parent: page.contentItem
+                    anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
+                    visible: page.visible && size < 1
                 }
                 NaturalWheelScroll { scrollTarget: list }
                 delegate: Rectangle {
@@ -169,5 +169,5 @@ Page {
             }
         }
     }
-    AppPermissionsDialog { id: changesDialog; changesView: true; onClosed: page.forceActiveFocus(Qt.OtherFocusReason) }
+    AppPermissionsDialog { id: changesDialog; changesView: true; onClosed: if (page.visible) page.forceActiveFocus(Qt.OtherFocusReason) }
 }

@@ -5,9 +5,18 @@ import QtQuick.Layouts
 Page {
     focusPolicy: Qt.ClickFocus
     id: page
-    StackView.onActivated: searchField.forceActiveFocus()
+    StackView.onActivated: {
+        if (!page.updatesView) searchField.forceActiveFocus()
+    }
     background: Control { focusPolicy: Qt.ClickFocus }
     readonly property bool installedView: window.selectedCategory === "Installed"
+    readonly property bool updatesView: window.selectedCategory === "Updates"
+    onUpdatesViewChanged: {
+        if (updatesView) {
+            searchTimer.stop()
+            searchField.focus = false
+        }
+    }
     property int installedSortIndex: 0
     readonly property var installedSortOptions: [
         qsTr("Name: A–Z"), qsTr("Name: Z–A"),
@@ -219,6 +228,8 @@ Page {
             TextField {
                 id: searchField
                 objectName: "searchField"
+                enabled: !page.updatesView
+                opacity: enabled ? 1 : 0.45
                 width: Math.min(420, Math.max(100, page.width - page.categorySidebarWidth
                                             - (downloadsControl.visible ? downloadsControl.width + 112 : 92)))
                 anchors.right: parent.right
@@ -230,7 +241,7 @@ Page {
                 activeFocusOnPress: true
                 Component.onCompleted: {
                     text = window.searchText
-                    forceActiveFocus()
+                    if (enabled) forceActiveFocus()
                 }
                 onTextEdited: {
                     if (text.length > 0 && !page.installedView)
@@ -461,21 +472,31 @@ Page {
                         }
                     }
                     FluffToolButton {
+                        id: updatesButton
                         objectName: "updatesButton"
                         width: parent.width; height: sidebar.navigationRowHeight
-                        text: qsTr("Updates"); icon.name: "system-software-update"
+                        text: qsTr("Updates"); icon.name: "system-upgrade"
                         icon.width: sidebar.navigationIconSize; icon.height: sidebar.navigationIconSize
                         font.pixelSize: sidebar.navigationFontSize
+                        font.weight: page.updatesView ? Font.DemiBold : Font.Normal
                         leftPadding: sidebar.navigationPadding; rightPadding: sidebar.navigationPadding
                         topPadding: 0; bottomPadding: 0; spacing: sidebar.navigationSpacing
+                        leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
                         onClicked: window.showUpdates()
                         contentItem: RowLayout {
                             spacing: sidebar.navigationSpacing
                             Image {
                                 Layout.preferredWidth: sidebar.navigationIconSize; Layout.preferredHeight: sidebar.navigationIconSize
-                                source: window.iconSource("system-software-update"); fillMode: Image.PreserveAspectFit
+                                source: window.iconSource(updatesButton.icon.name); fillMode: Image.PreserveAspectFit
                             }
-                            Label { text: qsTr("Updates"); color: window.textColor; font.pixelSize: sidebar.navigationFontSize; Layout.fillWidth: true; fontSizeMode: Text.Fit; minimumPixelSize: 1 }
+                            Label { text: updatesButton.text; color: window.textColor; font: updatesButton.font; Layout.fillWidth: true; fontSizeMode: Text.Fit; minimumPixelSize: 1 }
+                        }
+                        background: Rectangle {
+                            radius: window.cornerRadius
+                            color: updatesButton.hovered || updatesButton.down ? window.hoverColor : page.updatesView
+                                   ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, 0.14)
+                                   : "transparent"
+                            border.color: page.updatesView ? window.accentColor : "transparent"
                         }
                     }
                     FluffSeparator {
@@ -563,6 +584,7 @@ Page {
             }
         }
         Item {
+            visible: !page.updatesView
             Layout.fillWidth: true; Layout.fillHeight: true; clip: true
             ColumnLayout {
                 anchors.fill: parent; spacing: 18
@@ -692,6 +714,10 @@ Page {
                       ? qsTr("Loading applications…") : qsTr("No results.")
                 color: window.mutedTextColor; font.pixelSize: 17
             }
+        }
+        UpdatesPage {
+            visible: page.updatesView
+            Layout.fillWidth: true; Layout.fillHeight: true
         }
     }
 

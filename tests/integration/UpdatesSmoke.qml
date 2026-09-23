@@ -29,6 +29,9 @@ AppCenter.Main {
                 main.showUpdates(); main.stage = 1
             } else if (main.stage === 1) {
                 if (main.backend.updates.state !== "idle") { Qt.exit(4); return }
+                if (stack.depth !== 1 || !probe.findChild(page, "categorySidebar").visible
+                        || !probe.findChild(page, "brandLockup").visible
+                        || probe.findChild(page, "searchField").enabled) { Qt.exit(5); return }
                 main.capture(stack, "idle", 2)
             } else if (main.stage === 2) {
                 probe.mouseClick(probe.findChild(page, "checkForUpdatesButton")); main.stage = 3

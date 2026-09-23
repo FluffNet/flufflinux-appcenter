@@ -28,7 +28,8 @@ TestCase {
         function requestInstallInfo(app) {}
     }
     function stack() { return findChild(main, "navigationStack") }
-    function page() { return stack().currentItem }
+    function root() { return stack().get(0) }
+    function page() { return findChild(root(), "updatesPage") }
     function row(name, scope) {
         return {key:scope + ":" + name, id:name, name:name, icon:"", installation:scope, remote:"fixture", runtime:false,
             oldVersion:"1.0", newVersion:"2.0", selected:true, downloadSize:"1.00 MiB", permissions:{state:"unchanged", groups:[]},
@@ -42,17 +43,67 @@ TestCase {
     function init() {
         failOnWarning(/(ReferenceError|TypeError|Binding loop|Cannot assign)/)
         main.showCatalog(); tryCompare(stack(), "busy", false)
+        root().openCategory("Installed")
         backend.updates = {state:"idle", items:[]}; backend.checks = 0; backend.submitted = []; backend.busy = false
         main.width = 1180; main.height = 760; main.requestActivate()
+        waitForPolish(root()); wait(30)
     }
     function open() { main.showUpdates(); tryCompare(stack(), "busy", false); waitForPolish(page()); wait(30) }
     function test_manual_only_check_and_cancel() {
-        mouseClick(findChild(page(), "updatesButton")); tryCompare(stack(), "busy", false)
-        compare(page().objectName, "updatesPage"); compare(backend.checks, 0)
-        main.goBack(); tryCompare(stack(), "busy", false); open(); compare(backend.checks, 0)
+        mouseClick(findChild(root(), "updatesButton")); tryCompare(stack(), "busy", false)
+        verify(page().visible); compare(stack().depth, 1); compare(backend.checks, 0)
+        mouseClick(findChild(root(), "installedButton")); verify(!page().visible)
+        open(); compare(backend.checks, 0)
         mouseClick(findChild(page(), "checkForUpdatesButton")); compare(backend.checks, 1)
         verify(page().checking); verify(!findChild(page(), "checkForUpdatesButton").enabled)
-        backend.cancelUpdateCheck(); verify(findChild(page(), "updatesEmpty").text.indexOf("cancelled") >= 0)
+        mouseClick(findChild(page(), "cancelUpdateCheckButton"))
+        verify(findChild(page(), "updatesEmpty").text.indexOf("cancelled") >= 0)
+    }
+    function test_main_navigation_and_disabled_search() {
+        const search = findChild(root(), "searchField")
+        const sidebar = findChild(root(), "categorySidebar")
+        const brand = findChild(root(), "brandLockup")
+        const searchPosition = search.mapToItem(main.contentItem, 0, 0)
+        const sidebarWidth = sidebar.width
+        search.forceActiveFocus(); keyClick(Qt.Key_P)
+        open(); wait(180)
+        compare(stack().currentItem, root()); compare(stack().depth, 1)
+        verify(sidebar.visible); verify(brand.visible); verify(search.visible)
+        compare(findChild(root(), "updatesButton").icon.name, "system-upgrade")
+        compare(findChild(page(), "installUpdatesButton").icon.name, "system-upgrade")
+        compare(sidebar.width, sidebarWidth)
+        compare(search.mapToItem(main.contentItem, 0, 0), searchPosition)
+        verify(!search.enabled); verify(search.opacity < 0.6); verify(!search.activeFocus)
+        compare(search.text, ""); compare(main.searchText, ""); compare(main.selectedCategory, "Updates")
+        verify(!findChild(root(), "installedList").visible)
+        verify(!findChild(root(), "catalogGrid").visible)
+        verify(!findChild(root(), "catalogEmptyMessage").visible)
+        verify(!findChild(root(), "installedPageScrollBar").visible)
+        verify(!findChild(root(), "catalogPageScrollBar").visible)
+        mouseClick(search); keyClick(Qt.Key_I)
+        compare(search.text, ""); compare(main.selectedCategory, "Updates")
+        mouseClick(findChild(root(), "installedButton"))
+        verify(search.enabled); compare(search.opacity, 1); verify(!page().visible)
+        verify(!findChild(page(), "updatesPageScrollBar").visible)
+        verify(findChild(root(), "installedList").visible)
+        open(); ready()
+        backend.selectUpdate("user:Alpha", false)
+        mouseClick(findChild(root(), "categoryButton-Internet"))
+        compare(main.selectedCategory, "Internet"); verify(search.enabled); verify(!page().visible)
+        open(); compare(page().selected.length, 1); compare(backend.checks, 0)
+    }
+    function test_return_from_queue_and_settings() {
+        open(); ready()
+        for (const destination of ["showDownloads", "showSettings"]) {
+            main[destination](); tryCompare(stack(), "busy", false)
+            compare(stack().depth, 2)
+            main.goBack(); tryCompare(stack(), "busy", false)
+            compare(stack().depth, 1); verify(page().visible)
+            compare(main.selectedCategory, "Updates")
+            const search = findChild(root(), "searchField")
+            verify(!search.enabled); verify(!search.activeFocus)
+            compare(page().selected.length, 2); compare(backend.checks, 0)
+        }
     }
     function test_defaults_selection_and_shared_downloads() {
         open(); ready()
@@ -88,11 +139,20 @@ TestCase {
     function test_layout(data) {
         main.width = data.width; main.height = data.height; open(); ready()
         const list = findChild(page(), "updatesList")
-        verify(list.width > 0 && list.height > 0)
-        const button = findChild(page(), "installUpdatesButton")
-        const point = button.mapToItem(page(), 0, 0)
-        verify(point.x >= 0 && point.x + button.width <= page().width)
+        verify(list.width > 0 && list.height >= 100, "Leave room for update cards")
+        verify(page().width < main.width)
+        for (const name of ["checkForUpdatesButton", "selectAllUpdates", "installUpdatesButton"]) {
+            const button = findChild(page(), name)
+            const point = button.mapToItem(page(), 0, 0)
+            verify(point.x >= 0 && point.x + button.width <= page().width, name + " must fit beside the sidebar")
+        }
         compare(list.contentWidth, list.width)
+        const bar = findChild(page(), "updatesPageScrollBar")
+        compare(bar.parent, page().contentItem)
+        compare(bar.height, page().height)
+        compare(bar.x + bar.width, page().width)
+        backend.updates = Object.assign({}, backend.updates, {error:"A repository could not be reached. Please check your connection and try again."})
+        waitForPolish(page()); verify(list.height > 0)
     }
     function test_permission_changes_dialog() {
         open(); ready()
