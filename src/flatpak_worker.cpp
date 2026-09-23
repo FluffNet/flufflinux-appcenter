@@ -6,6 +6,8 @@
 #include "download_size.h"
 #include "flatpak_sources.h"
 #include "source_removal.h"
+#include "update_plan.h"
+#include "install_history.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -53,10 +55,13 @@ struct Worker {
     int nextReview = 0;
     int answer = -1;
     QJsonArray operations;
+    QJsonArray expectedPlan;
+    QString installationScope;
     QString appId;
     QString appName;
     QString problem;
     bool removing = false;
+    bool updating = false;
     bool removalConfirmed = false;
     bool systemRemoval = false;
     bool hadOperationError = false;
@@ -147,6 +152,7 @@ QJsonObject operationInfo(FlatpakTransactionOperation *op) {
     return {{"ref", ref}, {"name", ref.section('/', 1, 1)},
         {"dependency", ref.startsWith("runtime/")},
         {"remote", str(flatpak_transaction_operation_get_remote(op))},
+        {"commit", str(flatpak_transaction_operation_get_commit(op))},
         {"action", str(flatpak_transaction_operation_type_to_string(kind))},
         {"downloadBytes", double(download)}, {"downloadSize", bytes(download)},
         {"installedSize", bytes(flatpak_transaction_operation_get_installed_size(op))},
@@ -173,6 +179,10 @@ gboolean ready(FlatpakTransaction *tx, gpointer data) {
         if (ref.startsWith("app/")) appSize += flatpak_transaction_operation_get_download_size(op);
     }
     g_list_free(list);
+    if (w.updating && !Updates::matchesPlan(w.expectedPlan, w.operations)) {
+        w.problem = "The update or its dependencies changed. Check for updates again before continuing.";
+        return false;
+    }
     send({{"type", "identity"}, {"appId", w.appId}});
     send({{"type", "plan"}, {"appId", w.appId}, {"operations", w.operations},
         {"appBytes", double(appSize)}, {"totalBytes", double(total)},
@@ -194,6 +204,10 @@ gboolean ready(FlatpakTransaction *tx, gpointer data) {
 gboolean addRemote(FlatpakTransaction *, FlatpakTransactionRemoteReason, const char *,
                    const char *name, const char *url, gpointer data) {
     auto &w = *static_cast<Worker *>(data);
+    if (w.updating) {
+        w.problem = "This update needs a new software source. Configure it first, then check for updates again.";
+        return false;
+    }
     if (w.estimateOnly) {
         w.problem = QCoreApplication::translate("Flatpak", "Sizes will be available after the required software source is configured.");
         return false;
@@ -242,8 +256,18 @@ void newOperation(FlatpakTransaction *tx, FlatpakTransactionOperation *op,
     g_signal_connect(progress, "changed", G_CALLBACK(progressChanged), tx);
 }
 void operationDone(FlatpakTransaction *, FlatpakTransactionOperation *op, const char *,
-                   FlatpakTransactionResult, gpointer data) {
+                   FlatpakTransactionResult result, gpointer data) {
     auto &w = *static_cast<Worker *>(data);
+    const auto ref = str(flatpak_transaction_operation_get_ref(op));
+    if (w.updating && ref.startsWith("app/")
+        && flatpak_transaction_operation_get_operation_type(op) == FLATPAK_TRANSACTION_OPERATION_UPDATE
+        && !(result & FLATPAK_TRANSACTION_RESULT_NO_CHANGE)) {
+        // Persist at deployment completion, even if a later operation fails or
+        // the UI closes/cancels. Never misreport an unchanged commit as updated.
+        InstallHistory history(QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/update-dates.json");
+        const bool saved = history.installed(w.installationScope, ref);
+        send({{"type", "updated"}, {"ref", ref}, {"historySaved", saved}});
+    }
     auto progress = static_cast<FlatpakTransactionProgress *>(g_object_get_data(G_OBJECT(op), "appcenter-progress"));
     w.operationUpdate(str(flatpak_transaction_operation_get_ref(op)),
                        QCoreApplication::translate("Flatpak", "Complete"), 1, "complete", 1,
@@ -507,6 +531,9 @@ bool execute(const QJsonObject &request, Worker &w) {
     g_autoptr(GError) error = nullptr;
     const auto scope = request["installation"].toString("user");
     w.removing = request["action"].toString() == "uninstall";
+    w.updating = request["action"].toString() == "update";
+    w.installationScope = scope;
+    w.expectedPlan = request["plan"].toArray();
     // The manager can obtain consent before this worker gets its queue slot.
     // Direct worker callers still receive the normal confirmation prompt.
     w.removalConfirmed = w.removing && request["removalConfirmed"].toBool();
@@ -522,7 +549,7 @@ bool execute(const QJsonObject &request, Worker &w) {
     w.systemRemoval = w.removing && scope != "user";
     // New apps, bundles, references and repositories ALWAYS belong to the
     // current user. Only removal of an existing system app uses that scope.
-    g_autoptr(FlatpakInstallation) installation = !w.systemRemoval
+    g_autoptr(FlatpakInstallation) installation = !(w.systemRemoval || (w.updating && scope != "user"))
         ? flatpak_installation_new_user(w.cancel, &error)
         : scope != "system" && !scope.isEmpty()
             ? flatpak_installation_new_system_with_id(scope.toUtf8(), w.cancel, &error)
@@ -544,7 +571,35 @@ bool execute(const QJsonObject &request, Worker &w) {
     g_signal_connect(tx, "operation-done", G_CALLBACK(operationDone), &w);
     g_signal_connect(tx, "operation-error", G_CALLBACK(operationError), &w);
     bool added = false;
-    if (w.removing) {
+    if (w.updating) {
+        const auto ref = request["flatpakRef"].toString(), commit = request["commit"].toString();
+        g_autoptr(FlatpakRef) parsed = flatpak_ref_parse(ref.toUtf8(), &error);
+        if (!parsed || str(flatpak_ref_get_name(parsed)) != request["id"].toString()
+            || !Updates::validCommit(commit) || !Updates::validCommit(request["oldCommit"].toString())
+            || w.expectedPlan.isEmpty()) { w.problem = "Invalid update selection. Check for updates again."; return false; }
+        g_autoptr(FlatpakInstalledRef) current = flatpak_installation_get_installed_ref(installation,
+            flatpak_ref_get_kind(parsed), flatpak_ref_get_name(parsed), flatpak_ref_get_arch(parsed),
+            flatpak_ref_get_branch(parsed), w.cancel, &error);
+        if (!current) { w.problem = "This app is no longer installed. Check for updates again."; return false; }
+        const auto actual = str(flatpak_ref_get_commit(FLATPAK_REF(current)));
+        if (str(flatpak_installed_ref_get_origin(current)) != request["remote"].toString()) {
+            w.problem = "The installed source changed. Check for updates again."; return false;
+        }
+        if (actual == commit) return true;
+        if (actual != request["oldCommit"].toString()) {
+            w.problem = "The installed version changed. Check for updates again."; return false;
+        }
+        for (const auto &value : w.expectedPlan) {
+            const auto op = value.toObject();
+            g_autoptr(FlatpakRemote) remote = flatpak_installation_get_remote_by_name(installation,
+                op["remote"].toString().toUtf8(), w.cancel, nullptr);
+            if (!remote || flatpak_remote_get_disabled(remote) || Sources::url(remote) != op["sourceUrl"].toString()
+                || op["sourceKey"].toString().isEmpty() || Sources::sourceKey(installation, remote) != op["sourceKey"].toString()) {
+                w.problem = "An update source changed or was disabled. Check for updates again."; return false;
+            }
+        }
+        added = flatpak_transaction_add_update(tx, ref.toUtf8(), nullptr, commit.toUtf8(), &error);
+    } else if (w.removing) {
         const auto arch = request["installedArch"].toString();
         const auto branch = request["installedBranch"].toString();
         g_autoptr(FlatpakInstalledRef) installed = flatpak_installation_get_installed_ref(installation,
@@ -652,6 +707,8 @@ extern "C" int fluff_transaction_worker(const char *json) {
     char name[] = "flufflinux-appcenter-worker";
     char *argv[] = {name, nullptr};
     QCoreApplication application(argc, argv);
+    QCoreApplication::setApplicationName("flufflinux-appcenter");
+    QCoreApplication::setOrganizationName("FluffNet LLC");
     Worker worker;
     std::thread reader([&] { worker.readReplies(); });
     const auto request = QJsonDocument::fromJson(QByteArray(json)).object();

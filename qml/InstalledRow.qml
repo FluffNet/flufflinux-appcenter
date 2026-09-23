@@ -83,6 +83,12 @@ AbstractButton {
                     color: window.textColor; font.weight: Font.Bold
                     wrapMode: Text.Wrap
                 }
+                MetadataLabel { text: qsTr("Last updated:"); color: window.mutedTextColor }
+                MetadataLabel {
+                    objectName: "installedUpdatedDateValue"
+                    Layout.fillWidth: true; text: app.updatedDate || qsTr("Not recorded")
+                    color: window.textColor; font.weight: Font.Bold; wrapMode: Text.Wrap
+                }
             }
             Label {
                 objectName: "installedRemovalStatus"

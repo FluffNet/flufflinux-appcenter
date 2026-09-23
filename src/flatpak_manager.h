@@ -20,6 +20,7 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(int iconRevision READ iconRevision NOTIFY installedChanged)
     Q_PROPERTY(QVariantMap installSizes READ installSizes NOTIFY installSizesChanged)
     Q_PROPERTY(QVariantMap appPermissions READ appPermissions NOTIFY appPermissionsChanged)
+    Q_PROPERTY(QVariantMap updates READ updates NOTIFY updatesChanged)
     Q_PROPERTY(QVariantList catalog READ catalog NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList repositories READ repositories NOTIFY repositoriesChanged)
     Q_PROPERTY(bool sourcesBusy READ sourcesBusy NOTIFY repositoriesChanged)
@@ -31,6 +32,12 @@ public:
     QVariantList jobs() const;
     QVariantMap installSizes() const { return m_installSizes; }
     QVariantMap appPermissions() const { return m_appPermissions; }
+    QVariantMap updates() const;
+    Q_INVOKABLE void checkForUpdates();
+    Q_INVOKABLE void cancelUpdateCheck();
+    Q_INVOKABLE void selectUpdate(QString key, bool selected);
+    Q_INVOKABLE void selectAllUpdates(bool selected);
+    Q_INVOKABLE void installSelectedUpdates();
     Q_INVOKABLE int requestAppPermissions(QVariantMap app);
     Q_INVOKABLE void cancelAppPermissions(int token = 0);
     QVariantMap review() const { return m_review; }
@@ -67,6 +74,7 @@ signals:
     void inputError(QString message);
     void installSizesChanged();
     void appPermissionsChanged();
+    void updatesChanged();
     void catalogChanged();
     void repositoriesChanged();
 private slots:
@@ -103,6 +111,13 @@ private:
     QProcess *m_permissionsProcess = nullptr;
     int m_permissionsToken = 0;
     InstallHistory m_installHistory;
+    InstallHistory m_updateHistory{QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/update-dates.json"};
+    QProcess m_updatesProcess;
+    QTimer m_updatesTimeout;
+    QByteArray m_updatesBuffer;
+    QVariantList m_updates;
+    QString m_updatesState = "idle", m_updatesStatus, m_updatesError, m_lastChecked;
+    bool m_updatesResult = false;
     QHash<QString, QVariantMap> m_sources;
     QHash<QString, QVariantMap> m_metadata;
     WorkerState m_installWorker, m_removalWorker;

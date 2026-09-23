@@ -9,6 +9,59 @@ library only), QML, and the system Qt 6 and libflatpak libraries. There are no
 background update services, notifications, or tray components. Settings currently
 contains Flatpak source management.
 
+## Manual updates
+
+**Updates**, directly below Installed, opens a separate installed-style list.
+Opening/reopening the page, starting App Center, refreshing Installed, and
+finishing transactions do **not** check for updates. Only **Check for Updates**
+starts the metadata-only check. Loading, cancellation, timeout, and partial
+source errors are visible; checking never enters Queue or deploys a transaction.
+
+Apps and runtimes are listed A–Z (apps first), selected by default. Each row
+shows the installed and available version, source/branch, and maximum download
+estimate including required components. The selected total counts shared
+components once. Actual transfers can be smaller because of cached data,
+language subsets and deltas. Missing published version labels use an explicit
+commit revision instead of inventing a version. Version labels come from
+Flatpak/AppStream; the selected update itself is pinned to its resolved commit.
+
+Changed sandbox permissions have a **View Permission Changes** dialog showing
+added and removed rules in the existing grouped layout. Unknown permission
+metadata is explicitly unavailable, never “unchanged.” These are changes to
+the app's declared permissions; existing overrides and portal grants are not
+modified by the comparison.
+
+**Update Selected** queues only the selected deployments. Required runtimes may
+update with their apps even if their standalone row is unchecked. The worker
+verifies the installation, full ref, current commit, source identity/signing
+configuration, and resolved operation plan before deployment; stale plans fail
+with a recheck request. It cannot silently add a source, remove an app, or update
+another unselected app. System updates use Flatpak's normal authorization.
+
+Successful app deployment records its UTC last-update time in
+`$XDG_DATA_HOME/FluffNet LLC/flufflinux-appcenter/update-dates.json` (normally
+under `~/.local/share`). Records are keyed by installation and full ref, survive
+restarts/Queue clearing, and appear in Installed and at the bottom of app
+details in the system's locale/timezone. Original install dates remain separate.
+No-op, failed and cancelled-before-deployment updates do not acquire a new date;
+a completed deployment is recorded even if a later operation fails. Previously
+unobserved/external updates say **Not recorded** rather than guessing a date.
+
+Repeatable offline tests build two versions of two tiny apps plus a shared
+runtime. `--keep` preserves old/new commits, bundles and a manifest; `--reset`
+restores only that fixture's isolated installation, not the normal user's apps:
+
+```sh
+sh tests/run_updates.sh
+sh tests/run_qml_suite.sh
+python3 tests/integration/test_updates.py --keep /path/to/new-fixture-directory
+python3 tests/integration/test_updates.py --reset /path/to/new-fixture-directory
+```
+
+The September 23 VM fixture is retained at
+`/home/mai/appcenter-update-fixtures/20260923`, reset to v1 and ready to retest.
+The regular app installation is not used by these mutation tests.
+
 App details includes **View App Permissions**, a read-only, scrollable dialog
 with grouped icons, explanations and a centered Close button. It fills the app
 window with a 32px outer margin, resizes with it, and keeps Close visible while

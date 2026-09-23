@@ -19,21 +19,25 @@ TestCase {
         tryVerify(function() { return list.itemAtIndex(0) !== null })
         verify(!findChild(list.itemAtIndex(0), "installedDateCaption").visible)
         verify(!findChild(list.itemAtIndex(0), "installedDateValue").visible)
+        compare(findChild(list.itemAtIndex(0), "installedUpdatedDateValue").text, "Not recorded")
         main.openApp(app); tryCompare(stack, "busy", false)
         verify(!findChild(stack.currentItem, "appInstalledDateCaption").visible)
         verify(!findChild(stack.currentItem, "appInstalledDateValue").visible)
-        main.installedApps = [Object.assign({}, app, {installedDate: "16 September 2026"})]
+        main.installedApps = [Object.assign({}, app, {installedDate: "16 September 2026", updatedDate: "23 September 2026"})]
         compare(findChild(stack.currentItem, "appInstalledDateValue").text, "16 September 2026")
         verify(findChild(stack.currentItem, "appInstalledDateCaption").visible)
         verify(findChild(stack.currentItem, "appInstalledDateValue").visible)
+        compare(findChild(stack.currentItem, "appUpdatedDateValue").text, "Last updated: 23 September 2026")
         main.showCatalog(); tryCompare(stack, "busy", false)
         tryVerify(function() { return list.itemAtIndex(0) !== null })
         const date = findChild(list.itemAtIndex(0), "installedDateValue")
         verify(date.visible && date.font.bold)
         compare(date.text, "16 September 2026")
+        compare(findChild(list.itemAtIndex(0), "installedUpdatedDateValue").text, "23 September 2026")
         const formerlyInstalled = main.installedApps[0]
         main.installedApps = []
         compare(main.detailsFor(formerlyInstalled).installedDate, undefined)
+        compare(main.detailsFor(formerlyInstalled).updatedDate, undefined)
         main.selectedCategory = "All Apps"
     }
     function test_installed_navigation_and_information() {

@@ -9,7 +9,12 @@ Dialog {
     property var app: ({})
     property var backend: null
     property int requestToken: 0
-    readonly property var permissionData: backend && backend.appPermissions || ({})
+    property bool changesView: false
+    property var changes: ({})
+    readonly property var permissionData: changesView ? ({state: "ready", groups: (changes.groups || []).map(function(group) {
+        return Object.assign({}, group, {details: (group.added || []).map(value => qsTr("Added: %1").arg(value))
+            .concat((group.removed || []).map(value => qsTr("Removed: %1").arg(value)))})
+    })}) : backend && backend.appPermissions || ({})
     readonly property bool loading: permissionData.state === "loading"
     readonly property bool ready: permissionData.state === "ready"
     readonly property var groups: ready ? permissionData.groups || [] : []
@@ -39,9 +44,9 @@ Dialog {
     Component.onDestruction: cancelRead()
     header: Label {
         objectName: "permissionsTitle"
-        text: qsTr("App Permissions - %1").arg("<b>" + dialog.escapedName() + "</b>")
+        text: (dialog.changesView ? qsTr("Permission Changes - %1") : qsTr("App Permissions - %1")).arg("<b>" + dialog.escapedName() + "</b>")
         textFormat: Text.StyledText; wrapMode: Text.WrapAnywhere
-        Accessible.name: qsTr("App Permissions - %1").arg(dialog.appName)
+        Accessible.name: (dialog.changesView ? qsTr("Permission Changes - %1") : qsTr("App Permissions - %1")).arg(dialog.appName)
         color: window.textColor; font.pixelSize: 23; font.weight: Font.Normal
         leftPadding: 20; rightPadding: 20; topPadding: 20; bottomPadding: 8
     }

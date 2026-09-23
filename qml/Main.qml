@@ -68,7 +68,8 @@ ApplicationWindow {
         // App/Installed progress also includes removals, which never belong
         // in Downloads or its badge. Cancellations are never status history.
         const matches = (backend ? backend.jobs : []).filter(function(job) {
-            return job.id === id && job.cancelled !== true
+            return String(job.id).replace(/\.desktop$/, "") === id && job.cancelled !== true
+                && (job.action !== "update" || !app.installation || (job.installation === app.installation && job.flatpakRef === app.installedRef))
         })
         return matches.length ? matches[matches.length - 1] : null
     }
@@ -84,7 +85,7 @@ ApplicationWindow {
         const installed = findInstalled(app)
         if (installed) return installed
         const clean = Object.assign({}, app)
-        for (const field of ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedRef", "installedBranch", "installedArch", "installedAt", "installedDate"])
+        for (const field of ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedRef", "installedBranch", "installedArch", "installedAt", "installedDate", "updatedAt", "updatedDate"])
             delete clean[field]
         return clean
     }
@@ -109,6 +110,9 @@ ApplicationWindow {
         if (backend && typeof backend.refreshSources === "function") backend.refreshSources()
     }
     function showAbout() { aboutDialog.open() }
+    function showUpdates() {
+        if (stack.currentItem.objectName !== "updatesPage") stack.push(updatesPage)
+    }
     function selectSource(source) {
         selectedApp = Object.assign({}, source, { sources: selectedApp.sources || [] })
         if (backend) backend.requestInstallInfo(selectedApp)
@@ -168,6 +172,7 @@ ApplicationWindow {
     Component { id: appPage; AppPage { app: window.detailsFor(window.selectedApp) } }
     Component { id: downloadsPage; DownloadsPage {} }
     Component { id: settingsPage; SettingsPage {} }
+    Component { id: updatesPage; UpdatesPage {} }
     Dialog {
         id: aboutDialog
         objectName: "aboutDialog"

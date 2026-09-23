@@ -53,7 +53,7 @@ Page {
         { name: "Other", label: qsTr("Other"), icon: "applications-other" }
     ]
     readonly property real categorySidebarWidth: Math.min(page.width * 0.46,
-                                                           categoryWidthForLabels([qsTr("Installed")].concat(categories.map(
+                                                           categoryWidthForLabels([qsTr("Installed"), qsTr("Updates")].concat(categories.map(
                                                                function(category) {
                                                                    return category.label
                                                                }))))
@@ -377,8 +377,8 @@ Page {
             readonly property real navigationGap: Math.min(4, availableHeight / 100)
             readonly property real sectionGap: Math.min(12, availableHeight / 40)
             readonly property real navigationRowHeight: Math.max(1, Math.min(52,
-                (availableHeight - navigationSeparator.height - sectionGap * 2
-                 - navigationGap * (page.categories.length - 1)) / (page.categories.length + 1)))
+                (availableHeight - navigationSeparator.height - sectionGap * 3
+                 - navigationGap * (page.categories.length - 1)) / (page.categories.length + 2)))
             readonly property int navigationFontSize: Math.max(1, Math.floor(Math.min(16, navigationRowHeight * 0.52)))
             readonly property int navigationIconSize: Math.max(1, Math.floor(Math.min(24, navigationRowHeight * 0.7)))
             readonly property real navigationPadding: Math.min(16, navigationRowHeight / 3)
@@ -458,6 +458,24 @@ Page {
                                    ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, 0.14)
                                    : "transparent"
                             border.color: page.installedView ? window.accentColor : "transparent"
+                        }
+                    }
+                    FluffToolButton {
+                        objectName: "updatesButton"
+                        width: parent.width; height: sidebar.navigationRowHeight
+                        text: qsTr("Updates"); icon.name: "system-software-update"
+                        icon.width: sidebar.navigationIconSize; icon.height: sidebar.navigationIconSize
+                        font.pixelSize: sidebar.navigationFontSize
+                        leftPadding: sidebar.navigationPadding; rightPadding: sidebar.navigationPadding
+                        topPadding: 0; bottomPadding: 0; spacing: sidebar.navigationSpacing
+                        onClicked: window.showUpdates()
+                        contentItem: RowLayout {
+                            spacing: sidebar.navigationSpacing
+                            Image {
+                                Layout.preferredWidth: sidebar.navigationIconSize; Layout.preferredHeight: sidebar.navigationIconSize
+                                source: window.iconSource("system-software-update"); fillMode: Image.PreserveAspectFit
+                            }
+                            Label { text: qsTr("Updates"); color: window.textColor; font.pixelSize: sidebar.navigationFontSize; Layout.fillWidth: true; fontSizeMode: Text.Fit; minimumPixelSize: 1 }
                         }
                     }
                     FluffSeparator {

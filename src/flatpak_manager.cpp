@@ -3,6 +3,8 @@
 #include "transaction_progress.h"
 #include "flatpak_sizes.h"
 #include "flatpak_permissions.h"
+#include "update_plan.h"
+#include <algorithm>
 #include <QCoreApplication>
 #include <QDBusConnection>
 #include <QDBusMessage>
@@ -28,6 +30,60 @@ bool active(const QVariantMap &job) { return job.value("active").toBool(); }
 
 FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : QObject(parent) {
     m_catalog = catalog;
+    connect(this, &FlatpakManager::installedChanged, this, &FlatpakManager::updatesChanged);
+    m_updatesTimeout.setSingleShot(true);
+    m_updatesTimeout.setParent(this); m_updatesTimeout.setObjectName("updateCheckTimeout");
+    connect(&m_updatesTimeout, &QTimer::timeout, this, [this] {
+        m_updatesState = "error"; m_updatesError = tr("Checking for updates timed out. Try again.");
+        m_updatesProcess.kill(); emit updatesChanged();
+    });
+    connect(&m_updatesProcess, &QProcess::readyReadStandardOutput, this, [this] {
+        m_updatesBuffer += m_updatesProcess.readAllStandardOutput();
+        if (m_updatesBuffer.size() > 16 * 1024 * 1024) {
+            m_updatesState = "error"; m_updatesError = tr("The update response was too large.");
+            m_updatesProcess.kill(); emit updatesChanged(); return;
+        }
+        while (m_updatesBuffer.contains('\n')) {
+            const auto end = m_updatesBuffer.indexOf('\n');
+            const auto message = QJsonDocument::fromJson(m_updatesBuffer.left(end)).object();
+            m_updatesBuffer.remove(0, end + 1);
+            if (m_updatesState != "checking") continue;
+            if (message["type"] == "status") m_updatesStatus = message["message"].toString();
+            if (message["type"] == "updates") {
+                m_updatesResult = true;
+                m_updates = message["updates"].toArray().toVariantList();
+                for (auto &value : m_updates) {
+                    auto row = value.toMap();
+                    row["icon"] = metadata(row.value("id").toString()).value("icon");
+                    row["selected"] = true; value = row;
+                }
+                std::sort(m_updates.begin(), m_updates.end(), [](const QVariant &a, const QVariant &b) {
+                    const auto left = a.toMap(), right = b.toMap();
+                    if (left.value("runtime") != right.value("runtime")) return !left.value("runtime").toBool();
+                    return QString::localeAwareCompare(left.value("name").toString(), right.value("name").toString()) < 0;
+                });
+                QStringList errors;
+                for (const auto &error : message["errors"].toArray()) errors.append(error.toString());
+                m_updatesError = errors.join('\n');
+                m_lastChecked = message["checkedAt"].toString();
+            }
+            emit updatesChanged();
+        }
+    });
+    connect(&m_updatesProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+        [this](int code, QProcess::ExitStatus status) {
+            m_updatesTimeout.stop();
+            if (m_updatesState == "checking") {
+                m_updatesState = m_updatesResult && !code && status == QProcess::NormalExit ? "ready" : "error";
+                if (m_updatesState == "error") { m_updates.clear(); m_updatesError = tr("Could not finish checking for updates. Try again."); }
+            }
+            emit updatesChanged(); emit jobsChanged();
+        });
+    connect(&m_updatesProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
+        if (error != QProcess::FailedToStart) return;
+        m_updatesTimeout.stop(); m_updatesState = "error";
+        m_updatesError = tr("Could not start checking for updates."); emit updatesChanged(); emit jobsChanged();
+    });
     connect(&m_sourceProcess, &QProcess::readyReadStandardOutput, this, [this] {
         m_sourceBuffer += m_sourceProcess.readAllStandardOutput();
         while (m_sourceBuffer.contains('\n')) {
@@ -114,6 +170,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
             } else {
                 QVariantList apps;
                 m_installHistory.reload();
+                m_updateHistory.reload();
                 for (const auto &line : QString::fromUtf8(m_installedProcess.readAllStandardOutput()).split('\n', Qt::SkipEmptyParts)) {
                     const auto c = line.split('\t');
                     if (c.size() != 9) { m_installedError = tr("Flatpak returned an unexpected installed-app list."); break; }
@@ -134,6 +191,11 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                     if (!date.isEmpty()) {
                         app["installedAt"] = date;
                         app["installedDate"] = InstallHistory::displayDate(date);
+                    }
+                    const auto updated = m_updateHistory.date(c[4].trimmed(), ref);
+                    if (!updated.isEmpty()) {
+                        app["updatedAt"] = updated;
+                        app["updatedDate"] = InstallHistory::displayDate(updated);
                     }
                     apps.append(app);
                 }
@@ -255,7 +317,7 @@ FlatpakManager::~FlatpakManager() {
             worker->process.waitForFinished(1000);
         }
     }
-    for (auto process : {&m_installedProcess, &m_cache, &m_sourceProcess, &m_catalogProcess}) {
+    for (auto process : {&m_installedProcess, &m_cache, &m_sourceProcess, &m_catalogProcess, &m_updatesProcess}) {
         if (process->state() != QProcess::NotRunning) { process->kill(); process->waitForFinished(1000); }
     }
 }
@@ -409,7 +471,53 @@ int FlatpakManager::requestAppPermissions(QVariantMap app) {
 bool FlatpakManager::busy() const {
     for (const auto &job : m_jobs) if (active(job.toMap())) return true;
     return m_installWorker.process.state() != QProcess::NotRunning
-        || m_removalWorker.process.state() != QProcess::NotRunning || sourcesBusy() || m_refreshingCaches;
+        || m_removalWorker.process.state() != QProcess::NotRunning || sourcesBusy() || m_refreshingCaches
+        || m_updatesProcess.state() != QProcess::NotRunning;
+}
+QVariantMap FlatpakManager::updates() const {
+    QString last;
+    for (const auto &value : m_installed) {
+        const auto date = value.toMap().value("updatedAt").toString();
+        if (date > last) last = date;
+    }
+    return {{"state", m_updatesState}, {"items", m_updates}, {"status", m_updatesStatus},
+        {"error", m_updatesError}, {"lastChecked", InstallHistory::displayDate(m_lastChecked)},
+        {"lastUpdated", InstallHistory::displayDate(last)}};
+}
+void FlatpakManager::checkForUpdates() {
+    if (busy()) return;
+    m_updates.clear(); m_updatesBuffer.clear(); m_updatesError.clear(); m_updatesResult = false;
+    m_updatesState = "checking"; m_updatesStatus = tr("Checking for updates…");
+    m_updatesProcess.start(QCoreApplication::applicationFilePath(), {"--updates-worker", "{}"});
+    m_updatesProcess.closeWriteChannel(); m_updatesTimeout.start(180000);
+    emit updatesChanged(); emit jobsChanged();
+}
+void FlatpakManager::cancelUpdateCheck() {
+    if (m_updatesState != "checking") return;
+    m_updatesState = "cancelled"; m_updatesTimeout.stop(); m_updates.clear();
+    m_updatesProcess.kill(); emit updatesChanged();
+}
+void FlatpakManager::selectUpdate(QString key, bool selected) {
+    if (m_updatesState != "ready" || busy()) return;
+    for (auto &value : m_updates) {
+        auto row = value.toMap(); if (row.value("key") != key) continue;
+        row["selected"] = selected; value = row;
+    }
+    emit updatesChanged();
+}
+void FlatpakManager::selectAllUpdates(bool selected) {
+    if (m_updatesState != "ready" || busy()) return;
+    for (auto &value : m_updates) { auto row = value.toMap(); row["selected"] = selected; value = row; }
+    emit updatesChanged();
+}
+void FlatpakManager::installSelectedUpdates() {
+    if (m_updatesState != "ready" || busy()) return;
+    // Resolve selections from this successful scan; QML cannot supply refs,
+    // versions, sources, or an unreviewed transaction plan.
+    for (const auto &value : m_updates) {
+        auto request = value.toMap(); if (!request.value("selected").toBool()) continue;
+        request["action"] = "update"; enqueue(request);
+    }
 }
 QString FlatpakManager::sourceInputStatus() const {
     // File/link inspection is deliberately hidden from Queue. Publish its
@@ -438,10 +546,12 @@ void FlatpakManager::patchJob(int index, const QVariantMap &values) {
 }
 void FlatpakManager::enqueue(QVariantMap request) {
     const auto id = normalizedId(request.value("id").toString());
-    request["id"] = id;
+    if (request.value("action") != "update") request["id"] = id;
     for (const auto &entry : m_jobs) {
         const auto job = entry.toMap();
-        if (active(job) && ((!id.isEmpty() && job.value("id") == id)
+        if (active(job) && ((!id.isEmpty() && normalizedId(job.value("id").toString()) == id
+                && (request.value("action") != "update" || job.value("action") != "update"
+                    || job.value("key") == request.value("key")))
             || (id.isEmpty() && job.value("source") == request.value("source")))) return;
     }
     request["active"] = true; request["failed"] = false; request["progress"] = 0; request["queued"] = true;
@@ -556,8 +666,12 @@ void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &messa
     if (worker.current < 0) return;
     const auto type = message["type"].toString();
     // Buffered progress/reviews must never resurrect a cancelled job.
-    if (m_jobs[worker.current].toMap().value("cancelling").toBool() && type != "result") return;
-    if (type == "review") {
+    if (m_jobs[worker.current].toMap().value("cancelling").toBool() && type != "result" && type != "updated") return;
+    if (type == "updated") {
+        m_updateHistory.reload();
+        if (!message["historySaved"].toBool()) emit inputError(tr("The app updated, but its last-update date could not be saved."));
+        refreshInstalled();
+    } else if (type == "review") {
         QVariantMap values{{"status", tr("Waiting for confirmation")}};
         const auto operations = message["operations"].toArray().toVariantList();
         // Source-trust prompts can have no operation list. Preserve any plan
@@ -641,8 +755,10 @@ void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &messa
                 const auto op = entry.toMap();
                 const auto ref = op.value("ref").toString();
                 if (!ref.startsWith("app/")) continue;
-                if (job.value("action") == "uninstall")
+                if (job.value("action") == "uninstall") {
                     m_installHistory.removed(job.value("installation").toString(), ref);
+                    m_updateHistory.removed(job.value("installation").toString(), ref);
+                }
                 else if (op.value("action") == "install" || op.value("action") == "install-bundle")
                     m_installHistory.installed("user", ref);
             }
@@ -652,6 +768,12 @@ void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &messa
         // installRequest creates a visible job only when installation starts.
         if (preparation && !ok && !cancelled) emit inputError(message["error"].toString());
         const bool removing = m_jobs[worker.current].toMap().value("action") == "uninstall";
+        if (ok && m_jobs[worker.current].toMap().value("action") == "update") {
+            const auto key = m_requests[worker.current].toMap().value("key");
+            for (qsizetype i = m_updates.size(); i-- > 0;)
+                if (m_updates[i].toMap().value("key") == key) m_updates.removeAt(i);
+            emit updatesChanged();
+        }
         if (ok && removing) {
             const auto removed = m_jobs[worker.current].toMap();
             const auto removedId = normalizedId(removed.value("id").toString());
@@ -735,6 +857,7 @@ void FlatpakManager::cancelJob(int index) {
     clearReviewsForJob(index);
 }
 void FlatpakManager::cancelAll() {
+    cancelUpdateCheck();
     m_pendingInputs.clear();
     for (int i = 0; i < m_jobs.size(); ++i) cancelJob(i);
     if (sourcesBusy()) { m_sourceProcess.write("{\"cancel\":true}\n"); m_sourceProcess.closeWriteChannel(); }
