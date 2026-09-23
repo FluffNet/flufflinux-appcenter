@@ -6,9 +6,9 @@ Page {
     id: page
     objectName: "updatesPage"
     focusPolicy: Qt.ClickFocus
-    readonly property var data: window.backend && window.backend.updates || ({state: "idle", items: []})
-    readonly property var rows: data.items || []
-    readonly property bool checking: data.state === "checking"
+    readonly property var updateData: window.backend && window.backend.updates || ({state: "idle", items: []})
+    readonly property var rows: updateData.items || []
+    readonly property bool checking: updateData.state === "checking"
     readonly property bool busy: !!window.backend && window.backend.busy
     readonly property var selected: rows.filter(row => row.selected)
     readonly property real selectedBytes: {
@@ -68,24 +68,24 @@ Page {
         Label {
             objectName: "updateDates"
             Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
-            text: (page.data.lastChecked ? qsTr("Last checked: %1").arg(page.data.lastChecked) : qsTr("Updates are checked only when you press Check for Updates."))
-                + (page.data.lastUpdated ? "\n" + qsTr("Last app update: %1").arg(page.data.lastUpdated) : "")
+            text: (page.updateData.lastChecked ? qsTr("Last checked: %1").arg(page.updateData.lastChecked) : qsTr("Updates are checked only when you press Check for Updates."))
+                + (page.updateData.lastUpdated ? "\n" + qsTr("Last app update: %1").arg(page.updateData.lastUpdated) : "")
         }
         RowLayout {
             visible: page.checking; Layout.fillWidth: true
             LoadingSpinner { running: page.checking; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
-            Label { text: page.data.status || qsTr("Checking for updates…"); textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.mutedTextColor; Layout.fillWidth: true }
+            Label { text: page.updateData.status || qsTr("Checking for updates…"); textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.mutedTextColor; Layout.fillWidth: true }
         }
         Label {
-            objectName: "updatesError"; visible: !!page.data.error
+            objectName: "updatesError"; visible: !!page.updateData.error
             Layout.fillWidth: true; Layout.maximumHeight: 100
-            text: page.data.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap; elide: Text.ElideRight; color: window.accentColor
+            text: page.updateData.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap; elide: Text.ElideRight; color: window.accentColor
         }
         RowLayout {
             visible: page.rows.length > 0; Layout.fillWidth: true
             UpdateCheckBox {
                 objectName: "selectAllUpdates"
-                text: qsTr("Select All"); enabled: !page.busy && page.data.state === "ready"
+                text: qsTr("Select All"); enabled: !page.busy && page.updateData.state === "ready"
                 checkState: page.selected.length === page.rows.length ? Qt.Checked : page.selected.length ? Qt.PartiallyChecked : Qt.Unchecked
                 nextCheckState: function() { return checkState === Qt.Checked ? Qt.Unchecked : Qt.Checked }
                 onClicked: window.backend.selectAllUpdates(checkState === Qt.Checked)
@@ -97,7 +97,7 @@ Page {
             FluffButton {
                 objectName: "installUpdatesButton"
                 text: qsTr("Update Selected"); icon.name: "system-software-update"
-                enabled: page.selected.length > 0 && !page.busy && page.data.state === "ready"
+                enabled: page.selected.length > 0 && !page.busy && page.updateData.state === "ready"
                 onClicked: window.backend.installSelectedUpdates()
             }
         }
@@ -129,7 +129,7 @@ Page {
                         spacing: 16
                         UpdateCheckBox {
                             objectName: "selectUpdate-" + modelData.key
-                            checked: modelData.selected; enabled: !page.busy && page.data.state === "ready"
+                            checked: modelData.selected; enabled: !page.busy && page.updateData.state === "ready"
                             Accessible.name: qsTr("Update %1").arg(modelData.name)
                             onClicked: window.backend.selectUpdate(modelData.key, checked)
                         }
@@ -162,9 +162,9 @@ Page {
                 objectName: "updatesEmpty"
                 anchors.centerIn: parent; width: parent.width; horizontalAlignment: Text.AlignHCenter
                 visible: page.rows.length === 0 && !page.checking
-                text: page.data.state === "ready" && !page.data.error ? qsTr("Everything is up to date.")
-                    : page.data.state === "cancelled" ? qsTr("Update check cancelled.")
-                    : page.data.error ? qsTr("Could not check all updates. Please try again.") : qsTr("Press Check for Updates to see available updates.")
+                text: page.updateData.state === "ready" && !page.updateData.error ? qsTr("Everything is up to date.")
+                    : page.updateData.state === "cancelled" ? qsTr("Update check cancelled.")
+                    : page.updateData.error ? qsTr("Could not check all updates. Please try again.") : qsTr("Press Check for Updates to see available updates.")
                 color: window.mutedTextColor; wrapMode: Text.Wrap
             }
         }
