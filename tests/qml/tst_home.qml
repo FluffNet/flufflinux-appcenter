@@ -62,6 +62,22 @@ TestCase {
         compare(page().sortDescription, "")
         verify(!findChild(page(), "catalogSortDescription").visible)
     }
+    function test_popularity_labels() {
+        for (const category of ["All Apps", "Utilities"]) {
+            page().openCategory(category)
+            waitForPolish(page()); wait(30)
+            const sort = findChild(page(), "catalogSort")
+            for (const choice of [{index:2, label:"Most popular: First", key:"popularity-desc"},
+                                  {index:3, label:"Least popular: First", key:"popularity-asc"}]) {
+                page().setCatalogSort(choice.index)
+                compare(page().catalogSortOptions[choice.index], choice.label)
+                tryCompare(sort, "currentText", choice.label)
+                compare(page().catalogSortKeys[choice.index], choice.key, "Saved sort keys stay compatible")
+                if (category === "All Apps") compare(preferences.homeSort, choice.key)
+                else compare(preferences.homeSort, "popularity-asc", "Category changes remain temporary")
+            }
+        }
+    }
     function test_app_counts_removed_data() {
         return [{tag:"home", category:"All Apps", search:"", title:"All Apps"},
             {tag:"category", category:"Utilities", search:"", title:"Utilities"},

@@ -22,7 +22,7 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   left edges, in a compact text group beside the icon; there is no separate footer.
   All ten real publisher names fit without elision while preserving app names
   and All Apps, including Microsoft Corporation and VinegarHQ & Sober contributors.
-- Focused Home suite: 27 passed at both 100% and 150% scaling. Covers all six
+- Focused Home suite: 28 passed at both 100% and 150% scaling. Covers all six
   orders, real zero versus unknown values, unavailable popularity, independent
   alphabetical recommendations, stable source identity, clicking recommendations,
   no app counts on Home, categories, search or Installed, preserving All Apps
@@ -50,6 +50,10 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   bounds. Zoom opens its own app details, is omitted from both Home popularity
   orders while shown in Common Apps, and remains in name/date/category/search
   results. No app installation or source change is triggered by its inclusion.
+- Popularity label refinement: Home and category menus show “Most popular: First”
+  and “Least popular: First”. The saved `popularity-desc`/`popularity-asc` keys,
+  sort directions and temporary category choices are unchanged. Home 28 and
+  category sorting 75 passed at each of 100% and 150% scale (206 checks total).
 - Native CatalogStats tests passed: count validation, pagination consistency,
   oversized/malformed data rejection, cache loading, no request merely from
   constructing the data object. Home requests popularity presentation data on

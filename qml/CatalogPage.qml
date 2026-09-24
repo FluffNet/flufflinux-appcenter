@@ -23,7 +23,7 @@ Page {
         "release-desc", "release-asc"]
     readonly property var catalogSortOptions: [
         qsTr("Name: A–Z"), qsTr("Name: Z–A"),
-        qsTr("Popularity: Most first"), qsTr("Popularity: Least first"),
+        qsTr("Most popular: First"), qsTr("Least popular: First"),
         qsTr("Released: Newest first"), qsTr("Released: Oldest first")
     ]
     readonly property var popularityCounts: window.catalogStats ? window.catalogStats.counts : ({})
