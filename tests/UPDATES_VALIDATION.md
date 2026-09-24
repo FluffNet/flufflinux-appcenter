@@ -42,19 +42,19 @@ Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
   reference errors. Settings checksum unchanged. Regular installed refs/commits
   were compared before/after metadata-only checking and remained identical.
 
-The normal user/system scan found runtime updates, not app updates. Real system
+The initial user/system scan found runtime updates, not app updates. Real system
 deployment/Polkit interaction was not exercised; system/named update routing is
 covered by simulations. No regular app or runtime was updated by these tests.
 The final per-source scan reports Firefox/Flatpak Builder as skipped when their
 system Flathub source cannot be restored, rather than silently calling them current.
-No source was added, removed or reconfigured in the regular installations.
+No source was added, removed or reconfigured during those initial tests.
 
 The opt-in real-desktop recovery test reached KDE's configure-remote authorization,
 then safely timed out because authentication was not completed in the VM. Both
 attempts preserved the missing source, skipped the system apps and retained only
 healthy user-source candidates. A successful privileged restoration remains to
-be verified after administrator authorization; the source-recovery build has not
-yet replaced the installed build. The ordinary apps' commits and settings hash
+be verified after administrator authorization; at that point the source-recovery
+build had not replaced the installed build. The ordinary apps' commits and settings hash
 were unchanged.
 
 Read-only authorization checks against the running desktop App Center process:
@@ -63,6 +63,37 @@ Read-only authorization checks against the running desktop App Center process:
 The installed policy allows signed app updates in an active desktop session, but
 source configuration requires administrator authentication. SSH/inactive sessions
 are different. No authorization rules were changed.
+
+## Authorized deployment and source restoration — 2026-09-24
+
+- After explicit approval to use the saved VM login and administrator credentials,
+  installed the tested `c1e0e89` binary and matching Updates page. The previous
+  binary/page were preserved at `/tmp/appcenter-before-source-fix.TMRKSE` on the VM.
+  Live binary SHA-256:
+  `69f5c8b43ae741c763c2ab0b40797e292315ee7d610f5c5d00ce0fa421ddf5d3`.
+- Restored system Flathub using its official `.flatpakrepo` definition with normal
+  administrator authorization. This was a one-time command-line restoration;
+  successful completion of the GUI Polkit recovery remains untested. Earlier
+  GUI attempts did reach authentication and handle its timeout safely.
+- Installed-binary, real-desktop `SystemSourceSmoke.qml` check passed:
+  `state: ready`, `error: ""`, `skipped: []`. User and system Flathub appeared in
+  one merged source row, with user-only Flathub Beta remaining separate. The
+  missing-source message was absent. The scan offered the system Firefox update,
+  its locale component, and user GNOME runtime/locale updates.
+- Corrected the smoke harness to request the source list explicitly when no
+  restoration is needed, and emit an explicit pass/fail marker in addition to
+  the QML exit request. An empty, not-yet-loaded source list is not evidence of
+  a grouping failure, and process exit status alone is not the test assertion.
+  Successful verification invocation: `575d33ae5d9b4fb28e50ab804515b138`.
+- Rechecked `org.freedesktop.Flatpak.app-update` authorization against the newly
+  running desktop App Center process: exit 0 without interaction. Existing signed
+  system app updates are authorized without a password in the active desktop
+  session; adding a system source is a separate administrator-authorized action.
+  No Polkit rules were altered, and no system app deployment was needed to check
+  that authorization.
+- No regular apps or runtimes were updated. AnyDesk, Steam, Firefox and Flatpak
+  Builder commits were unchanged, as was the App Center settings checksum.
+  The live App Center service was restarted successfully.
 
 Preserved test releases: `/home/mai/appcenter-update-fixtures/20260923` on the VM.
 Both generations of each app/runtime are also backed up as `.flatpak` bundles.
