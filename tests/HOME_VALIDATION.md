@@ -2,7 +2,7 @@
 
 Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
 
-- Rust: 12 tests passed; optimized Linux build passed.
+- Rust: 16 tests passed; optimized Linux build passed.
 - Baseline QML regression before the spacing refinement: 530 passed across 20 suites, including the final seven-test
   style rerun after making heading glyph rendering explicit. No failures remain.
   The search/sidebar regression now expects A–Z when opening a category instead
@@ -55,9 +55,22 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
 - Native manager regression passed: update checks remain explicit, selection,
   scope handling, cancellation, timeout/crash/malformed worker output, partial
   errors and duplicate prevention.
-- Read-only real catalog test passed: exact exclusions hide an uninstalled app
-  while preserving all catalog apps installed in the user/system installations;
-  missing config uses bundled defaults; cached download sizes/release dates exist.
+- ID exclusions: unit tests cover case-insensitive exact IDs, `.desktop` aliases,
+  a trailing `*` matching the ID and all IDs beginning with it, invalid-pattern
+  rejection, no substring/name matching, differing AppStream/Flatpak bundle IDs,
+  and the installed exception retaining the actual Flatpak ID spelling.
+  Read-only real catalog tests passed for exact and prefix rules, preserving all
+  catalog apps installed in user/system installations. File and bundled defaults
+  agree, including ten currently available excluded IDs: Mission Center, Ark,
+  Dolphin, Gwenview, Kate, Konsole, KWrite, LibreOffice, Thunderbird and VLC.
+  Thunderbird's lowercase catalog ID matches the mixed-case config entry. Wine
+  and Fightcade's Wine component are absent from the current catalog; their ID
+  rules are covered by unit tests. Missing config uses bundled defaults; cached
+  download sizes/release dates remain available.
+  The installed `/usr/bin/flufflinux-appcenter` passed the same checks, including
+  an explicit comparison against the active `/etc/flufflinux-appcenter/exclusions.conf`.
+  Native Home smoke checks passed with the full list enabled; regular Flatpak
+  versions were unchanged after deployment and App Center restarted successfully.
 - Packaging test passed entirely in temporary directories: defaults, edited host
   exclusions inherited by fakeroot, explicit defaults-only override, preservation
   of administrator edits during a non-staged reinstall.

@@ -60,9 +60,8 @@ pub fn load_catalog() -> Vec<App> {
                 continue;
             }
             if let Some(mut app) = parse_component(component, &path) {
-                let id = app.id.strip_suffix(".desktop").unwrap_or(&app.id);
-                if exclusions.contains(id) && !CString::new(id).ok()
-                    .is_some_and(|id| unsafe { fluff_catalog_app_installed(id.as_ptr()) }) { continue; }
+                if exclusions.should_hide(&app.id, &app.flatpak_ref, |id| CString::new(id).ok()
+                    .is_some_and(|id| unsafe { fluff_catalog_app_installed(id.as_ptr()) })) { continue; }
                 app.remote = remote.clone();
                 app.source_url = url.clone();
                 if let (Ok(remote), Ok(url), Ok(reference)) = (CString::new(remote.as_str()),

@@ -20,7 +20,7 @@ with tempfile.TemporaryDirectory(prefix="appcenter-exclusions-packaging-") as di
     install(stage)
     assert staged.read_bytes() == defaults
     local.parent.mkdir(parents=True)
-    local.write_text("# Custom distro choices\norg.example.Custom\n")
+    local.write_text("# Custom distro choices\norg.example.Custom\nORG.WINEHQ.WINE*\nOrg.KDE.Kate.Desktop\n")
     install(stage)
     assert staged.read_bytes() == local.read_bytes(), "fakeroot must inherit host exclusions"
     install(stage, "EXCLUSIONS_FILE=data/exclusions.conf")

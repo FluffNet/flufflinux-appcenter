@@ -59,10 +59,15 @@ page explicitly falls back to A–Z. Download sizes and release dates come from
 local Flatpak/AppStream metadata, not per-app network queries. Download sizes
 exclude shared runtimes. None of these actions checks for app updates.
 
-Edit **`/etc/flufflinux-appcenter/exclusions.conf`**, one exact Flatpak/AppStream ID
-per line. Blank lines and `#` comments are supported; wildcards are not. The
-defaults hide `org.videolan.VLC` and `org.libreoffice.LibreOffice`, since Fluff
-Linux supplies them as system packages. **An installed Flatpak copy is never
+Edit **`/etc/flufflinux-appcenter/exclusions.conf`**, one Flatpak/AppStream ID
+per line. Matching is case-insensitive; a trailing `.desktop` is optional.
+Blank lines and `#` comments are supported. End an ID with `*` to exclude that
+ID and every ID beginning with it: `org.winehq.Wine*` matches Wine and its related
+IDs. Other wildcard positions and bare `*` are ignored. Matching uses the actual
+Flatpak bundle ID and AppStream ID, never the displayed name or publisher.
+The bundled list includes Wine, Fightcade's Wine component, Dolphin, Konsole,
+VLC, Thunderbird, Kate, KWrite, Mission Center, Ark, Gwenview and LibreOffice.
+**An installed Flatpak copy is never
 hidden**: it remains visible/manageable and can receive updates. Otherwise the
 exclusion removes it from Home, categories, search and recommendations. This is
 a catalog presentation rule, not a security policy blocking direct file installs.
