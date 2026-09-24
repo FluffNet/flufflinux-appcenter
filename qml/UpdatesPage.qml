@@ -68,7 +68,12 @@ Page {
         RowLayout {
             visible: page.checking; Layout.fillWidth: true
             LoadingSpinner { running: page.checking; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
-            Label { text: page.updateData.status || qsTr("Checking for updates…"); textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.mutedTextColor; Layout.fillWidth: true }
+            Label {
+                objectName: "updateCheckStatus"
+                text: qsTr("Checking for app updates…")
+                textFormat: Text.PlainText; wrapMode: Text.Wrap
+                color: window.mutedTextColor; Layout.fillWidth: true
+            }
         }
         Label {
             objectName: "updatesError"; visible: !!page.updateData.error

@@ -59,6 +59,23 @@ TestCase {
         mouseClick(findChild(page(), "cancelUpdateCheckButton"))
         verify(findChild(page(), "updatesEmpty").text.indexOf("cancelled") >= 0)
     }
+    function test_single_checking_message_for_all_sources() {
+        open()
+        const label = findChild(page(), "updateCheckStatus")
+        verify(!label.visible)
+        mouseClick(findChild(page(), "checkForUpdatesButton"))
+        for (const status of ["", "Checking user updates…", "Checking system updates…",
+                "Checking extra updates…", "Checking flathub-beta system updates…",
+                "Adding flathub for existing system apps… Authorization may be required."]) {
+            backend.updates = {state:"checking", items:[], status:status}
+            verify(label.visible)
+            compare(label.text, "Checking for app updates…")
+        }
+        mouseClick(findChild(page(), "cancelUpdateCheckButton"))
+        verify(!label.visible)
+        ready()
+        verify(!label.visible)
+    }
     function test_main_navigation_and_disabled_search() {
         const search = findChild(root(), "searchField")
         const sidebar = findChild(root(), "categorySidebar")
