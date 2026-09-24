@@ -2,6 +2,7 @@
 #include <QGuiApplication>
 #include <QTemporaryDir>
 #include <QFileInfo>
+#include <QFile>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <cassert>
@@ -71,7 +72,19 @@ int main(int argc, char **argv) {
             assert(page->property("installedSortIndex").toInt() == 0);
             assert(page->setProperty("catalogSortIndex", 5));
             assert(preferences.homeSort() == "release-asc");
+            QFile configBefore(path);
+            assert(configBefore.open(QIODevice::ReadOnly));
+            const auto savedBytes = configBefore.readAll();
+            assert(engine.rootObjects().first()->setProperty("selectedCategory", "Utilities"));
+            assert(page->property("categorySortIndex").toInt() == 0);
+            assert(page->setProperty("categorySortIndex", 3));
+            QFile configAfter(path);
+            assert(configAfter.open(QIODevice::ReadOnly));
+            assert(configAfter.readAll() == savedBytes); // Category changes never touch the INI.
+            assert(preferences.homeSort() == "release-asc");
+            assert(engine.rootObjects().first()->setProperty("selectedCategory", "Games"));
+            assert(page->property("categorySortIndex").toInt() == 0);
         }
     }
-    std::cout << "PASS: popularity default, six saved sort orders, legacy size/invalid fallback in real QML, unrelated keys, fixture isolation, restore/save/restart\n";
+    std::cout << "PASS: popularity default, six saved sort orders, legacy size/invalid fallback in real QML, unrelated keys, fixture isolation, restore/save/restart, category changes leave config untouched\n";
 }

@@ -19,10 +19,12 @@ alphabetical. Only apps available from
 the configured official stable Flathub catalog are shown; recommendations never
 add a source or install an app.
 
-The sorting control affects **All Apps on Home only**. It defaults to most popular
-and supports A–Z/Z–A, most/least popular, and
-newest/oldest published release. Recommendations, category navigation, search
-relevance and Installed sorting are independent. Unknown values go last in both
+The sorting control is available on **Home and every catalog category**, with
+A–Z/Z–A, most/least popular, and newest/oldest published release. Home defaults to
+most popular. Each category starts at A–Z; its temporary choice resets when switching
+categories and is never written to the config. Returning from app details resumes
+the current category visit. Recommendations, search relevance and Installed sorting
+are independent. Unknown values go last in both
 directions; real zero install counts remain valid. Both popularity orders omit
 apps currently shown in Recommended Apps, including when popularity is offline.
 Name/date sorts, categories and search still include those apps. Catalog cards
@@ -37,7 +39,7 @@ Window settings and unrelated config entries are preserved. The steady-state
 popularity explanation is omitted; loading/offline status remains available.
 
 Popularity uses Flathub's public `installs_last_month` count (last 30 days), loaded
-when Home is shown with a popularity sort and cached for 24 hours. No installed-app
+when Home or a category is shown with a popularity sort and cached for 24 hours. No installed-app
 list is sent. Failed requests retain saved statistics; without saved data, the
 page explicitly falls back to A–Z. Download sizes and release dates come from
 local Flatpak/AppStream metadata, not per-app network queries. Download sizes

@@ -70,7 +70,37 @@ AppCenter.Main {
                 main.check(grid.headerItem.height < grid.height - 32, "All Apps and its list visible on narrow Home")
                 main.capture(stack, "narrow", 8)
             }
-            else if (main.stage === 8) { console.log("HOME_PASS"); Qt.quit() }
+            else if (main.stage === 8) {
+                main.width = 1180; main.height = 760
+                page.openCategory("Internet"); main.stage = 9
+            } else if (main.stage === 9) {
+                const sort = probe.findChild(page, "catalogSort")
+                main.check(sort.visible && sort.currentIndex === 0, "category defaults to A–Z")
+                const count = main.catalog.filter(app => app.category === "Internet").length
+                for (let order = 0; order < page.catalogSortOptions.length; ++order) {
+                    page.setCatalogSort(order)
+                    main.check(page.visibleApps.length === count, "categories retain recommendations in every order")
+                    for (let i = 1; i < count; ++i)
+                        main.check(page.compareCatalog(page.visibleApps[i-1], page.visibleApps[i], order, page.popularityCounts) <= 0, "native category order " + order)
+                }
+                main.check(page.catalogSortIndex === 2 && main.catalogPreferences.homeSort === "popularity-desc", "categories leave saved Home order unchanged")
+                page.setCatalogSort(2); main.stage = 10
+            } else if (main.stage === 10) main.capture(stack, "category", 11)
+            else if (main.stage === 11) { main.width = 720; main.height = 520; main.stage = 12 }
+            else if (main.stage === 12) {
+                const sort = probe.findChild(page, "catalogSort")
+                main.check(sort.visible && sort.mapToItem(page, sort.width, 0).x < page.width, "narrow category sort fits")
+                main.check(grid.height >= 100, "narrow category keeps room for apps")
+                main.capture(stack, "category-narrow", 13)
+            } else if (main.stage === 13) {
+                page.openCategory("Games")
+                main.check(page.categorySortIndex === 0, "switching category resets temporary order")
+                page.openCategory("Internet")
+                main.check(page.categorySortIndex === 0, "returning category stays A–Z")
+                page.openCategory("All Apps")
+                main.check(page.catalogSortIndex === 2, "Home keeps its preference")
+                console.log("HOME_PASS", "including category sorting"); Qt.quit()
+            }
         }
     }
     Timer { interval: 180000; running: true; onTriggered: { console.error("HOME_TIMEOUT"); Qt.exit(3) } }

@@ -12,7 +12,11 @@ Page {
     readonly property bool installedView: window.selectedCategory === "Installed"
     readonly property bool updatesView: window.selectedCategory === "Updates"
     readonly property bool homeView: window.selectedCategory === "All Apps" && !window.searchText
+    readonly property bool catalogView: !installedView && !updatesView && !window.searchText
     property int catalogSortIndex: 2
+    // Category choices are temporary and never written to Home's preference.
+    property int categorySortIndex: 0
+    readonly property int activeCatalogSortIndex: homeView ? catalogSortIndex : categorySortIndex
     property bool sortControlsReady: false
     property bool revealOnPopularityUpdate: false
     readonly property var catalogSortKeys: ["name-asc", "name-desc", "popularity-desc", "popularity-asc",
@@ -24,7 +28,7 @@ Page {
     ]
     readonly property var popularityCounts: window.catalogStats ? window.catalogStats.counts : ({})
     readonly property string sortDescription: {
-        if (catalogSortIndex === 2 || catalogSortIndex === 3) {
+        if (activeCatalogSortIndex === 2 || activeCatalogSortIndex === 3) {
             const state = window.catalogStats ? window.catalogStats.state : "unavailable"
             const cached = Object.keys(popularityCounts).length > 0
             if (state === "loading") return cached ? qsTr("Refreshing Flathub popularity; using saved counts…") : qsTr("Loading Flathub popularity…")
@@ -50,13 +54,24 @@ Page {
             window.catalogPreferences.homeSort = catalogSortKeys[catalogSortIndex]
         revealOnPopularityUpdate = catalogSortIndex === 2 || catalogSortIndex === 3
         revealAllApps()
-        loadHomePopularity()
+        if (homeView) loadCatalogPopularity()
     }
-    function loadHomePopularity() {
-        if (homeView && (catalogSortIndex === 2 || catalogSortIndex === 3) && window.catalogStats)
+    onCategorySortIndexChanged: {
+        if (!sortControlsReady || !catalogView || homeView) return
+        catalogGrid.positionViewAtBeginning()
+        loadCatalogPopularity()
+    }
+    function setCatalogSort(index) {
+        if (homeView) catalogSortIndex = index
+        else categorySortIndex = index
+    }
+    function loadCatalogPopularity() {
+        const index = homeView ? catalogSortIndex : categorySortIndex
+        if (catalogView && (index === 2 || index === 3) && window.catalogStats)
             window.catalogStats.loadPopularity()
     }
-    onHomeViewChanged: { if (sortControlsReady) loadHomePopularity() }
+    onHomeViewChanged: { if (sortControlsReady) loadCatalogPopularity() }
+    onCatalogViewChanged: { if (sortControlsReady) loadCatalogPopularity() }
     Component.onCompleted: {
         if (window.catalogPreferences) {
             const savedIndex = catalogSortKeys.indexOf(window.catalogPreferences.homeSort)
@@ -64,7 +79,7 @@ Page {
         }
         sortControlsReady = true
         // Initial popularity loading must not scroll past the recommendations.
-        loadHomePopularity()
+        loadCatalogPopularity()
     }
     // Fluff Linux's curated picks, displayed alphabetically independently of All Apps.
     readonly property var recommendedIds: ["com.discordapp.Discord", "com.valvesoftware.Steam",
@@ -160,7 +175,7 @@ Page {
                                                                    return category.label
                                                                }))))
     readonly property var visibleApps: {
-        const sortIndex = homeView ? catalogSortIndex : 0, counts = popularityCounts
+        const sortIndex = activeCatalogSortIndex, counts = popularityCounts
         // Only omit apps that are actually shown above, and only in Home's
         // popularity orders. Search, categories and other orders stay complete.
         const recommendedToOmit = homeView && (sortIndex === 2 || sortIndex === 3)
@@ -181,7 +196,7 @@ Page {
                         || compactNameMatches || compactDescriptionMatches)
         })
         if (!query)
-            return homeView ? matches.sort((a, b) => page.compareCatalog(a, b, sortIndex, counts)) : matches
+            return matches.sort((a, b) => page.compareCatalog(a, b, sortIndex, counts))
         const scoredMatches = matches.map(function(app) {
             return { app: app, score: page.searchScore(app, query) }
         })
@@ -831,7 +846,10 @@ Page {
     Connections {
         target: window
         function onSearchTextChanged() { catalogGrid.positionViewAtBeginning() }
-        function onSelectedCategoryChanged() { catalogGrid.positionViewAtBeginning() }
+        function onSelectedCategoryChanged() {
+            page.categorySortIndex = 0
+            catalogGrid.positionViewAtBeginning()
+        }
         function onSearchCategoryFilterChanged() { catalogGrid.positionViewAtBeginning() }
     }
 }

@@ -137,8 +137,8 @@ TestCase {
         verify(findChild(page(), "catalogSortDescription").text.indexOf("unavailable") >= 0)
         page().catalogSortIndex = 1
         main.selectedCategory = "Utilities"
-        compare(names(), "Beta,Alpha,Unknown,Zero", "Home sorting must not change other categories")
-        verify(!findChild(page(), "catalogSort").visible)
+        compare(names(), "Alpha,Beta,Unknown,Zero", "Categories start with their own A–Z order")
+        verify(findChild(page(), "catalogSort").visible)
         main.selectedCategory = "All Apps"; main.searchText = "beta"
         compare(names(), "Beta")
         verify(!findChild(page(), "recommendedHeading").visible)

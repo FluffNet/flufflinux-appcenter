@@ -37,11 +37,11 @@ ColumnLayout {
         }
         FluffComboBox {
             objectName: "catalogSort"
-            visible: catalogPage.homeView; hoverEnabled: true
+            visible: catalogPage.catalogView; hoverEnabled: true
             Layout.preferredWidth: 240; Layout.preferredHeight: 42
             model: catalogPage.catalogSortOptions
-            currentIndex: catalogPage.catalogSortIndex
-            onActivated: function(index) { catalogPage.catalogSortIndex = index }
+            currentIndex: catalogPage.activeCatalogSortIndex
+            onActivated: function(index) { catalogPage.setCatalogSort(index) }
             Accessible.name: qsTr("Sort applications")
         }
         FluffComboBox {
@@ -57,7 +57,7 @@ ColumnLayout {
     Label {
         objectName: "catalogSortDescription"
         Layout.fillWidth: true
-        visible: catalogPage.homeView && catalogPage.catalogSortIndex >= 2 && text.length > 0
+        visible: catalogPage.catalogView && catalogPage.activeCatalogSortIndex >= 2 && text.length > 0
         text: catalogPage.sortDescription
         color: window.mutedTextColor; wrapMode: Text.WordWrap
     }

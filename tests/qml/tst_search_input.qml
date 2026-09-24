@@ -154,7 +154,9 @@ TestCase {
         compare(window.searchCategoryFilter, "All Apps")
         compare(window.selectedCategory, "Games")
         compare(catalogPage.visibleApps.length, 4)
-        compare(catalogPage.visibleApps[0].name, "Minecraft")
+        compare(catalogPage.categorySortIndex, 0)
+        compare(catalogPage.visibleApps.map(app => app.name).join(","),
+                "Freeciv21,Minecraft,Penguin Racing Guide,SuperTuxKart")
     }
 
     function test_title_search_ignores_spaces() {
