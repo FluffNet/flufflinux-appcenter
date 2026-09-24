@@ -16,11 +16,10 @@ Page {
     property bool sortControlsReady: false
     property bool revealOnPopularityUpdate: false
     readonly property var catalogSortKeys: ["name-asc", "name-desc", "popularity-desc", "popularity-asc",
-        "size-asc", "size-desc", "release-desc", "release-asc"]
+        "release-desc", "release-asc"]
     readonly property var catalogSortOptions: [
         qsTr("Name: A–Z"), qsTr("Name: Z–A"),
         qsTr("Popularity: Most first"), qsTr("Popularity: Least first"),
-        qsTr("Size: Smallest first"), qsTr("Size: Largest first"),
         qsTr("Released: Newest first"), qsTr("Released: Oldest first")
     ]
     readonly property var popularityCounts: window.catalogStats ? window.catalogStats.counts : ({})
@@ -32,8 +31,6 @@ Page {
             if (state === "unavailable" || state === "idle") return cached ? qsTr("Offline — using saved Flathub popularity.") : qsTr("Popularity unavailable — showing Name: A–Z.")
             return ""
         }
-        if (catalogSortIndex === 4 || catalogSortIndex === 5)
-            return qsTr("App download size, excluding shared runtimes. Unknown sizes appear last.")
         return qsTr("Latest published release date. Unknown dates appear last.")
     }
     function revealAllApps() {
@@ -94,7 +91,6 @@ Page {
     function catalogValue(app, index, counts) {
         if (index === 2 || index === 3)
             return stableFlathub(app) ? counts[catalogId(app)] : undefined
-        if (index === 4 || index === 5) return app.downloadBytes
         return typeof app.releaseTimestamp === "number" && app.releaseTimestamp > 0
             ? app.releaseTimestamp * 1000 : Date.parse(app.releaseDate || "")
     }
@@ -106,7 +102,7 @@ Page {
         const rightKnown = typeof right === "number" && isFinite(right) && right >= 0
         if (leftKnown !== rightKnown) return leftKnown ? -1 : 1
         if (!leftKnown) return tie
-        return ((index === 3 || index === 4 || index === 7) ? left - right : right - left) || tie
+        return ((index === 3 || index === 5) ? left - right : right - left) || tie
     }
     onUpdatesViewChanged: {
         if (updatesView) {
@@ -165,6 +161,10 @@ Page {
                                                                }))))
     readonly property var visibleApps: {
         const sortIndex = homeView ? catalogSortIndex : 0, counts = popularityCounts
+        // Only omit apps that are actually shown above, and only in Home's
+        // popularity orders. Search, categories and other orders stay complete.
+        const recommendedToOmit = homeView && (sortIndex === 2 || sortIndex === 3)
+            ? recommendedApps.map(app => page.catalogId(app)) : []
         const query = window.searchText.trim().toLowerCase()
         const compactQuery = page.compactSearchText(query)
         const activeCategory = query ? window.searchCategoryFilter : window.selectedCategory
@@ -176,6 +176,7 @@ Page {
                     && (page.compactSearchText(app.searchSummary).indexOf(compactQuery) >= 0
                         || page.compactSearchText(app.searchDescription).indexOf(compactQuery) >= 0)
             return categoryMatches
+                    && recommendedToOmit.indexOf(page.catalogId(app)) < 0
                     && (!query || app.searchHaystack.indexOf(query) >= 0
                         || compactNameMatches || compactDescriptionMatches)
         })

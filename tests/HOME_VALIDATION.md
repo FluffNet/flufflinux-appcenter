@@ -3,12 +3,16 @@
 Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
 
 - Rust: 12 tests passed; optimized Linux build passed.
-- Full QML regression suite: 422 passed, zero failures across 18 suites.
-- Focused Home suite: 18 passed at both 100% and 150% scaling. Covers all eight
+- Full QML regression suite: 424 passed, zero failures across 18 suites.
+- Focused Home suite: 20 passed at both 100% and 150% scaling. Covers all six
   orders, real zero versus unknown values, unavailable popularity, independent
   alphabetical recommendations, stable source identity, clicking recommendations,
   preserving All Apps position after asynchronous statistics arrive, and wheel
-  return to recommendations.
+  return to recommendations. Both popularity orders omit only displayed
+  recommendations (including Flatpak/AppStream aliases, alternate sources and
+  offline fallback); name/date orders, search and categories retain them.
+  An app reappears when no longer recommended. Home has no size options, Installed
+  keeps size sorting, and app cards retain their name/summary without category tags.
 - Layout cases: 720×520, 1180×520, 1400×1000 and 1920×1080 logical pixels. All
   nine recommended names remain untruncated; All Apps and at least the start of
   its first row remain visible without scrolling.
@@ -16,8 +20,9 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   oversized/malformed data rejection, cache loading, no request merely from
   constructing the data object. Home requests popularity presentation data on
   first display by default; this does not check for app updates.
-- Native CatalogPreferences tests passed: all eight choices survive reload,
-  invalid/missing settings default to popularity, window/unrelated entries remain
+- Native CatalogPreferences tests passed: all six choices survive reload,
+  invalid/missing and legacy size settings default to popularity (also checked
+  against the real QML page), window/unrelated entries remain
   unchanged, custom-QML fixtures use in-memory preferences, and actual Main.qml
   restores/saves/reloads the selected order across separate engine instances.
   The permanent popularity explanation is absent.
@@ -34,7 +39,8 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   Brave, Discord, Google Chrome, Minecraft Launcher, Sober, Spotify, Steam,
   Telegram and Visual Studio Code in that alphabetical order. Fresh HTTPS
   popularity fetch returned 3,300 valid app counts. The checked ordering began
-  Sober, Firefox, Discord, Brave, Google Chrome. No app update check was started.
+  Firefox, Bottles, Heroic, Flatseal, OBS Studio, with none of the nine recommended
+  apps duplicated in either displayed group. No app update check was started.
   Native wide, popular and narrow screenshots were visually inspected.
 
 No regular Flatpak app was installed, updated or removed during this validation.

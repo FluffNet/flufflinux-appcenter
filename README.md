@@ -20,14 +20,19 @@ the configured official stable Flathub catalog are shown; recommendations never
 add a source or install an app.
 
 The sorting control affects **All Apps on Home only**. It defaults to most popular
-and supports A–Z/Z–A, most/least popular, smallest/largest app download, and
+and supports A–Z/Z–A, most/least popular, and
 newest/oldest published release. Recommendations, category navigation, search
 relevance and Installed sorting are independent. Unknown values go last in both
-directions; real zero-byte sizes/zero install counts remain valid.
+directions; real zero install counts remain valid. Both popularity orders omit
+apps currently shown in Recommended Apps, including when popularity is offline.
+Name/date sorts, categories and search still include those apps. Catalog cards
+show the app name and description without category tags; category filtering stays
+available in the sidebar. Installed keeps its independent size sorting.
 The selected Home order is saved immediately as `Catalog/homeSort` in
 `~/.config/flufflinux-appcenter.conf` and restored on the next launch. Missing or
-invalid values default to `popularity-desc`. Other valid keys are `popularity-asc`,
-`name-asc`, `name-desc`, `size-asc`, `size-desc`, `release-asc` and `release-desc`.
+invalid values (including the removed `size-asc`/`size-desc` choices) default to
+`popularity-desc`. Other valid keys are `popularity-asc`, `name-asc`, `name-desc`,
+`release-asc` and `release-desc`.
 Window settings and unrelated config entries are preserved. The steady-state
 popularity explanation is omitted; loading/offline status remains available.
 

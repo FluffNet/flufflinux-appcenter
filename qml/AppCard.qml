@@ -46,7 +46,6 @@ AbstractButton {
                 color: window.mutedTextColor; wrapMode: Text.WordWrap; maximumLineCount: 3
                 elide: Text.ElideRight; verticalAlignment: Text.AlignTop
             }
-            Label { text: app.category; color: window.accentColor; font.pixelSize: 12; font.weight: Font.DemiBold }
         }
     }
 }

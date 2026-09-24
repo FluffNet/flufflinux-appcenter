@@ -35,8 +35,22 @@ int main(int argc, char **argv) {
         assert(stored.value("Window/maximized").toBool());
         assert(stored.value("Other/retain").toString() == "yes");
     }
-    stored.setValue("Catalog/homeSort", "bad-value"); stored.sync();
-    assert(CatalogPreferences(path).homeSort() == "popularity-desc");
+    for (const auto &oldOrInvalid : {"size-asc", "size-desc", "bad-value"}) {
+        stored.setValue("Catalog/homeSort", oldOrInvalid); stored.sync();
+        assert(CatalogPreferences(path).homeSort() == "popularity-desc");
+        if (argc > 1) {
+            CatalogPreferences preferences(path);
+            QQmlApplicationEngine engine;
+            engine.rootContext()->setContextProperty("fluffWindowManaged", true);
+            engine.rootContext()->setContextProperty("fluffCatalogPreferences", &preferences);
+            engine.load(QUrl::fromLocalFile(QString::fromLocal8Bit(argv[1])));
+            assert(!engine.rootObjects().isEmpty());
+            auto stack = engine.rootObjects().first()->findChild<QObject *>("navigationStack");
+            assert(stack);
+            auto page = stack->property("currentItem").value<QObject *>();
+            assert(page && page->property("catalogSortIndex").toInt() == 2);
+        }
+    }
     CatalogPreferences isolated(QString{});
     isolated.setHomeSort("name-asc");
     stored.sync();
@@ -56,8 +70,8 @@ int main(int argc, char **argv) {
             assert(page && page->property("catalogSortIndex").toInt() == (run ? 5 : 1));
             assert(page->property("installedSortIndex").toInt() == 0);
             assert(page->setProperty("catalogSortIndex", 5));
-            assert(preferences.homeSort() == "size-desc");
+            assert(preferences.homeSort() == "release-asc");
         }
     }
-    std::cout << "PASS: popularity default, all saved sort orders, invalid fallback, unrelated keys, fixture isolation, real QML restore/save/restart\n";
+    std::cout << "PASS: popularity default, six saved sort orders, legacy size/invalid fallback in real QML, unrelated keys, fixture isolation, restore/save/restart\n";
 }

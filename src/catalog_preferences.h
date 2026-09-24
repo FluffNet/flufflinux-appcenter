@@ -18,7 +18,7 @@ public:
     }
     static QStringList sortKeys() {
         return {"name-asc", "name-desc", "popularity-desc", "popularity-asc",
-                "size-asc", "size-desc", "release-desc", "release-asc"};
+                "release-desc", "release-asc"};
     }
     QString homeSort() const { return m_homeSort; }
     void setHomeSort(const QString &value) {

@@ -52,6 +52,9 @@ AppCenter.Main {
                 main.check(main.catalogStats.state === "ready", "live public popularity fetch")
                 main.check(Object.keys(main.catalogStats.counts).length > 3000, "complete popularity catalog")
                 const apps = page.visibleApps
+                const recommended = page.recommendedApps.map(app => page.catalogId(app))
+                main.check(!apps.some(app => recommended.indexOf(page.catalogId(app)) >= 0), "no duplicated recommendations in popularity")
+                main.check(page.catalogSortOptions.length === 6, "Home has no size sorting")
                 for (let i = 1; i < apps.length; ++i)
                     main.check(page.compareCatalog(apps[i-1], apps[i], 2, page.popularityCounts) <= 0, "descending popularity")
                 console.log("HOME_POPULARITY", Object.keys(main.catalogStats.counts).length, apps.slice(0, 5).map(app => app.name).join(", "))

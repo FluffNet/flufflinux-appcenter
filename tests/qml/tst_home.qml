@@ -48,10 +48,8 @@ TestCase {
             {tag:"za", index:1, expected:"Zero,Unknown,Beta,Alpha"},
             {tag:"popular", index:2, expected:"Beta,Alpha,Zero,Unknown"},
             {tag:"least-popular", index:3, expected:"Zero,Alpha,Beta,Unknown"},
-            {tag:"small", index:4, expected:"Zero,Alpha,Beta,Unknown"},
-            {tag:"large", index:5, expected:"Beta,Alpha,Zero,Unknown"},
-            {tag:"new", index:6, expected:"Alpha,Beta,Zero,Unknown"},
-            {tag:"old", index:7, expected:"Zero,Beta,Alpha,Unknown"}]
+            {tag:"new", index:4, expected:"Alpha,Beta,Zero,Unknown"},
+            {tag:"old", index:5, expected:"Zero,Beta,Alpha,Unknown"}]
     }
     function test_orders(data) {
         page().catalogSortIndex = data.index
@@ -63,6 +61,73 @@ TestCase {
         page().catalogSortIndex = 2
         compare(page().sortDescription, "")
         verify(!findChild(page(), "catalogSortDescription").visible)
+    }
+    function test_home_size_options_removed() {
+        compare(page().catalogSortKeys.join(","), "name-asc,name-desc,popularity-desc,popularity-asc,release-desc,release-asc")
+        compare(page().catalogSortOptions.length, 6)
+        verify(!page().catalogSortOptions.some(option => option.indexOf("Size:") >= 0))
+        compare(page().installedSortOptions.length, 6)
+        verify(page().installedSortOptions[4].indexOf("Size:") === 0, "Installed keeps size sorting")
+    }
+    function test_popularity_omits_only_visible_recommendations_data() {
+        return [{tag:"most", index:2}, {tag:"least", index:3}]
+    }
+    function test_popularity_omits_only_visible_recommendations(data) {
+        const discord = app("com.discordapp.Discord", "Discord", 20, "2026-01-01")
+        discord.id += ".desktop" // AppStream alias; identity must come from the Flatpak ref.
+        const telegram = app("org.telegram.desktop", "Telegram", 10, "2026-01-01")
+        telegram.sources = [Object.assign({}, telegram)]
+        telegram.flatpakRef = "app/org.telegram.desktop/x86_64/beta" // Stable alternate is recommended.
+        const fake = app("com.google.Chrome", "Untrusted Chrome", 1, "")
+        fake.sourceUrl = "https://example.org/repo"
+        const beta = app("com.brave.Browser", "Brave Beta", 1, "")
+        beta.flatpakRef = "app/com.brave.Browser/x86_64/beta"
+        main.catalog = main.catalog.concat([discord, telegram, fake, beta])
+        page().catalogSortIndex = data.index
+        compare(page().recommendedApps.map(app => app.name).join(","), "Discord,Telegram")
+        compare(page().visibleApps.length, 6)
+        verify(!page().visibleApps.some(app => ["Discord", "Telegram"].indexOf(app.name) >= 0))
+        verify(page().visibleApps.some(app => app.name === "Untrusted Chrome"), "Unavailable recommendations must not hide an app")
+        verify(page().visibleApps.some(app => app.name === "Brave Beta"))
+        stats.counts = {}; stats.state = "unavailable"
+        compare(page().visibleApps.length, 6, "Offline popularity fallback must also avoid duplicates")
+        for (const index of [0, 1, 4, 5]) {
+            page().catalogSortIndex = index
+            compare(page().visibleApps.length, 8, "Name/date sorts retain all apps")
+        }
+        page().catalogSortIndex = data.index
+        main.selectedCategory = "Utilities"
+        compare(page().visibleApps.length, 8, "Categories retain recommendations")
+        main.selectedCategory = "All Apps"; main.searchText = "telegram"
+        compare(names(), "Telegram", "Search retains recommendations")
+        main.searchText = ""
+        compare(page().visibleApps.length, 6)
+        main.catalog = main.catalog.map(function(app) {
+            if (app.name !== "Discord") return app
+            const changed = Object.assign({}, app); changed.sourceUrl = "https://example.org/repo"
+            return changed
+        })
+        compare(page().recommendedApps.length, 1)
+        compare(page().visibleApps.length, 7, "An app reappears when no longer in recommendations")
+    }
+    Component {
+        id: cardFixture
+        AppCenter.AppCard { property var window: main; width: 285; height: 142 }
+    }
+    function cardTexts(item) {
+        let texts = typeof item.text === "string" ? [item.text] : []
+        for (const child of item.children || []) texts = texts.concat(cardTexts(child))
+        return texts
+    }
+    function test_app_cards_have_no_category_tag() {
+        const card = createTemporaryObject(cardFixture, main.contentItem,
+            {app: app("org.example.Alpha", "Alpha", 100, "")})
+        verify(card)
+        waitForPolish(card)
+        const texts = cardTexts(card.contentItem)
+        verify(texts.indexOf("Alpha") >= 0)
+        verify(texts.indexOf("Home test") >= 0)
+        verify(texts.indexOf("Utilities") < 0, "Category label must not appear on catalog cards")
     }
     function test_home_only_and_offline_fallback() {
         page().catalogSortIndex = 2
@@ -87,7 +152,7 @@ TestCase {
         main.catalog = picks.concat([fake, beta])
         const expected = "Discord,Steam,Telegram"
         compare(page().recommendedApps.map(app => app.name).join(","), expected)
-        for (let index = 0; index < 8; ++index) {
+        for (let index = 0; index < page().catalogSortOptions.length; ++index) {
             page().catalogSortIndex = index
             compare(page().recommendedApps.map(app => app.name).join(","), expected)
         }
