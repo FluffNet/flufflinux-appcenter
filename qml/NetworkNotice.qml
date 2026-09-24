@@ -12,7 +12,7 @@ Item {
     readonly property string title: networkState === "offline" ? qsTr("No Network Connection")
         : networkState === "sources-unavailable" ? qsTr("Cannot Connect to Sources") : ""
     readonly property string note: networkState === "offline"
-        ? qsTr("Connect to a network to browse apps and check for updates.")
+        ? qsTr("Connect to a network to browse apps and check for app updates.")
         : qsTr("Please check your internet connection and try again.")
     readonly property string compactText: title
     visible: title.length > 0

@@ -80,7 +80,7 @@ QJsonObject scan(const QJsonObject &request) {
     for (auto installation : installations) {
         const auto rawScope = Sources::scope(installation);
         const auto scope = rawScope == "default" ? QString("system") : rawScope;
-        send({{"type", "status"}, {"message", "Checking " + scope + " updates…"}});
+        send({{"type", "status"}, {"message", "Checking for app updates…"}});
         g_autoptr(GError) error = nullptr;
         g_autoptr(GPtrArray) installedRefs = flatpak_installation_list_installed_refs(installation, nullptr, &error);
         if (!installedRefs) { errors.append(scope + ": " + text(error ? error->message : "Could not read installed apps")); continue; }
@@ -127,14 +127,14 @@ QJsonObject scan(const QJsonObject &request) {
                         if (!remote) {
                             const auto detail = QString::fromUtf8(restore.readAllStandardError()).trimmed();
                             skippedSource(origin, !finished
-                                ? "could not be added before authorization or the connection timed out. Press Check for Updates to retry."
-                                : "could not be added. " + (detail.isEmpty() ? QString("Authorization was not completed. Press Check for Updates to retry.") : detail));
+                                ? "could not be added before authorization or the connection timed out. Press Check for App Updates to retry."
+                                : "could not be added. " + (detail.isEmpty() ? QString("Authorization was not completed. Press Check for App Updates to retry.") : detail));
                             continue;
                         }
-                        send({{"type", "status"}, {"message", "Checking " + origin + " system updates…"}});
+                        send({{"type", "status"}, {"message", "Checking for app updates…"}});
                     }
                 }
-                if (!remote) { skippedSource(origin, "is missing. Add it in Settings to check these updates."); continue; }
+                if (!remote) { skippedSource(origin, "is missing. Add it in Settings to check these app updates."); continue; }
                 if (flatpak_remote_get_disabled(remote)) { skippedSource(origin, "is disabled."); continue; }
                 g_clear_error(&error);
                 // Do not use list_installed_refs_for_update: its internal

@@ -88,13 +88,13 @@ check), and `python3 tests/integration/test_exclusions_packaging.py` (temporary
 staging only). `tests/integration/HomeSmoke.qml` checks the native layout and live
 public popularity data without checking for updates or changing installed apps.
 
-## Manual updates
+## App Updates
 
 ### Network availability
 
 App Center observes NetworkManager's system-bus properties while it is running.
 When NetworkManager reports networking disabled or no active network connection
-(including a machine with no network interfaces), **Updates** is grayed out.
+(including a machine with no network interfaces), **App Updates** is grayed out.
 Home, categories and catalog search show **No Network Connection** with KDE's
 themed `dialog-warning` triangle instead of app tiles. Installed apps,
 their local search, Settings and the download queue remain accessible.
@@ -131,13 +131,18 @@ simulated statuses; it does not disconnect the host or change Flatpak apps.
 
 ### Checking and installing updates
 
-**Updates**, directly below Installed, shows an installed-style list in the main
+**App Updates**, directly below Installed, shows an installed-style list in the main
 window, keeping the sidebar and header visible. Search is grayed out and disabled
-while Updates is selected.
+while App Updates is selected.
 Opening/reopening the page, starting App Center, refreshing Installed, and
-finishing transactions do **not** check for updates. Only **Check for Updates**
+finishing transactions do **not** check for updates. Only **Check for App Updates**
 starts the check. Loading, cancellation, timeout, and partial source errors are
 visible; checking never enters Queue or deploys an app/runtime transaction.
+
+The date line reads **Apps were last updated:** (or **Not recorded** when history
+is unavailable). The last-check timestamp remains available after a check.
+The initial page has no redundant checking instructions or center prompt.
+At narrow widths, the title and check button stack instead of overlapping.
 
 User and system apps appear together; new installs continue to prefer the user
 installation, while updates target each app's existing installation. Matching

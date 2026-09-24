@@ -174,7 +174,7 @@ Page {
         { name: "Other", label: qsTr("Other"), icon: "applications-other" }
     ]
     readonly property real categorySidebarWidth: Math.min(page.width * 0.46,
-                                                           categoryWidthForLabels([qsTr("Installed"), qsTr("Updates")].concat(categories.map(
+                                                           categoryWidthForLabels([qsTr("Installed"), qsTr("App Updates")].concat(categories.map(
                                                                function(category) {
                                                                    return category.label
                                                                }))))
@@ -595,7 +595,7 @@ Page {
                         objectName: "updatesButton"
                         enabled: !window.networkOffline
                         width: parent.width; height: sidebar.navigationRowHeight
-                        text: qsTr("Updates"); icon.name: "system-upgrade"
+                        text: qsTr("App Updates"); icon.name: "system-upgrade"
                         icon.width: sidebar.navigationIconSize; icon.height: sidebar.navigationIconSize
                         font.pixelSize: sidebar.navigationFontSize
                         font.weight: page.updatesView ? Font.DemiBold : Font.Normal

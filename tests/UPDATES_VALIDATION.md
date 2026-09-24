@@ -2,6 +2,25 @@
 
 Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
 
+## App Updates wording — 2026-09-24
+
+- Sidebar, heading and check button explicitly say App Updates. Offline advice,
+  empty/result statuses, worker status and errors consistently refer to app updates.
+- Removed the initial checking explanation and center prompt. Date history reads
+  Apps were last updated; missing history says Not recorded. Last checked remains
+  visible after a check; timestamps and update scheduling were not changed.
+- Updates, navigation-fit and network suites: 71 passed at each of 100% and 150%.
+  Updates was rerun at both scales with additional title/button non-overlap checks:
+  15 passed each. Widths 720, 1180 and 1920 retain visible, usable controls.
+- Native production-manager regression passed, including explicit-only checks,
+  selection, scopes, cancellation, timeout, crash and partial-error handling.
+- Rust: 16 passed. Optimized Linux build passed.
+- AppUpdatesLabelsSmoke.qml rendered the actual KDE page at normal and minimum
+  size, checked labels/history/empty center and captured both screenshots. It
+  asserted the backend stayed idle: no update scan or app mutation was performed.
+
+## Earlier update functionality validation
+
 - Full QML regression suite after source-recovery changes: **403 passed,
   0 failed** across 17 suites.
 - Focused Updates QML suite: **13 passed at 100% and 13 passed at 150%**.

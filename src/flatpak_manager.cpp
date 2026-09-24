@@ -34,13 +34,13 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     m_updatesTimeout.setSingleShot(true);
     m_updatesTimeout.setParent(this); m_updatesTimeout.setObjectName("updateCheckTimeout");
     connect(&m_updatesTimeout, &QTimer::timeout, this, [this] {
-        m_updatesState = "error"; m_updatesError = tr("Checking for updates timed out. Try again.");
+        m_updatesState = "error"; m_updatesError = tr("Checking for app updates timed out. Try again.");
         m_updatesProcess.kill(); emit updatesChanged();
     });
     connect(&m_updatesProcess, &QProcess::readyReadStandardOutput, this, [this] {
         m_updatesBuffer += m_updatesProcess.readAllStandardOutput();
         if (m_updatesBuffer.size() > 16 * 1024 * 1024) {
-            m_updatesState = "error"; m_updatesError = tr("The update response was too large.");
+            m_updatesState = "error"; m_updatesError = tr("The app update response was too large.");
             m_updatesProcess.kill(); emit updatesChanged(); return;
         }
         while (m_updatesBuffer.contains('\n')) {
@@ -82,7 +82,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
             m_updatesTimeout.stop();
             if (m_updatesState == "checking") {
                 m_updatesState = m_updatesResult && !code && status == QProcess::NormalExit ? "ready" : "error";
-                if (m_updatesState == "error") { m_updates.clear(); m_updatesError = tr("Could not finish checking for updates. Try again."); }
+                if (m_updatesState == "error") { m_updates.clear(); m_updatesError = tr("Could not finish checking for app updates. Try again."); }
             }
             emit updatesChanged(); emit jobsChanged();
             if (m_updateSourcesChanged) { m_updateSourcesChanged = false; reloadCatalog(); }
@@ -90,7 +90,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     connect(&m_updatesProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error != QProcess::FailedToStart) return;
         m_updatesTimeout.stop(); m_updatesState = "error";
-        m_updatesError = tr("Could not start checking for updates."); emit updatesChanged(); emit jobsChanged();
+        m_updatesError = tr("Could not start checking for app updates."); emit updatesChanged(); emit jobsChanged();
     });
     connect(&m_sourceProcess, &QProcess::readyReadStandardOutput, this, [this] {
         m_sourceBuffer += m_sourceProcess.readAllStandardOutput();
@@ -514,7 +514,7 @@ void FlatpakManager::checkForUpdates() {
     if (busy()) return;
     m_updates.clear(); m_updatesBuffer.clear(); m_updatesError.clear(); m_updatesResult = false;
     m_updatesSkipped.clear(); m_updateSourcesChanged = false;
-    m_updatesState = "checking"; m_updatesStatus = tr("Checking for updates…");
+    m_updatesState = "checking"; m_updatesStatus = tr("Checking for app updates…");
     m_updatesProcess.start(QCoreApplication::applicationFilePath(), {"--updates-worker", "{\"restoreSystemFlathub\":true}"});
     m_updatesProcess.closeWriteChannel(); m_updatesTimeout.start(180000);
     emit updatesChanged(); emit jobsChanged();

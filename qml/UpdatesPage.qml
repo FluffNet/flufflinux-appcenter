@@ -43,27 +43,30 @@ Page {
         anchors.leftMargin: 28; anchors.rightMargin: 28
         anchors.topMargin: 26; anchors.bottomMargin: 20
         spacing: 14
-        RowLayout {
+        GridLayout {
             Layout.fillWidth: true
-            Label { text: qsTr("Updates"); color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold; Layout.fillWidth: true }
+            columns: page.compact ? 1 : 2
+            Label { objectName: "appUpdatesTitle"; text: qsTr("App Updates"); color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold; Layout.fillWidth: true }
             FluffButton {
                 objectName: "checkForUpdatesButton"
                 visible: !page.checking
-                text: qsTr("Check for Updates"); icon.name: "view-refresh"
+                text: qsTr("Check for App Updates"); icon.name: "view-refresh"
+                Layout.alignment: Qt.AlignRight
                 enabled: !window.networkOffline && !page.busy && !page.checking
                 onClicked: if (!window.networkOffline) window.backend.checkForUpdates()
             }
             FluffButton {
                 objectName: "cancelUpdateCheckButton"
                 visible: page.checking; text: qsTr("Cancel"); icon.name: "dialog-cancel"
+                Layout.alignment: Qt.AlignRight
                 onClicked: window.backend.cancelUpdateCheck()
             }
         }
         Label {
             objectName: "updateDates"
             Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
-            text: (page.updateData.lastChecked ? qsTr("Last checked: %1").arg(page.updateData.lastChecked) : qsTr("Updates are checked only when you press Check for Updates."))
-                + (page.updateData.lastUpdated ? "\n" + qsTr("Last app update: %1").arg(page.updateData.lastUpdated) : "")
+            text: qsTr("Apps were last updated: %1").arg(page.updateData.lastUpdated || qsTr("Not recorded"))
+                + (page.updateData.lastChecked ? "\n" + qsTr("Last checked: %1").arg(page.updateData.lastChecked) : "")
         }
         NetworkNotice {
             objectName: "updatesOfflineNote"
@@ -184,12 +187,12 @@ Page {
             Label {
                 objectName: "updatesEmpty"
                 anchors.centerIn: parent; width: parent.width; horizontalAlignment: Text.AlignHCenter
-                visible: page.rows.length === 0 && !page.checking
-                text: window.networkOffline ? qsTr("Reconnect to check for app updates.")
+                visible: page.rows.length === 0 && !page.checking && text.length > 0
+                text: window.networkOffline ? ""
                     : page.updateData.state === "ready" && !page.updateData.error
-                    ? (page.skipped.length ? qsTr("No updates available from the sources that could be checked.") : qsTr("Everything is up to date."))
-                    : page.updateData.state === "cancelled" ? qsTr("Update check cancelled.")
-                    : page.updateData.error ? qsTr("Could not check all updates. Please try again.") : qsTr("Press Check for Updates to see available updates.")
+                    ? (page.skipped.length ? qsTr("No app updates available from the sources that could be checked.") : qsTr("Your apps are up to date."))
+                    : page.updateData.state === "cancelled" ? qsTr("App update check cancelled.")
+                    : page.updateData.error ? qsTr("Could not check all app updates. Please try again.") : ""
                 color: window.mutedTextColor; wrapMode: Text.Wrap
             }
         }

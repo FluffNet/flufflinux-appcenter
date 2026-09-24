@@ -49,6 +49,17 @@ TestCase {
         waitForPolish(root()); wait(30)
     }
     function open() { main.showUpdates(); tryCompare(stack(), "busy", false); waitForPolish(page()); wait(30) }
+    function test_clear_app_update_labels() {
+        open()
+        compare(findChild(root(), "updatesButton").text, "App Updates")
+        compare(findChild(page(), "appUpdatesTitle").text, "App Updates")
+        compare(findChild(page(), "checkForUpdatesButton").text, "Check for App Updates")
+        compare(findChild(page(), "updateDates").text, "Apps were last updated: Not recorded")
+        verify(!findChild(page(), "updatesEmpty").visible)
+        backend.updates = {state:"idle", items:[], lastUpdated:"24/09/2026 12:39"}
+        compare(findChild(page(), "updateDates").text, "Apps were last updated: 24/09/2026 12:39")
+        compare(backend.checks, 0)
+    }
     function test_manual_only_check_and_cancel() {
         mouseClick(findChild(root(), "updatesButton")); tryCompare(stack(), "busy", false)
         verify(page().visible); compare(stack().depth, 1); compare(backend.checks, 0)
@@ -141,13 +152,14 @@ TestCase {
         open(); ready()
         backend.updates = Object.assign({}, backend.updates, {items:[row("Alpha", "user"), row("Alpha", "system")]})
         compare(page().selectedBytes, 600)
-        verify(findChild(page(), "updateDates").text.indexOf("22/09/2026 11:00") >= 0)
+        compare(findChild(page(), "updateDates").text,
+            "Apps were last updated: 22/09/2026 11:00\nLast checked: 23/09/2026 12:30")
     }
     function test_empty_error_and_busy() {
         open(); backend.updates = {state:"ready", items:[], error:"Offline source"}
         verify(findChild(page(), "updatesEmpty").text.indexOf("up to date") < 0)
         backend.updates = {state:"ready", items:[]}
-        compare(findChild(page(), "updatesEmpty").text, "Everything is up to date.")
+        compare(findChild(page(), "updatesEmpty").text, "Your apps are up to date.")
         ready(); backend.busy = true
         verify(!findChild(page(), "installUpdatesButton").enabled)
         verify(!findChild(page(), "selectAllUpdates").enabled)
@@ -158,7 +170,7 @@ TestCase {
         verify(findChild(page(), "updatesSkipped").visible)
         verify(findChild(page(), "updatesSkipped").text.indexOf("Firefox") >= 0)
         verify(!findChild(page(), "updatesError").visible)
-        verify(findChild(page(), "updatesEmpty").text.indexOf("Everything is up to date") < 0)
+        verify(findChild(page(), "updatesEmpty").text.indexOf("Your apps are up to date") < 0)
         verify(!findChild(page(), "installUpdatesButton").enabled)
         backend.updates = Object.assign({}, backend.updates, {items:[row("Available app", "user")]})
         compare(page().selected.length, 1)
@@ -170,6 +182,11 @@ TestCase {
         const list = findChild(page(), "updatesList")
         verify(list.width > 0 && list.height >= 100, "Leave room for update cards")
         verify(page().width < main.width)
+        const title = findChild(page(), "appUpdatesTitle"), check = findChild(page(), "checkForUpdatesButton")
+        verify(title.contentWidth <= title.width + 1, "App Updates title fits")
+        const titlePoint = title.mapToItem(page(), 0, 0), checkPoint = check.mapToItem(page(), 0, 0)
+        verify(checkPoint.x >= titlePoint.x + title.width || checkPoint.y >= titlePoint.y + title.height,
+            "Longer title and check button must not overlap")
         for (const name of ["checkForUpdatesButton", "selectAllUpdates", "installUpdatesButton"]) {
             const button = findChild(page(), name)
             const point = button.mapToItem(page(), 0, 0)
