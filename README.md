@@ -11,10 +11,10 @@ contains Flatpak source management.
 
 ## Home and catalog exclusions
 
-Home shows **Recommended Apps** above **All Apps**, sharing the main page's
+Home shows **Common Apps** above **All Apps**, sharing the main page's
 scrollbar. Compact name-and-icon tiles keep All Apps visible below them, including
 at the minimum window size. The curated list is Brave, Discord, Google Chrome,
-Minecraft Launcher, Sober, Spotify, Steam, Telegram and Visual Studio Code, always
+Minecraft Launcher, Sober, Spotify, Steam, Telegram, Visual Studio Code and Zoom, always
 alphabetical. Only apps available from
 the configured official stable Flathub catalog are shown; recommendations never
 add a source or install an app.
@@ -26,8 +26,9 @@ never replaced with the repository name or an invented publisher. Updates can
 resolve the matching app/source/branch from local catalog or installed metadata
 without network requests. Names are plain text, not HTML or a verification badge.
 Publisher text adapts down by at most two pixels (never below 10 pixels) and can
-wrap onto two lines. Recommended tiles keep publishers directly below their
-titles, sharing the same left edge beside the icon. Curated publishers remain
+wrap onto two lines (up to three in the tightest Common Apps tiles). Common Apps
+tiles keep publishers directly below their titles, sharing the same left edge
+beside the icon. Curated publishers remain
 readable without hovering even at the minimum window size, while keeping All Apps
 visible. Exceptionally long metadata retains a readable font and uses a full-name
 tooltip as the final overflow fallback. Home, category, search and Installed
@@ -40,7 +41,7 @@ categories and is never written to the config. Returning from app details resume
 the current category visit. Recommendations, search relevance and Installed sorting
 are independent. Unknown values go last in both
 directions; real zero install counts remain valid. Both popularity orders omit
-apps currently shown in Recommended Apps, including when popularity is offline.
+apps currently shown in Common Apps, including when popularity is offline.
 Name/date sorts, categories and search still include those apps. Catalog cards
 show the app name and description without category tags; category filtering stays
 available in the sidebar. Installed keeps its independent size sorting.

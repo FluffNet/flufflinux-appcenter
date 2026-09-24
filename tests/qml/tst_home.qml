@@ -95,22 +95,23 @@ TestCase {
         fake.sourceUrl = "https://example.org/repo"
         const beta = app("com.brave.Browser", "Brave Beta", 1, "")
         beta.flatpakRef = "app/com.brave.Browser/x86_64/beta"
-        main.catalog = main.catalog.concat([discord, telegram, fake, beta])
+        const zoom = app("us.zoom.Zoom", "Zoom", 15, "2026-01-01")
+        main.catalog = main.catalog.concat([discord, telegram, zoom, fake, beta])
         page().catalogSortIndex = data.index
-        compare(page().recommendedApps.map(app => app.name).join(","), "Discord,Telegram")
+        compare(page().recommendedApps.map(app => app.name).join(","), "Discord,Telegram,Zoom")
         compare(page().visibleApps.length, 6)
-        verify(!page().visibleApps.some(app => ["Discord", "Telegram"].indexOf(app.name) >= 0))
+        verify(!page().visibleApps.some(app => ["Discord", "Telegram", "Zoom"].indexOf(app.name) >= 0))
         verify(page().visibleApps.some(app => app.name === "Untrusted Chrome"), "Unavailable recommendations must not hide an app")
         verify(page().visibleApps.some(app => app.name === "Brave Beta"))
         stats.counts = {}; stats.state = "unavailable"
         compare(page().visibleApps.length, 6, "Offline popularity fallback must also avoid duplicates")
         for (const index of [0, 1, 4, 5]) {
             page().catalogSortIndex = index
-            compare(page().visibleApps.length, 8, "Name/date sorts retain all apps")
+            compare(page().visibleApps.length, 9, "Name/date sorts retain all apps")
         }
         page().catalogSortIndex = data.index
         main.selectedCategory = "Utilities"
-        compare(page().visibleApps.length, 8, "Categories retain recommendations")
+        compare(page().visibleApps.length, 9, "Categories retain recommendations")
         main.selectedCategory = "All Apps"; main.searchText = "telegram"
         compare(names(), "Telegram", "Search retains recommendations")
         main.searchText = ""
@@ -120,7 +121,7 @@ TestCase {
             const changed = Object.assign({}, app); changed.sourceUrl = "https://example.org/repo"
             return changed
         })
-        compare(page().recommendedApps.length, 1)
+        compare(page().recommendedApps.length, 2)
         compare(page().visibleApps.length, 7, "An app reappears when no longer in recommendations")
     }
     Component {
@@ -159,11 +160,12 @@ TestCase {
     }
     function test_recommendations_stable_alphabetical_and_clickable() {
         const picks = [app("org.telegram.desktop", "Telegram", 10, ""),
-            app("com.discordapp.Discord", "Discord", 20, ""), app("com.valvesoftware.Steam", "Steam", 30, "")]
+            app("com.discordapp.Discord", "Discord", 20, ""), app("com.valvesoftware.Steam", "Steam", 30, ""),
+            app("us.zoom.Zoom", "Zoom", 40, "")]
         const fake = app("com.google.Chrome", "Untrusted Chrome", 1, ""); fake.sourceUrl = "https://example.org/repo"
         const beta = app("com.brave.Browser", "Brave Beta", 1, ""); beta.flatpakRef = "app/com.brave.Browser/x86_64/beta"
         main.catalog = picks.concat([fake, beta])
-        const expected = "Discord,Steam,Telegram"
+        const expected = "Discord,Steam,Telegram,Zoom"
         compare(page().recommendedApps.map(app => app.name).join(","), expected)
         for (let index = 0; index < page().catalogSortOptions.length; ++index) {
             page().catalogSortIndex = index
@@ -171,16 +173,17 @@ TestCase {
         }
         const grid = findChild(page(), "catalogGrid")
         grid.positionViewAtBeginning(); waitForPolish(grid); wait(50)
-        const card = findChild(page(), "recommended-com.discordapp.Discord")
+        const card = findChild(page(), "recommended-us.zoom.Zoom")
         verify(card && card.visible)
         mouseClick(card)
         tryCompare(findChild(main, "navigationStack"), "depth", 2)
-        compare(main.selectedApp.id, "com.discordapp.Discord")
+        compare(main.selectedApp.id, "us.zoom.Zoom")
         main.goBack(); tryCompare(findChild(main, "navigationStack"), "busy", false)
     }
     function test_responsive_header_data() {
         return [{tag:"narrow", width:720, height:520}, {tag:"wide", width:1400, height:1000},
-            {tag:"short", width:1180, height:520}, {tag:"desktop", width:1920, height:1080}]
+            {tag:"short", width:1180, height:520}, {tag:"desktop", width:1920, height:1080},
+            {tag:"narrow-medium", width:720, height:640}, {tag:"narrow-tall", width:720, height:760}]
     }
     function verifyAppListSpacing(grid) {
         const title = findChild(page(), "catalogTitleLabel"), sort = findChild(page(), "catalogSort")
@@ -221,8 +224,8 @@ TestCase {
         const titles = {"com.discordapp.Discord":"Discord", "com.valvesoftware.Steam":"Steam",
             "org.telegram.desktop":"Telegram", "com.spotify.Client":"Spotify", "com.google.Chrome":"Google Chrome",
             "com.brave.Browser":"Brave", "com.visualstudio.code":"Visual Studio Code",
-            "org.vinegarhq.Sober":"Sober", "com.mojang.Minecraft":"Minecraft Launcher"}
-        compare(page().recommendedIds.length, 9)
+            "org.vinegarhq.Sober":"Sober", "com.mojang.Minecraft":"Minecraft Launcher", "us.zoom.Zoom":"Zoom"}
+        compare(page().recommendedIds.length, 10)
         main.catalog = page().recommendedIds.map(id => app(id, titles[id], 1, ""))
         waitForPolish(page()); wait(100)
         const grid = findChild(page(), "catalogGrid"), sort = findChild(page(), "catalogSort")
@@ -230,6 +233,9 @@ TestCase {
         verify(sort.width > 100)
         verify(sort.mapToItem(page(), sort.width, 0).x <= page().width - 20)
         const heading = findChild(page(), "recommendedHeading")
+        compare(heading.text, "Common Apps")
+        compare(page().recommendedApps[9].id, "us.zoom.Zoom")
+        if (data.width >= 1400) compare(findChild(page(), "recommendedGrid").columns, 5)
         verify(heading.mapToItem(grid, 0, 0).y >= -1, "Recommendations reachable at top")
         verify(heading.mapToItem(grid, 0, 0).y < sort.mapToItem(grid, 0, 0).y)
         verify(grid.headerItem.height <= grid.height - 32,

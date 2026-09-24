@@ -41,7 +41,9 @@ AppCenter.Main {
                 main.check(page.installedSortIndex === 0, "Installed must still default to A–Z")
                 main.check(!probe.findChild(page, "catalogCountLabel"), "no Home app count")
                 stack.background = main.snapshotBackground.createObject(stack)
-                main.check(page.recommendedApps.length === 9, "all nine available recommendations")
+                main.check(page.recommendedApps.length === 10, "all ten available common apps")
+                main.check(probe.findChild(page, "recommendedHeading").text === "Common Apps", "Common Apps heading")
+                main.check(page.recommendedApps[9].id === "us.zoom.Zoom", "Zoom fills the last alphabetical tile")
                 const names = page.recommendedApps.map(app => app.name)
                 main.check(names.join() === names.slice().sort((a,b) => a.localeCompare(b)).join(), "alphabetical recommendations")
                 for (const app of page.recommendedApps) {

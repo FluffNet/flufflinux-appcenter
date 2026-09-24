@@ -84,7 +84,7 @@ Page {
     // Fluff Linux's curated picks, displayed alphabetically independently of All Apps.
     readonly property var recommendedIds: ["com.discordapp.Discord", "com.valvesoftware.Steam",
         "org.telegram.desktop", "com.spotify.Client", "com.google.Chrome", "com.brave.Browser", "com.visualstudio.code",
-        "org.vinegarhq.Sober", "com.mojang.Minecraft"]
+        "org.vinegarhq.Sober", "com.mojang.Minecraft", "us.zoom.Zoom"]
     function stableFlathub(app) {
         return /^https:\/\/(dl\.flathub\.org\/repo|flathub\.org\/repo)\/?$/.test(app.sourceUrl || "")
             && String(app.flatpakRef || "").endsWith("/stable")
@@ -740,7 +740,7 @@ Page {
                                 objectName: "recommendedHeading"
                                 visible: page.recommendedApps.length > 0
                                 Layout.fillWidth: true
-                                text: qsTr("Recommended Apps"); color: window.textColor
+                                text: qsTr("Common Apps"); color: window.textColor
                                 font.pixelSize: catalogGrid.height < 500 ? 22 : 26; font.weight: Font.DemiBold
                                 wrapMode: Text.WordWrap
                             }
@@ -748,9 +748,10 @@ Page {
                                 objectName: "recommendedGrid"
                                 visible: page.recommendedApps.length > 0
                                 Layout.fillWidth: true
-                                // Compact icon/title/publisher tiles keep all nine picks
-                                // and All Apps visible even at the minimum window size.
-                                columns: Math.max(3, Math.min(5, Math.floor(width / 190)))
+                                // Ten picks fill two rows on wide windows. Short
+                                // windows use at least four columns to keep All Apps visible.
+                                columns: Math.max(page.recommendedApps.length > 9 && catalogGrid.height < 600 ? 4 : 3,
+                                                  Math.min(5, Math.floor(width / 190)))
                                 columnSpacing: width < 600 ? 8 : 12; rowSpacing: 8
                                 Repeater {
                                     model: page.homeView ? page.recommendedApps : []

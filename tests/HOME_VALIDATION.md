@@ -11,17 +11,18 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   orders in all eleven categories, unknown values, live/offline popularity,
   recommendation retention, reset-on-category-switch, details/back navigation,
   Home/Installed/search/Updates independence and narrow/wide/short layouts.
-- Publisher suite: 27 passed at both 100% and 150% scaling. Covers populated,
+- Publisher suite: 29 passed at both 100% and 150% scaling. Covers populated,
   markup-like and missing publisher names across recommendations, catalog cards,
   Installed, Updates, Queue and app details; shared color/weight/plain-text style;
   local metadata fallback with source/branch checks and `.desktop` identities;
   no invented repository/runtime publishers; bounded font fitting, two-line
-  wrapping, repeated narrow/wide resizing, and full-name tooltips for extreme
-  overflow. Recommended publishers sit two pixels below their titles with matching
+  wrapping (three lines in the tightest Common Apps tiles),
+  repeated narrow/wide resizing, and full-name tooltips for extreme
+  overflow. Common Apps publishers sit two pixels below their titles with matching
   left edges, in a compact text group beside the icon; there is no separate footer.
-  All nine real publisher names fit without elision while preserving app names
+  All ten real publisher names fit without elision while preserving app names
   and All Apps, including Microsoft Corporation and VinegarHQ & Sober contributors.
-- Focused Home suite: 25 passed at both 100% and 150% scaling. Covers all six
+- Focused Home suite: 27 passed at both 100% and 150% scaling. Covers all six
   orders, real zero versus unknown values, unavailable popularity, independent
   alphabetical recommendations, stable source identity, clicking recommendations,
   no app counts on Home, categories, search or Installed, preserving All Apps
@@ -31,8 +32,8 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   offline fallback); name/date orders, search and categories retain them.
   An app reappears when no longer recommended. Home has no size options, Installed
   keeps size sorting, and app cards retain their name/summary without category tags.
-- Layout cases: 720×520, 1180×520, 1400×1000 and 1920×1080 logical pixels. All
-  nine recommended app and publisher names remain untruncated; text stays within
+- Layout cases: 720×520, 720×640, 720×760, 1180×520, 1400×1000 and 1920×1080
+  logical pixels. All ten common app and publisher names remain untruncated; text stays within
   the tile boundaries and above the readable minimum font size. All Apps and at
   least the start of its first row remain visible without scrolling.
 - Home spacing refinement: 104 focused checks passed (Home 25 + publishers 27 at
@@ -41,6 +42,14 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   unavailable. Header height includes the actual top inset instead of cancelling
   the bottom spacing. Native wide/narrow Home checks and screenshots confirmed
   the gap while keeping All Apps and the first app row visible.
+- Common Apps refinement: 112 focused checks passed (Home 27 + publishers 29 at
+  each of 100% and 150% scale). The heading is Common Apps, and `us.zoom.Zoom`
+  is the tenth alphabetical tile, filling the second row at five columns.
+  Short windows use at least four columns to preserve All Apps and its first row;
+  tight tiles adapt their icons, titles and publisher wrapping within readable
+  bounds. Zoom opens its own app details, is omitted from both Home popularity
+  orders while shown in Common Apps, and remains in name/date/category/search
+  results. No app installation or source change is triggered by its inclusion.
 - Native CatalogStats tests passed: count validation, pagination consistency,
   oversized/malformed data rejection, cache loading, no request merely from
   constructing the data object. Home requests popularity presentation data on
@@ -76,9 +85,9 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   of administrator edits during a non-staged reinstall.
 - Native Home smoke check passed on KDE/Wayland at 150% display scale. It showed
   Brave, Discord, Google Chrome, Minecraft Launcher, Sober, Spotify, Steam,
-  Telegram and Visual Studio Code in that alphabetical order. Fresh HTTPS
+  Telegram, Visual Studio Code and Zoom in that alphabetical order. Fresh HTTPS
   popularity fetch returned 3,300 valid app counts. The checked ordering began
-  Firefox, Bottles, Heroic, Flatseal, OBS Studio, with none of the nine recommended
+  Firefox, Bottles, Heroic, Flatseal, OBS Studio, with none of the ten common
   apps duplicated in either displayed group. No app update check was started.
   Native wide, popular and narrow screenshots were visually inspected.
   The same native run verified all six category orders against the real Internet

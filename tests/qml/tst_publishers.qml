@@ -112,7 +112,8 @@ TestCase {
     }
     function test_recommended_layout_data() {
         return [{tag:"narrow", width:720, height:520}, {tag:"short", width:1180, height:520},
-            {tag:"wide", width:1400, height:1000}, {tag:"desktop", width:1920, height:1080}]
+            {tag:"wide", width:1400, height:1000}, {tag:"desktop", width:1920, height:1080},
+            {tag:"narrow-medium", width:720, height:640}, {tag:"narrow-tall", width:720, height:760}]
     }
     Component {
         id: publisherFixture
@@ -153,9 +154,9 @@ TestCase {
     }
     function test_recommended_layout(data) {
         main.width = data.width; main.height = data.height
-        const names = ["Discord", "Steam", "Telegram", "Spotify", "Google Chrome", "Brave", "Visual Studio Code", "Sober", "Minecraft Launcher"]
+        const names = ["Discord", "Steam", "Telegram", "Spotify", "Google Chrome", "Brave", "Visual Studio Code", "Sober", "Minecraft Launcher", "Zoom"]
         const publishers = ["Discord Inc.", "Valve Corporation", "Telegram FZ-LLC", "Spotify", "Google",
-            "Brave Software", "Microsoft Corporation", "VinegarHQ & Sober contributors", "Mojang AB"]
+            "Brave Software", "Microsoft Corporation", "VinegarHQ & Sober contributors", "Mojang AB", "zoom.us"]
         main.catalog = page().recommendedIds.map((id, i) => Object.assign(app(publishers[i]),
             {id:id, name:names[i], flatpakRef:"app/" + id + "/x86_64/stable"}))
         waitForPolish(page()); wait(50)

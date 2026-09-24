@@ -5,6 +5,7 @@ import QtQuick.Layouts
 AbstractButton {
     id: card
     required property var app
+    readonly property bool tight: width < 128
     readonly property bool dense: width < 180 || height < 96
     implicitWidth: 190; implicitHeight: 96
     padding: dense ? 4 : 8; hoverEnabled: true
@@ -17,10 +18,10 @@ AbstractButton {
     ToolTip.text: app.name + (publisher.text ? "\n" + publisher.text : "") + (app.summary ? "\n" + app.summary : "")
     background: FluffButtonBackground { idleColor: window.surfaceColor }
     contentItem: RowLayout {
-        spacing: card.dense ? 6 : 12
+        spacing: card.tight ? 4 : card.dense ? 6 : 12
         AppIcon {
-            Layout.preferredWidth: card.dense ? 28 : 40
-            Layout.preferredHeight: card.dense ? 28 : 40
+            Layout.preferredWidth: card.tight ? 20 : card.dense ? 28 : 40
+            Layout.preferredHeight: card.tight ? 20 : card.dense ? 28 : 40
             sourceSize: Qt.size(64, 64)
             icon: card.app.icon || ""
         }
@@ -32,7 +33,8 @@ AbstractButton {
                 objectName: "recommendedAppName"
                 Layout.fillWidth: true
                 text: card.app.name; textFormat: Text.PlainText; color: window.textColor
-                font.pixelSize: card.dense ? 14 : 16; font.weight: Font.DemiBold
+                font.pixelSize: card.tight ? 13 : card.dense ? 14 : 16; font.weight: Font.DemiBold
+                fontSizeMode: Text.HorizontalFit; minimumPixelSize: card.tight ? 11 : font.pixelSize
                 wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
             }
             AppPublisher {
@@ -40,6 +42,7 @@ AbstractButton {
                 objectName: "recommendedAppPublisher"
                 app: card.app; Layout.fillWidth: true
                 font.pixelSize: card.dense ? 11 : 12
+                maximumLineCount: card.tight ? 3 : 2
                 horizontalAlignment: Text.AlignLeft
                 verticalAlignment: Text.AlignTop
                 showTooltip: false // The card tooltip already includes the full publisher.
