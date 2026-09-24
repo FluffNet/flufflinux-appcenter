@@ -11,6 +11,11 @@ Label {
     textFormat: Text.PlainText
     color: window.accentColor
     font.weight: Font.DemiBold
+    font.pixelSize: 14
+    fontSizeMode: Text.HorizontalFit
+    minimumPixelSize: Math.max(10, font.pixelSize - 2)
+    wrapMode: Text.Wrap
+    maximumLineCount: 2
     elide: Text.ElideRight
     ToolTip.visible: showTooltip && truncated && pointer.hovered
     ToolTip.delay: 700

@@ -732,7 +732,7 @@ Page {
                             id: homeHeader
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                             anchors.leftMargin: 8; anchors.rightMargin: 8; anchors.topMargin: 20
-                            spacing: 8
+                            spacing: catalogGrid.height < 500 ? 4 : 8
                             Label {
                                 objectName: "recommendedHeading"
                                 visible: page.recommendedApps.length > 0
@@ -745,7 +745,7 @@ Page {
                                 objectName: "recommendedGrid"
                                 visible: page.recommendedApps.length > 0
                                 Layout.fillWidth: true
-                                // Compact, name-and-icon tiles keep all nine picks
+                                // Compact tiles with a full-width publisher footer keep all nine picks
                                 // and All Apps visible even at the minimum window size.
                                 columns: Math.max(3, Math.min(5, Math.floor(width / 190)))
                                 columnSpacing: width < 600 ? 8 : 12; rowSpacing: 8
@@ -755,7 +755,7 @@ Page {
                                         required property var modelData
                                         objectName: "recommended-" + modelData.id
                                         Layout.fillWidth: true; Layout.preferredWidth: 1
-                                        Layout.preferredHeight: catalogGrid.height < 500 ? 64 : 80
+                                        Layout.preferredHeight: catalogGrid.height < 500 ? 80 : 96
                                         app: modelData
                                         onClicked: window.openApp(app)
                                     }

@@ -3,19 +3,22 @@
 Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
 
 - Rust: 12 tests passed; optimized Linux build passed.
-- Full QML regression suite: 524 passed, zero failures across 20 suites.
+- Full QML regression suite: 526 passed, zero failures across 20 suites.
   The search/sidebar regression now expects A–Z when opening a category instead
   of the old input-catalog order; search relevance assertions are unchanged.
 - Category suite: 75 passed at both 100% and 150% scaling, including all six
   orders in all eleven categories, unknown values, live/offline popularity,
   recommendation retention, reset-on-category-switch, details/back navigation,
   Home/Installed/search/Updates independence and narrow/wide/short layouts.
-- Publisher suite: 25 passed at both 100% and 150% scaling. Covers populated,
+- Publisher suite: 27 passed at both 100% and 150% scaling. Covers populated,
   markup-like and missing publisher names across recommendations, catalog cards,
   Installed, Updates, Queue and app details; shared color/weight/plain-text style;
   local metadata fallback with source/branch checks and `.desktop` identities;
-  no invented repository/runtime publishers; long-name elision and full-name
-  tooltips; and compact layouts preserving readable app names and All Apps.
+  no invented repository/runtime publishers; bounded font fitting, two-line
+  wrapping, repeated narrow/wide resizing, and full-name tooltips for extreme
+  overflow. Recommended publishers use full-width, vertically centered footers.
+  All nine real publisher names fit without elision while preserving app names
+  and All Apps, including Microsoft Corporation and VinegarHQ & Sober contributors.
 - Focused Home suite: 20 passed at both 100% and 150% scaling. Covers all six
   orders, real zero versus unknown values, unavailable popularity, independent
   alphabetical recommendations, stable source identity, clicking recommendations,
@@ -26,8 +29,9 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   An app reappears when no longer recommended. Home has no size options, Installed
   keeps size sorting, and app cards retain their name/summary without category tags.
 - Layout cases: 720×520, 1180×520, 1400×1000 and 1920×1080 logical pixels. All
-  nine recommended names remain untruncated; All Apps and at least the start of
-  its first row remain visible without scrolling.
+  nine recommended app and publisher names remain untruncated; text stays within
+  the tile boundaries and above the readable minimum font size. All Apps and at
+  least the start of its first row remain visible without scrolling.
 - Native CatalogStats tests passed: count validation, pagination consistency,
   oversized/malformed data rejection, cache loading, no request merely from
   constructing the data object. Home requests popularity presentation data on
@@ -62,6 +66,9 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   The publisher smoke run additionally matched the visible recommendation,
   catalog and installed labels against real metadata. Wide/narrow Home and
   Installed screenshots were visually inspected with the new publisher rows.
+  The final adaptive-layout run additionally asserted that every real recommended
+  publisher fits in both wide and narrow views; the aligned full-width footers
+  and wrapped Sober publisher were visually checked at 150% display scale.
 
 No regular Flatpak app was installed, updated or removed during this validation.
 The existing AnyDesk, Steam, Flatpak Builder and system Firefox versions were

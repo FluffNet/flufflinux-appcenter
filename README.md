@@ -25,8 +25,11 @@ Queue. They come from existing AppStream metadata; unavailable names are hidden,
 never replaced with the repository name or an invented publisher. Updates can
 resolve the matching app/source/branch from local catalog or installed metadata
 without network requests. Names are plain text, not HTML or a verification badge.
-Long names are elided with the full name available on hover; compact recommended
-tiles still leave All Apps visible at the minimum window size.
+Publisher text adapts down by at most two pixels (never below 10 pixels) and can
+wrap onto two lines. Recommended tiles give publishers their full width, so the
+curated publishers remain readable without hovering even at the minimum window
+size, while keeping All Apps visible. Exceptionally long metadata retains a
+readable font and uses a full-name tooltip as the final overflow fallback.
 
 The sorting control is available on **Home and every catalog category**, with
 A–Z/Z–A, most/least popular, and newest/oldest published release. Home defaults to

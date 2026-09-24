@@ -38,6 +38,7 @@ AppCenter.Main {
                     const card = probe.findChild(page, "recommended-" + app.id)
                     const publisher = probe.findChild(card, "recommendedAppPublisher")
                     main.check(publisher.text === String(app.developer || "").trim(), "native recommendation publisher")
+                    main.check(!publisher.truncated, "native publisher must fit: " + app.developer)
                 }
                 main.check(!main.catalog.some(app => /org\.(videolan\.VLC|libreoffice\.LibreOffice)(\.desktop)?$/.test(app.id)), "default exclusions on this VM")
                 console.log("HOME_RECOMMENDED", names.join(", "))
@@ -75,6 +76,11 @@ AppCenter.Main {
             } else if (main.stage === 6) { grid.positionViewAtBeginning(); main.stage = 7 }
             else if (main.stage === 7) {
                 main.check(grid.headerItem.height < grid.height - 32, "All Apps and its list visible on narrow Home")
+                for (const app of page.recommendedApps) {
+                    const publisher = probe.findChild(probe.findChild(page, "recommended-" + app.id), "recommendedAppPublisher")
+                    main.check(!publisher.truncated && publisher.contentWidth <= publisher.width + 1,
+                               "narrow publisher must fit: " + app.developer)
+                }
                 main.capture(stack, "narrow", 8)
             }
             else if (main.stage === 8) {
