@@ -24,6 +24,14 @@ TestCase {
         property bool installedLoading: false
         property string installedError: ""
         property bool busy: false
+        property bool catalogSourcesUnavailable: false
+        property bool sourcesBusy: false
+        property int refreshes: 0
+        function refreshSources(catalogs) {
+            if (catalogs) refreshes++
+            catalogSourcesUnavailable = false
+            sourcesBusy = true
+        }
         property int iconRevision: 0
         property var updates: ({state:"idle", items:[]})
         property int checks: 0
@@ -56,6 +64,7 @@ TestCase {
         main.catalog = [app("org.example.One", "One"), app("us.zoom.Zoom", "Zoom")]
         backend.updates = {state:"idle", items:[]}; backend.busy = false
         backend.jobs = []
+        backend.catalogSourcesUnavailable = false; backend.sourcesBusy = false; backend.refreshes = 0
         backend.checks = 0; backend.installs = 0; backend.cancelled = 0
         settle(); stats.requests = 0
     }
@@ -89,7 +98,7 @@ TestCase {
         network.state = data.state; settle()
         verify(control("catalogGrid").visible); verify(!control("catalogOfflineMessage").visible)
         verify(control("updatesButton").enabled); verify(control("searchField").enabled)
-        compare(control("catalogNetworkNote").visible, ["local", "limited", "portal", "connecting"].indexOf(data.state) >= 0)
+        compare(control("catalogNetworkNote"), null, "No connectivity advisories")
         root().openCategory("Internet"); settle(); verify(control("catalogGrid").visible)
         mouseClick(control("updatesButton")); settle()
         compare(main.selectedCategory, "Updates"); compare(backend.checks, 0)
@@ -134,31 +143,65 @@ TestCase {
         network.state = "offline"; network.ready = true; settle()
         compare(stats.requests, 0); compare(backend.checks, 0)
     }
-    function test_advisory_fit_data() {
+    function test_header_fit_data() {
         const rows = []
         for (const width of [720, 1180]) for (const state of ["local", "limited", "portal", "connecting"])
             for (const queue of [false, true])
                 rows.push({tag:state + width + (queue ? "-queue" : ""), width:width, state:state, queue:queue})
         return rows
     }
-    function test_advisory_fit(data) {
+    function test_header_fit(data) {
         main.width = data.width; main.height = 520; network.state = data.state
         if (data.queue) backend.jobs = [{id:"org.example.One", name:"One", action:"install", active:true, progress:0.5, operations:[]}]
         const titles = ["Discord", "Steam", "Telegram", "Spotify", "Google Chrome", "Brave", "Visual Studio Code", "Sober", "Minecraft Launcher", "Zoom"]
         main.catalog = root().recommendedIds.map((id, i) => app(id, titles[i]))
         settle()
-        const note = control("catalogNetworkNote"), search = control("searchField")
-        verify(note.visible && note.width > 200)
-        const label = findChild(note, "networkInlineText")
-        verify(label.contentWidth <= label.width + 1 && !label.truncated)
-        verify(note.mapToItem(main.contentItem, 0, 0).y >= search.mapToItem(main.contentItem, 0, search.height).y)
-        verify(note.mapToItem(main.contentItem, 0, note.height).y <= root().header.height)
+        const search = control("searchField")
+        compare(control("catalogNetworkNote"), null)
+        compare(search.anchors.verticalCenterOffset, 0)
         const grid = control("catalogGrid")
         grid.positionViewAtBeginning(); settle()
-        verify(grid.headerItem.height <= grid.height - 32, "All Apps remains visible with a network note")
+        verify(grid.headerItem.height <= grid.height - 32, "All Apps remains visible")
         network.state = "offline"; settle()
         const message = control("catalogOfflineMessage")
         verify(message.height <= root().height && message.width <= root().width)
         verify(findChild(message, "networkOfflineTitle").contentWidth <= message.width + 1)
+    }
+    function test_sources_failed_data() { return test_allowed_states_data() }
+    function test_sources_failed(data) {
+        network.state = data.state; main.catalog = []; backend.catalogSourcesUnavailable = true; settle()
+        const notice = control("catalogOfflineMessage")
+        verify(notice.visible)
+        compare(findChild(notice, "networkOfflineTitle").text, "Cannot Connect to Sources")
+        verify(!control("catalogGrid").visible); verify(!control("catalogEmptyMessage").visible)
+        verify(control("updatesButton").enabled); verify(control("searchField").enabled)
+        root().openCategory("Internet"); settle(); verify(notice.visible)
+        mouseClick(control("installedButton")); settle(); verify(!notice.visible)
+        verify(control("installedList").visible)
+        main.showUpdates(); settle(); verify(control("checkForUpdatesButton").enabled)
+        compare(backend.checks, 0)
+        root().openCategory("All Apps"); settle()
+        mouseClick(findChild(notice, "retryCatalogSourcesButton")); settle()
+        compare(backend.refreshes, 1); compare(backend.checks, 0)
+        verify(!notice.visible); compare(control("catalogEmptyMessage").text, "Loading applications…")
+        backend.sourcesBusy = false; main.catalog = [app("org.example.One", "One")]; settle()
+        verify(control("catalogGrid").visible); verify(!notice.visible)
+    }
+    function test_sources_failed_offline_precedence() {
+        main.width = 720; main.height = 520
+        backend.catalogSourcesUnavailable = true; network.state = "offline"; settle()
+        const notice = control("catalogOfflineMessage")
+        compare(findChild(notice, "networkOfflineTitle").text, "No Network Connection")
+        verify(!findChild(notice, "retryCatalogSourcesButton").visible)
+        network.state = "limited"; settle()
+        compare(findChild(notice, "networkOfflineTitle").text, "Cannot Connect to Sources")
+        verify(notice.height <= root().height)
+        verify(findChild(notice, "networkOfflineTitle").contentWidth <= notice.width + 1)
+        verify(findChild(notice, "retryCatalogSourcesButton").visible)
+    }
+    function test_empty_catalog_not_connection_failure() {
+        main.catalog = []; network.state = "limited"; settle()
+        verify(!control("catalogOfflineMessage").visible)
+        compare(control("catalogEmptyMessage").text, "No results.")
     }
 }

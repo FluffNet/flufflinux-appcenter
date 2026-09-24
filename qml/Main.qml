@@ -43,7 +43,7 @@ ApplicationWindow {
     readonly property string networkState: networkStatus ? networkStatus.state : "unknown"
     readonly property bool networkOffline: networkState === "offline"
     readonly property bool networkReady: !networkStatus || networkStatus.ready !== false
-    readonly property bool networkAdvisory: ["local", "limited", "portal", "connecting"].indexOf(networkState) >= 0
+    property bool catalogSourcesUnavailable: !!backend && backend.catalogSourcesUnavailable === true
     property var installedApps: backend ? backend.installedApps : []
     property bool installedLoading: backend ? backend.installedLoading : false
     property string installedError: backend ? backend.installedError : ""

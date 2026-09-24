@@ -9,6 +9,8 @@ AppCenter.Main {
     id: main
     width: 1180; height: 760; visible: true
     networkStatus: previewNetwork
+    // Inject the production manager's aggregate outcome at the UI boundary.
+    catalogSourcesUnavailable: scenes[index] ? scenes[index].failed === true : false
     QtObject { id: previewNetwork; property string state: "offline"; property bool ready: true }
     TestCase { id: probe; when: false }
     property int index: 0
@@ -20,6 +22,8 @@ AppCenter.Main {
         {state:"offline", category:"Internet", name:"offline-category"},
         {state:"local", category:"All Apps", name:"lan-home"},
         {state:"limited", category:"All Apps", name:"limited-home"},
+        {state:"limited", category:"All Apps", name:"sources-failed-home", failed:true},
+        {state:"limited", category:"Internet", name:"sources-failed-category", failed:true},
         {state:"portal", category:"All Apps", name:"portal-home"},
         {state:"limited", category:"Updates", name:"limited-updates"},
         {state:"offline", category:"Updates", name:"offline-updates"},
@@ -51,8 +55,8 @@ AppCenter.Main {
             if (main.catalogStats.state === "loading") return
             const offline = scene.state === "offline", updates = scene.category === "Updates"
             main.check(probe.findChild(page, "updatesButton").enabled === !offline, "Updates disabled only offline")
-            main.check(probe.findChild(page, "catalogOfflineMessage").visible === (offline && !updates), "Offline replacement")
-            main.check(probe.findChild(page, "catalogNetworkNote").visible === main.networkAdvisory, "Advisory note")
+            main.check(probe.findChild(page, "catalogOfflineMessage").visible === ((offline || scene.failed === true) && !updates), "Catalog warning")
+            main.check(probe.findChild(page, "catalogNetworkNote") === null, "No advisory note")
             if (offline && !updates) {
                 const icon = probe.findChild(probe.findChild(page, "catalogOfflineMessage"), "networkWarningIcon")
                 main.check(icon.status === Image.Ready, "KDE warning icon loaded")
@@ -64,7 +68,7 @@ AppCenter.Main {
                 main.check(result.saveToFile(filename), "Save screenshot " + scene.name)
                 console.log("NETWORK_CAPTURE", scene.name)
                 main.index++; main.prepared = false; main.capturing = false
-                if (main.index === main.scenes.length) { console.log("NETWORK_UI_PASS", "eight states captured; no app update checks"); Qt.quit() }
+                if (main.index === main.scenes.length) { console.log("NETWORK_UI_PASS", "ten states captured; no app update checks"); Qt.quit() }
             })
             main.check(accepted, "Screenshot item has a QML rendering context")
         }

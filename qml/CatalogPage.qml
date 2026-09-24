@@ -14,6 +14,8 @@ Page {
     readonly property bool homeView: window.selectedCategory === "All Apps" && !window.searchText
     readonly property bool catalogView: !installedView && !updatesView && !window.searchText
     readonly property bool networkBlocked: window.networkOffline && !installedView && !updatesView
+    readonly property bool sourcesBlocked: window.catalogSourcesUnavailable === true && !installedView && !updatesView
+    readonly property bool catalogBlocked: networkBlocked || sourcesBlocked
     property int catalogSortIndex: 2
     // Category choices are temporary and never written to Home's preference.
     property int categorySortIndex: 0
@@ -340,18 +342,6 @@ Page {
                 id: downloadsControl
                 x: page.categorySidebarWidth + 12
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: window.networkAdvisory ? -10 : 0
-            }
-
-            NetworkNotice {
-                objectName: "catalogNetworkNote"
-                compact: true; networkState: window.networkState
-                visible: window.networkAdvisory
-                // Queue narrows Search; the note may extend beneath the other
-                // header controls so it still fits without stealing catalog height.
-                width: Math.min(page.width - page.categorySidebarWidth - 36, Math.max(360, searchField.width))
-                anchors.right: searchField.right
-                anchors.top: searchField.bottom; anchors.topMargin: 3
             }
 
             TextField {
@@ -364,7 +354,6 @@ Page {
                 anchors.right: parent.right
                 anchors.rightMargin: 24
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: window.networkAdvisory ? -10 : 0
                 placeholderText: "Search applications…"
                 color: window.textColor; placeholderTextColor: window.mutedTextColor
                 leftPadding: 46; rightPadding: 48; implicitHeight: 44
@@ -456,7 +445,6 @@ Page {
                 objectName: "applicationMenuButton"
                 anchors.right: searchField.left; anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                anchors.verticalCenterOffset: window.networkAdvisory ? -10 : 0
                 width: 44; height: 44
                 text: "⋮"; font.pixelSize: 28
                 Accessible.name: qsTr("Application menu")
@@ -720,7 +708,7 @@ Page {
             visible: !page.updatesView
             Layout.fillWidth: true; Layout.fillHeight: true; clip: true
             ColumnLayout {
-                visible: !page.networkBlocked
+                visible: !page.catalogBlocked
                 anchors.fill: parent; spacing: 18
                 Loader {
                     active: !page.homeView
@@ -852,15 +840,18 @@ Page {
                 objectName: "catalogOfflineMessage"
                 anchors.centerIn: parent
                 width: Math.min(620, parent.width - 48)
-                networkState: "offline"
-                visible: page.networkBlocked
+                networkState: page.networkBlocked ? "offline" : "sources-unavailable"
+                visible: page.catalogBlocked
+                allowRetry: !page.networkBlocked
+                retryEnabled: !!window.backend && !window.backend.busy
+                onRetryRequested: window.backend.refreshSources(true)
             }
             Label {
                 objectName: "catalogEmptyMessage"
                 anchors.centerIn: parent
                 width: parent.width - 48
                 wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
-                visible: !page.networkBlocked && (page.installedView ? !window.installedLoading && (window.installedError || page.installedMatches.length === 0)
+                visible: !page.catalogBlocked && (page.installedView ? !window.installedLoading && (window.installedError || page.installedMatches.length === 0)
                                             : window.catalogLoaded && page.visibleApps.length === 0)
                 text: page.installedView && window.installedError ? window.installedError
                       : !page.installedView && window.catalog.length === 0 && window.backend && window.backend.sourcesBusy

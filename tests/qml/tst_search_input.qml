@@ -31,7 +31,7 @@ TestCase {
         property bool catalogLoaded: true
         property string networkState: "unknown"
         property bool networkOffline: false
-        property bool networkAdvisory: false
+        property bool catalogSourcesUnavailable: false
         property bool networkReady: true
         property var selectedApp: null
         property var downloadQueue: ({activeCount: 0, buttonVisible: false, progress: 0, completionSeen: true, hasError: false})

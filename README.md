@@ -99,12 +99,21 @@ Home, categories and catalog search show **No Network Connection** with KDE's
 themed `dialog-warning` triangle instead of app tiles. Installed apps,
 their local search, Settings and the download queue remain accessible.
 
-LAN-only, limited Internet and captive-portal connections display a small note
-under Search but **do not disable browsing or updates**. An unavailable or unknown
+LAN-only, limited Internet, captive-portal and connecting states **show no note
+and do not disable browsing or updates**. An unavailable or unknown
 NetworkManager state also leaves actions enabled: it is not proof of being offline.
 This uses NetworkManager's overall `State`, not `Connectivity=NONE`, which may
 also occur on a working LAN without an Internet route. State definitions are in
 the [NetworkManager API](https://networkmanager.dev/docs/api/latest/nm-dbus-types.html).
+
+Availability comes from actual catalog loading, not an Internet connectivity
+probe. If every enabled source fails and no usable catalog remains, Home,
+categories and catalog search show **Cannot Connect to Sources**, the KDE warning
+triangle, and **Please check your internet connection and try again.** A **Try
+Again** button refreshes sources only; it never checks for app updates. Partial
+success and cached catalogs remain browsable. A valid empty catalog, disabled
+sources, a deliberately empty source list or a cancelled operation are not
+classified as connection failures. Settings retains individual source errors.
 
 Changes apply live. Losing the connection while Updates is open disables new
 checks and Update Selected without discarding the list or selection; cancellation
@@ -115,6 +124,8 @@ probes, networking changes, privileged service, password prompt or NM autostart.
 
 Network tests: `sh tests/native/run_network_status.sh` uses a private D-Bus daemon,
 and `tests/qml/tst_network.qml` covers UI transitions with a mocked status source.
+`sh tests/run_catalog_availability.sh` tests the production manager protocol and
+real worker against isolated local repositories (no Internet or app changes).
 `tests/integration/NetworkSmoke.qml` captures real KDE-rendered screenshots with
 simulated statuses; it does not disconnect the host or change Flatpak apps.
 

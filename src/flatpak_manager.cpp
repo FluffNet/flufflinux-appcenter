@@ -100,12 +100,21 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
             m_sourceBuffer.remove(0, end + 1);
             if (message["type"] == "sources") {
                 const auto sources = message["sources"].toArray().toVariantList();
+                if (sources != m_repositories) {
+                    m_catalogLoadsFailed = false;
+                    emit catalogChanged();
+                }
                 if (sources != m_repositories && m_updatesState == "ready") {
                     m_updates.clear(); m_updatesState = "idle"; m_updatesSkipped.clear();
                     m_updatesError.clear(); emit updatesChanged();
                 }
                 m_repositories = sources;
                 emit repositoriesChanged(); reloadCatalog();
+            } else if (message["type"] == "catalog-load") {
+                // Only completed catalog loads establish availability. A source
+                // settings error, empty result set or NM connectivity probe cannot.
+                m_catalogLoadsFailed = message["available"].toInt() == 0 && message["failed"].toInt() > 0;
+                emit catalogChanged();
             } else if (message["type"] == "result") {
                 m_sourceResult = true;
                 // Opening Settings must not erase a provisioning/refresh
@@ -891,7 +900,11 @@ void FlatpakManager::runSourceOperation(QVariantMap request) {
         m_updates.clear(); m_updatesState = "idle"; m_updatesSkipped.clear();
         m_updatesError.clear(); emit updatesChanged();
     }
-    if (!m_sourceListing) m_sourcesError.clear();
+    if (!m_sourceListing) {
+        m_sourcesError.clear();
+        m_catalogLoadsFailed = false;
+        emit catalogChanged();
+    }
     m_sourceBuffer.clear(); m_sourceResult = false;
     request["action"] = "repositories";
     m_sourceProcess.start(QCoreApplication::applicationFilePath(), {"--transaction-worker",

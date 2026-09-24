@@ -6,19 +6,15 @@ Item {
     id: notice
     property string networkState: "unknown"
     property bool compact: false
+    property bool allowRetry: false
+    property bool retryEnabled: true
+    signal retryRequested()
     readonly property string title: networkState === "offline" ? qsTr("No Network Connection")
-        : networkState === "local" ? qsTr("Local Network Only")
-        : networkState === "portal" ? qsTr("Network Sign-in Required")
-        : networkState === "limited" ? qsTr("Limited Network Connection")
-        : networkState === "connecting" ? qsTr("Connecting to a Network") : ""
+        : networkState === "sources-unavailable" ? qsTr("Cannot Connect to Sources") : ""
     readonly property string note: networkState === "offline"
         ? qsTr("Connect to a network to browse apps and check for updates.")
-        : qsTr("Browsing and updates are still available.")
-    readonly property string compactText: networkState === "offline" ? title
-        : networkState === "local" ? qsTr("LAN only — browsing and updates are available.")
-        : networkState === "portal" ? qsTr("Network sign-in needed — browsing and updates are available.")
-        : networkState === "limited" ? qsTr("Limited connection — browsing and updates are available.")
-        : networkState === "connecting" ? qsTr("Connecting — browsing and updates are available.") : ""
+        : qsTr("Please check your internet connection and try again.")
+    readonly property string compactText: title
     visible: title.length > 0
     implicitHeight: compact ? inlineNote.implicitHeight : offlineMessage.implicitHeight
     Accessible.role: Accessible.StaticText
@@ -65,6 +61,15 @@ Item {
             Layout.fillWidth: true
             font.pixelSize: 14; color: window.mutedTextColor
             wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
+        }
+        Button {
+            objectName: "retryCatalogSourcesButton"
+            text: qsTr("Try Again")
+            visible: notice.allowRetry
+            enabled: notice.retryEnabled
+            focusPolicy: Qt.TabFocus
+            Layout.alignment: Qt.AlignHCenter
+            onClicked: notice.retryRequested()
         }
     }
 }

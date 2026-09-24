@@ -22,6 +22,7 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(QVariantMap appPermissions READ appPermissions NOTIFY appPermissionsChanged)
     Q_PROPERTY(QVariantMap updates READ updates NOTIFY updatesChanged)
     Q_PROPERTY(QVariantList catalog READ catalog NOTIFY catalogChanged)
+    Q_PROPERTY(bool catalogSourcesUnavailable READ catalogSourcesUnavailable NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList repositories READ repositories NOTIFY repositoriesChanged)
     Q_PROPERTY(bool sourcesBusy READ sourcesBusy NOTIFY repositoriesChanged)
     Q_PROPERTY(QString sourceInputStatus READ sourceInputStatus NOTIFY jobsChanged)
@@ -57,6 +58,8 @@ public:
     Q_INVOKABLE void refreshInstalled();
     Q_INVOKABLE void launchApp(QVariantMap app);
     QVariantList catalog() const { return m_catalog; }
+    // Usable cached applications remain browsable even if refreshing fails.
+    bool catalogSourcesUnavailable() const { return m_catalogLoadsFailed && m_catalog.isEmpty(); }
     QVariantList repositories() const { return m_repositories; }
     bool sourcesBusy() const { return m_sourceProcess.state() != QProcess::NotRunning; }
     QString sourceInputStatus() const;
@@ -137,6 +140,7 @@ private:
     QProcess m_sourceProcess, m_catalogProcess;
     QByteArray m_sourceBuffer;
     QString m_sourcesError;
+    bool m_catalogLoadsFailed = false;
     QStringList m_pendingInputs;
     bool m_sourceResult = false, m_sourceListing = false, m_catalogAgain = false, m_sourcesRefreshPending = false;
 };

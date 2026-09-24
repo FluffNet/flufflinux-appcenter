@@ -463,6 +463,11 @@ bool removeRepositories(FlatpakInstallation *user, const QJsonArray &members, Wo
 
 bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker &w) {
     const auto operation = request["operation"].toString();
+    int availableCatalogs = 0, failedCatalogs = 0;
+    const auto reportCatalogs = [&] {
+        if (!g_cancellable_is_cancelled(w.cancel))
+            send({{"type", "catalog-load"}, {"available", availableCatalogs}, {"failed", failedCatalogs}});
+    };
     g_autoptr(GError) error = nullptr;
     if (operation == "initialize" || operation == "refresh") {
         QSettings settings(Sources::configPath(), QSettings::IniFormat);
@@ -478,16 +483,23 @@ bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker 
                 auto remote = FLATPAK_REMOTE(g_ptr_array_index(remotes, j));
                 if (flatpak_remote_get_remote_type(remote) != FLATPAK_REMOTE_TYPE_STATIC || Sources::suppressed(system, remote)) continue;
                 QString problem;
-                if (!Sources::mirror(user, system, remote, w.cancel, problem)) problems.append(problem);
+                if (!Sources::mirror(user, system, remote, w.cancel, problem)) {
+                    problems.append(problem);
+                    if (!flatpak_remote_get_disabled(remote) && !flatpak_remote_get_noenumerate(remote)) ++failedCatalogs;
+                }
             }
         }
-        if (first && empty && !addOfficialRemote(user, "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo", w))
+        if (first && empty && !addOfficialRemote(user, "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo", w)) {
             problems.append(w.problem);
+            ++failedCatalogs;
+        }
         if (problems.isEmpty()) settings.setValue("Sources/initialized", true);
         else w.problem = problems.join('\n');
     } else if (operation == "defaults") {
         if (!Sources::list().isEmpty()) { w.problem = "Default sources can only be added when no sources are configured."; return false; }
-        if (!addOfficialRemote(user, "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo", w)) return false;
+        if (!addOfficialRemote(user, "flathub", "https://dl.flathub.org/repo/flathub.flatpakrepo", w)) {
+            ++failedCatalogs; reportCatalogs(); return false;
+        }
         QSettings settings(Sources::configPath(), QSettings::IniFormat);
         settings.setValue("Sources/initialized", true);
     } else if (operation == "remove") {
@@ -517,13 +529,18 @@ bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker 
         if (flatpak_remote_get_disabled(remote) || flatpak_remote_get_noenumerate(remote)) continue;
         g_autoptr(GFile) directory = flatpak_remote_get_appstream_dir(remote, nullptr);
         g_autofree char *path = directory ? g_file_get_path(directory) : nullptr;
-        if (operation != "refresh" && path && QFileInfo::exists(str(path) + "/appstream.xml.gz")) continue;
+        const bool cached = path && (QFileInfo::exists(str(path) + "/appstream.xml.gz")
+            || QFileInfo::exists(str(path) + "/appstream.xml"));
+        if (operation != "refresh" && cached) { ++availableCatalogs; continue; }
         g_clear_error(&error);
         if (!flatpak_installation_update_appstream_sync(user, flatpak_remote_get_name(remote), nullptr, nullptr, w.cancel, &error)) {
             if (!w.problem.isEmpty()) w.problem += '\n';
             w.problem += str(flatpak_remote_get_name(remote)) + ": " + str(error->message);
-        }
+            if (cached) ++availableCatalogs;
+            else ++failedCatalogs;
+        } else ++availableCatalogs;
     }
+    reportCatalogs();
     return w.problem.isEmpty();
 }
 
