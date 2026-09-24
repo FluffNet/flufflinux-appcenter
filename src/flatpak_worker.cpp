@@ -598,7 +598,13 @@ bool execute(const QJsonObject &request, Worker &w) {
                 w.problem = "An update source changed or was disabled. Check for updates again."; return false;
             }
         }
-        added = flatpak_transaction_add_update(tx, ref.toUtf8(), nullptr, commit.toUtf8(), &error);
+        // Let Flatpak resolve the normal signed update through its system
+        // helper. Supplying an explicit commit is a privileged downgrade/
+        // arbitrary-revision operation, even when it happens to be the latest.
+        // ready-pre-auth still checks every resolved commit against the
+        // reviewed plan and aborts before authorization/download/deployment
+        // if the source has advanced since the user checked for updates.
+        added = flatpak_transaction_add_update(tx, ref.toUtf8(), nullptr, nullptr, &error);
     } else if (w.removing) {
         const auto arch = request["installedArch"].toString();
         const auto branch = request["installedBranch"].toString();

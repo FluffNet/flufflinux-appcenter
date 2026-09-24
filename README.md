@@ -39,7 +39,7 @@ estimate including required components. The selected total counts shared
 components once. Actual transfers can be smaller because of cached data,
 language subsets and deltas. Missing published version labels use an explicit
 commit revision instead of inventing a version. Version labels come from
-Flatpak/AppStream; the selected update itself is pinned to its resolved commit.
+Flatpak/AppStream; the selected update is checked against its reviewed commit.
 
 Changed sandbox permissions have a **View Permission Changes** dialog showing
 added and removed rules in the existing grouped layout. Unknown permission
@@ -52,7 +52,11 @@ update with their apps even if their standalone row is unchecked. The worker
 verifies the installation, full ref, current commit, source identity/signing
 configuration, and resolved operation plan before deployment; stale plans fail
 with a recheck request. It cannot silently add a source, remove an app, or update
-another unselected app. System updates use Flatpak's normal authorization.
+another unselected app. Updates request the latest signed release through
+Flatpak's existing system helper, then compare every resolved commit with the
+reviewed plan before authorization or deployment. They do not use arbitrary
+commit selection, which Flatpak restricts to root for system installations.
+No additional root service or relaxed authorization policy is needed.
 
 Successful app deployment records its UTC last-update time in
 `$XDG_DATA_HOME/FluffNet LLC/flufflinux-appcenter/update-dates.json` (normally
