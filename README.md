@@ -26,10 +26,12 @@ never replaced with the repository name or an invented publisher. Updates can
 resolve the matching app/source/branch from local catalog or installed metadata
 without network requests. Names are plain text, not HTML or a verification badge.
 Publisher text adapts down by at most two pixels (never below 10 pixels) and can
-wrap onto two lines. Recommended tiles give publishers their full width, so the
-curated publishers remain readable without hovering even at the minimum window
-size, while keeping All Apps visible. Exceptionally long metadata retains a
-readable font and uses a full-name tooltip as the final overflow fallback.
+wrap onto two lines. Recommended tiles keep publishers directly below their
+titles, sharing the same left edge beside the icon. Curated publishers remain
+readable without hovering even at the minimum window size, while keeping All Apps
+visible. Exceptionally long metadata retains a readable font and uses a full-name
+tooltip as the final overflow fallback. Home, category, search and Installed
+headings omit the application count.
 
 The sorting control is available on **Home and every catalog category**, with
 A–Z/Z–A, most/least popular, and newest/oldest published release. Home defaults to

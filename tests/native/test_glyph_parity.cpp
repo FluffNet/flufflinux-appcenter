@@ -44,11 +44,11 @@ int main(int argc, char **argv) {
     QTimer timer;
     QObject::connect(&timer, &QTimer::timeout, &app, [&] {
         if (phase == 0) {
-            target = findItem(window->contentItem(), scenario < 3 ? "catalogCountLabel" : "installedSourceValue");
+            target = findItem(window->contentItem(), scenario < 3 ? "installedVersionValue" : "installedSourceValue");
             auto search = findItem(window->contentItem(), "searchField");
             if (!target || !search) { app.exit(2); return; }
-            if (scenario == 0) QQmlProperty::write(target, "text", "3297 applications");
-            if (scenario == 1) QQmlProperty::write(target, "text", "7 applications");
+            if (scenario == 0) QQmlProperty::write(target, "text", "3297");
+            if (scenario == 1) QQmlProperty::write(target, "text", "7");
             if (scenario == 2) QQmlProperty::write(target, "text", "0123456789");
             target->setProperty("color", QColor(Qt::white));
             if (negativeControl) target->setProperty("renderType", 1);

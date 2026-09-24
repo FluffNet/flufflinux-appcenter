@@ -30,6 +30,7 @@ AppCenter.Main {
             if (main.stage === 0) {
                 main.check(page.catalogSortIndex === 2, "Home must default to popularity")
                 main.check(page.installedSortIndex === 0, "Installed must still default to A–Z")
+                main.check(!probe.findChild(page, "catalogCountLabel"), "no Home app count")
                 stack.background = main.snapshotBackground.createObject(stack)
                 main.check(page.recommendedApps.length === 9, "all nine available recommendations")
                 const names = page.recommendedApps.map(app => app.name)
@@ -39,6 +40,11 @@ AppCenter.Main {
                     const publisher = probe.findChild(card, "recommendedAppPublisher")
                     main.check(publisher.text === String(app.developer || "").trim(), "native recommendation publisher")
                     main.check(!publisher.truncated, "native publisher must fit: " + app.developer)
+                    const title = probe.findChild(card, "recommendedAppName")
+                    const titleBottom = title.mapToItem(card, 0, title.height), publisherTop = publisher.mapToItem(card, 0, 0)
+                    main.check(Math.abs(publisherTop.x - titleBottom.x) < 1
+                               && Math.abs(publisherTop.y - titleBottom.y - 2) < 1,
+                               "native publisher directly under title: " + app.name)
                 }
                 main.check(!main.catalog.some(app => /org\.(videolan\.VLC|libreoffice\.LibreOffice)(\.desktop)?$/.test(app.id)), "default exclusions on this VM")
                 console.log("HOME_RECOMMENDED", names.join(", "))
@@ -87,6 +93,7 @@ AppCenter.Main {
                 main.width = 1180; main.height = 760
                 page.openCategory("Internet"); main.stage = 9
             } else if (main.stage === 9) {
+                main.check(!probe.findChild(page, "catalogCountLabel"), "no category app count")
                 const sort = probe.findChild(page, "catalogSort")
                 main.check(sort.visible && sort.currentIndex === 0, "category defaults to A–Z")
                 const count = main.catalog.filter(app => app.category === "Internet").length
@@ -114,6 +121,7 @@ AppCenter.Main {
                 main.check(page.catalogSortIndex === 2, "Home keeps its preference")
                 page.openCategory("Installed"); main.stage = 14
             } else if (main.stage === 14) {
+                main.check(!probe.findChild(page, "catalogCountLabel"), "no Installed app count")
                 const list = probe.findChild(page, "installedList")
                 for (let i = 0; i < list.count; ++i) {
                     const row = list.itemAtIndex(i)

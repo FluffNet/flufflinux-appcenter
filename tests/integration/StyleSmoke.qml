@@ -62,27 +62,27 @@ AppCenter.Main {
             if (main.stage === 0) {
                 if (!main.verifyCatalogViewport()) return
                 stack.background = main.snapshotBackground.createObject(stack)
-                const count = main.find(main.contentItem, "catalogCountLabel")
-                console.info("STYLE_FONT: " + count.fontInfo.family + " " + count.fontInfo.pixelSize
-                             + "px; scale=" + Screen.devicePixelRatio + "; native=" + count.renderType)
+                const title = main.find(main.contentItem, "catalogTitleLabel")
+                console.info("STYLE_FONT: " + title.fontInfo.family + " " + title.fontInfo.pixelSize
+                             + "px; scale=" + Screen.devicePixelRatio + "; native=" + title.renderType)
                 const separator = main.find(main.contentItem, "catalogHeaderSeparator")
                 console.info("STYLE_SEAM: window scale=" + separator.pixelRatio + "; thickness=" + separator.thickness)
                 main.stage = -1
                 main.capture("catalog", function() { main.stage = 1 })
             } else if (main.stage === 1) {
-                const count = main.find(main.contentItem, "catalogCountLabel")
+                const title = main.find(main.contentItem, "catalogTitleLabel")
                 main.stage = -1
-                count.grabToImage(function(result) {
-                    result.saveToFile(Qt.resolvedUrl("../../target/style-count-native.png").toString().replace("file://", ""))
-                    count.renderType = Text.QtRendering
+                title.grabToImage(function(result) {
+                    result.saveToFile(Qt.resolvedUrl("../../target/style-heading-qt.png").toString().replace("file://", ""))
+                    title.renderType = Text.NativeRendering
                     main.stage = 2
                 })
             } else if (main.stage === 2) {
-                const count = main.find(main.contentItem, "catalogCountLabel")
+                const title = main.find(main.contentItem, "catalogTitleLabel")
                 main.stage = -1
-                count.grabToImage(function(result) {
-                    result.saveToFile(Qt.resolvedUrl("../../target/style-count-qt.png").toString().replace("file://", ""))
-                    count.renderType = Text.NativeRendering
+                title.grabToImage(function(result) {
+                    result.saveToFile(Qt.resolvedUrl("../../target/style-heading-native.png").toString().replace("file://", ""))
+                    title.renderType = Text.QtRendering
                     main.selectedCategory = "Installed"
                     main.stage = 3
                 })
@@ -121,7 +121,7 @@ AppCenter.Main {
                 })
             } else if (main.stage === 9) {
                 main.stage = 10
-                console.info("STYLE_ALL_PASS: full-page scrollbar, adaptive cards with continuous rendering at top/middle/bottom, Installed, app, Downloads, and native/Qt count snapshots")
+                console.info("STYLE_ALL_PASS: full-page scrollbar, adaptive cards with continuous rendering at top/middle/bottom, Installed, app, Downloads, and native/Qt heading snapshots")
             }
         }
     }

@@ -62,6 +62,19 @@ TestCase {
         compare(page().sortDescription, "")
         verify(!findChild(page(), "catalogSortDescription").visible)
     }
+    function test_app_counts_removed_data() {
+        return [{tag:"home", category:"All Apps", search:"", title:"All Apps"},
+            {tag:"category", category:"Utilities", search:"", title:"Utilities"},
+            {tag:"installed", category:"Installed", search:"", title:"Installed"},
+            {tag:"search", category:"All Apps", search:"alpha", title:"Search results"}]
+    }
+    function test_app_counts_removed(data) {
+        page().openCategory(data.category)
+        main.searchText = data.search
+        waitForPolish(page()); wait(30)
+        compare(findChild(page(), "catalogTitleLabel").text, data.title)
+        verify(!findChild(page(), "catalogCountLabel"), "No application count in any list heading")
+    }
     function test_home_size_options_removed() {
         compare(page().catalogSortKeys.join(","), "name-asc,name-desc,popularity-desc,popularity-asc,release-desc,release-asc")
         compare(page().catalogSortOptions.length, 6)

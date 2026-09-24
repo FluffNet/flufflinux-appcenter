@@ -172,9 +172,15 @@ TestCase {
             verify(publisher.contentWidth <= publisher.width + 1, "Publisher must fit the tile width")
             verify(publisher.contentHeight <= publisher.height + 1, "Publisher must fit the tile height")
             verify(publisher.minimumPixelSize >= 10, "Do not shrink publishers to unreadable sizes")
-            verify(publisher.mapToItem(card, 0, 0).y >= title.mapToItem(card, 0, title.height).y)
+            const titleBottom = title.mapToItem(card, 0, title.height)
+            const publisherTop = publisher.mapToItem(card, 0, 0)
+            verify(Math.abs(publisherTop.x - titleBottom.x) < 1, "Publisher must align with the title's left edge")
+            verify(Math.abs(publisherTop.y - titleBottom.y - 2) < 1,
+                "Publisher must sit directly below the title, not in a separate footer")
+            compare(publisher.horizontalAlignment, Text.AlignLeft)
+            compare(publisher.verticalAlignment, Text.AlignTop)
             verify(publisher.mapToItem(card, 0, publisher.height).y <= card.height,
-                pick.name + " publisher footer must fit: " + publisher.mapToItem(card, 0, publisher.height).y
+                pick.name + " publisher must fit: " + publisher.mapToItem(card, 0, publisher.height).y
                 + " <= " + card.height + "; title=" + title.height + "; publisher=" + publisher.height)
             verify(card.ToolTip.text.indexOf(pick.developer) >= 0, "Full publisher is available on hover")
         }

@@ -48,6 +48,7 @@ AbstractButton {
                 rowSpacing: 3
                 MetadataLabel { text: qsTr("Version:"); color: window.mutedTextColor }
                 MetadataLabel {
+                    objectName: "installedVersionValue"
                     Layout.fillWidth: true
                     text: app.installedVersion || qsTr("Unavailable")
                     color: window.textColor

@@ -3,7 +3,8 @@
 Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
 
 - Rust: 12 tests passed; optimized Linux build passed.
-- Full QML regression suite: 526 passed, zero failures across 20 suites.
+- QML regression: 530 passed across 20 suites, including the final seven-test
+  style rerun after making heading glyph rendering explicit. No failures remain.
   The search/sidebar regression now expects A–Z when opening a category instead
   of the old input-catalog order; search relevance assertions are unchanged.
 - Category suite: 75 passed at both 100% and 150% scaling, including all six
@@ -16,13 +17,15 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   local metadata fallback with source/branch checks and `.desktop` identities;
   no invented repository/runtime publishers; bounded font fitting, two-line
   wrapping, repeated narrow/wide resizing, and full-name tooltips for extreme
-  overflow. Recommended publishers use full-width, vertically centered footers.
+  overflow. Recommended publishers sit two pixels below their titles with matching
+  left edges, in a compact text group beside the icon; there is no separate footer.
   All nine real publisher names fit without elision while preserving app names
   and All Apps, including Microsoft Corporation and VinegarHQ & Sober contributors.
-- Focused Home suite: 20 passed at both 100% and 150% scaling. Covers all six
+- Focused Home suite: 24 passed at both 100% and 150% scaling. Covers all six
   orders, real zero versus unknown values, unavailable popularity, independent
   alphabetical recommendations, stable source identity, clicking recommendations,
-  preserving All Apps position after asynchronous statistics arrive, and wheel
+  no app counts on Home, categories, search or Installed, preserving All Apps
+  position after asynchronous statistics arrive, and wheel
   return to recommendations. Both popularity orders omit only displayed
   recommendations (including Flatpak/AppStream aliases, alternate sources and
   offline fallback); name/date orders, search and categories retain them.
@@ -67,8 +70,13 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   catalog and installed labels against real metadata. Wide/narrow Home and
   Installed screenshots were visually inspected with the new publisher rows.
   The final adaptive-layout run additionally asserted that every real recommended
-  publisher fits in both wide and narrow views; the aligned full-width footers
-  and wrapped Sober publisher were visually checked at 150% display scale.
+  publisher fits in both wide and narrow views; the title/publisher alignment
+  and wrapped Sober/Microsoft publishers were visually checked at 150% display
+  scale. Home, category and Installed app counts are absent in the native UI.
+- Native font and pixel-parity checks passed at 150% scaling after moving their
+  numeric probe from the removed count to the installed version label. Noto Sans
+  stays in use; `3297`, `7`, all digits and `flathub (System)` match TextInput
+  rendering with zero relative pixel error.
 
 No regular Flatpak app was installed, updated or removed during this validation.
 The existing AnyDesk, Steam, Flatpak Builder and system Firefox versions were

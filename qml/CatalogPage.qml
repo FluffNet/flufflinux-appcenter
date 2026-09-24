@@ -745,7 +745,7 @@ Page {
                                 objectName: "recommendedGrid"
                                 visible: page.recommendedApps.length > 0
                                 Layout.fillWidth: true
-                                // Compact tiles with a full-width publisher footer keep all nine picks
+                                // Compact icon/title/publisher tiles keep all nine picks
                                 // and All Apps visible even at the minimum window size.
                                 columns: Math.max(3, Math.min(5, Math.floor(width / 190)))
                                 columnSpacing: width < 600 ? 8 : 12; rowSpacing: 8

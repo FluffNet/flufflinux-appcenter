@@ -9,22 +9,13 @@ ColumnLayout {
         Layout.fillWidth: true
         columns: !catalogPage.installedView && width < 390 ? 1 : 2
         columnSpacing: 18; rowSpacing: 12
-        ColumnLayout {
+        Label {
+            objectName: "catalogTitleLabel"
             Layout.fillWidth: true
-            spacing: 5
-            Label {
-                objectName: "catalogTitleLabel"
-                Layout.fillWidth: true
-                text: catalogPage.installedView ? qsTr("Installed") : window.searchText ? qsTr("Search results") : window.selectedCategory
-                color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold
-                elide: Text.ElideRight
-            }
-            Label {
-                objectName: "catalogCountLabel"
-                readonly property int count: catalogPage.installedView ? catalogPage.installedMatches.length : catalogPage.visibleApps.length
-                text: count + (count === 1 ? " application" : " applications")
-                color: window.mutedTextColor; renderType: Text.QtRendering
-            }
+            text: catalogPage.installedView ? qsTr("Installed") : window.searchText ? qsTr("Search results") : window.selectedCategory
+            color: window.textColor; renderType: Text.QtRendering
+            font.pixelSize: 32; font.weight: Font.DemiBold
+            elide: Text.ElideRight
         }
         FluffComboBox {
             objectName: "installedSort"

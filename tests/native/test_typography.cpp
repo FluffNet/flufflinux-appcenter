@@ -24,7 +24,7 @@ static void describe(const char *label, const QFont &font) {
 }
 static void inspect(QQuickItem *item) {
     const auto name = item->objectName();
-    if (name == "installedSourceValue" || name == "catalogCountLabel") {
+    if (name == "installedSourceValue" || name == "installedVersionValue") {
         const auto font = item->property("font").value<QFont>();
         assert(QFontInfo(font).family() == expectedFamily);
         assert(item->property("renderType").toInt() == QQuickWindow::QtTextRendering);
@@ -43,7 +43,7 @@ static void inspect(QQuickItem *item) {
             if (ancestor->clip() && !ancestor->mapRectToScene(QRectF(QPointF(), ancestor->size())).contains(sceneRect))
                 unclipped = false;
         if (item->isVisible() && unclipped && screenshot.rect().contains(rect)
-            && (pos.y() > 220 || name == "catalogCountLabel")) {
+            && pos.y() > 220) {
             int painted = 0;
             for (int y = rect.top(); y < rect.bottom(); ++y)
                 for (int x = rect.left(); x < rect.right(); ++x) {

@@ -64,8 +64,8 @@ TestCase {
         compare(names(), "Empty,Beta,Alpha,Delta,Gamma")
         waitForRendering(page())
         verify(sort.mapToItem(page(), sort.width, 0).x <= page().width - 27)
-        const count = findChild(page(), "catalogCountLabel")
-        verify(sort.mapToItem(page(), 0, 0).x > count.mapToItem(page(), count.width, 0).x)
+        const title = findChild(page(), "catalogTitleLabel")
+        verify(sort.mapToItem(page(), 0, 0).x > title.mapToItem(page(), title.width, 0).x)
         main.selectedCategory = "All Apps"
         verify(!sort.visible)
         main.selectedCategory = "Installed"

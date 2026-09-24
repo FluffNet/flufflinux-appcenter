@@ -16,17 +16,18 @@ AbstractButton {
     ToolTip.delay: 700
     ToolTip.text: app.name + (publisher.text ? "\n" + publisher.text : "") + (app.summary ? "\n" + app.summary : "")
     background: FluffButtonBackground { idleColor: window.surfaceColor }
-    contentItem: ColumnLayout {
-        spacing: 2
-        RowLayout {
-            Layout.fillWidth: true; Layout.fillHeight: true
-            spacing: card.dense ? 6 : 12
-            AppIcon {
-                Layout.preferredWidth: card.dense ? 28 : 40
-                Layout.preferredHeight: card.dense ? 28 : 40
-                sourceSize: Qt.size(64, 64)
-                icon: card.app.icon || ""
-            }
+    contentItem: RowLayout {
+        spacing: card.dense ? 6 : 12
+        AppIcon {
+            Layout.preferredWidth: card.dense ? 28 : 40
+            Layout.preferredHeight: card.dense ? 28 : 40
+            sourceSize: Qt.size(64, 64)
+            icon: card.app.icon || ""
+        }
+        ColumnLayout {
+            Layout.fillWidth: true; Layout.fillHeight: false
+            Layout.alignment: Qt.AlignVCenter
+            spacing: 2
             Label {
                 objectName: "recommendedAppName"
                 Layout.fillWidth: true
@@ -34,21 +35,15 @@ AbstractButton {
                 font.pixelSize: card.dense ? 14 : 16; font.weight: Font.DemiBold
                 wrapMode: Text.WordWrap; maximumLineCount: 2; elide: Text.ElideRight
             }
-        }
-        AppPublisher {
-            id: publisher
-            objectName: "recommendedAppPublisher"
-            app: card.app; Layout.fillWidth: true
-            // Reserve the same two-line footer in every tile, even when text
-            // fits on one line after shrinking. This keeps each row aligned.
-            Layout.preferredHeight: publisherMetrics.height * 2
-            Layout.minimumHeight: publisherMetrics.height * 2
-            Layout.maximumHeight: publisherMetrics.height * 2
-            font.pixelSize: card.dense ? 11 : 12
-            horizontalAlignment: Text.AlignHCenter
-            verticalAlignment: Text.AlignVCenter
-            showTooltip: false // The card tooltip already includes the full publisher.
+            AppPublisher {
+                id: publisher
+                objectName: "recommendedAppPublisher"
+                app: card.app; Layout.fillWidth: true
+                font.pixelSize: card.dense ? 11 : 12
+                horizontalAlignment: Text.AlignLeft
+                verticalAlignment: Text.AlignTop
+                showTooltip: false // The card tooltip already includes the full publisher.
+            }
         }
     }
-    FontMetrics { id: publisherMetrics; font: publisher.font }
 }
