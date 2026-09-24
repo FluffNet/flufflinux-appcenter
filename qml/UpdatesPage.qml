@@ -50,8 +50,8 @@ Page {
                 objectName: "checkForUpdatesButton"
                 visible: !page.checking
                 text: qsTr("Check for Updates"); icon.name: "view-refresh"
-                enabled: !page.busy && !page.checking
-                onClicked: window.backend.checkForUpdates()
+                enabled: !window.networkOffline && !page.busy && !page.checking
+                onClicked: if (!window.networkOffline) window.backend.checkForUpdates()
             }
             FluffButton {
                 objectName: "cancelUpdateCheckButton"
@@ -64,6 +64,12 @@ Page {
             Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
             text: (page.updateData.lastChecked ? qsTr("Last checked: %1").arg(page.updateData.lastChecked) : qsTr("Updates are checked only when you press Check for Updates."))
                 + (page.updateData.lastUpdated ? "\n" + qsTr("Last app update: %1").arg(page.updateData.lastUpdated) : "")
+        }
+        NetworkNotice {
+            objectName: "updatesOfflineNote"
+            networkState: "offline"; compact: true
+            visible: window.networkOffline
+            Layout.fillWidth: true
         }
         RowLayout {
             visible: page.checking; Layout.fillWidth: true
@@ -115,8 +121,8 @@ Page {
                 Layout.alignment: Qt.AlignRight
                 objectName: "installUpdatesButton"
                 text: qsTr("Update Selected"); icon.name: "system-upgrade"
-                enabled: page.selected.length > 0 && !page.busy && page.updateData.state === "ready"
-                onClicked: window.backend.installSelectedUpdates()
+                enabled: !window.networkOffline && page.selected.length > 0 && !page.busy && page.updateData.state === "ready"
+                onClicked: if (!window.networkOffline) window.backend.installSelectedUpdates()
             }
         }
         Item {
@@ -179,7 +185,8 @@ Page {
                 objectName: "updatesEmpty"
                 anchors.centerIn: parent; width: parent.width; horizontalAlignment: Text.AlignHCenter
                 visible: page.rows.length === 0 && !page.checking
-                text: page.updateData.state === "ready" && !page.updateData.error
+                text: window.networkOffline ? qsTr("Reconnect to check for app updates.")
+                    : page.updateData.state === "ready" && !page.updateData.error
                     ? (page.skipped.length ? qsTr("No updates available from the sources that could be checked.") : qsTr("Everything is up to date."))
                     : page.updateData.state === "cancelled" ? qsTr("Update check cancelled.")
                     : page.updateData.error ? qsTr("Could not check all updates. Please try again.") : qsTr("Press Check for Updates to see available updates.")

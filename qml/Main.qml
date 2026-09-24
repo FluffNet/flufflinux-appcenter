@@ -39,6 +39,11 @@ ApplicationWindow {
     property var backend: typeof fluffBackend !== "undefined" ? fluffBackend : null
     property var catalogStats: typeof fluffCatalogStats !== "undefined" ? fluffCatalogStats : null
     property var catalogPreferences: typeof fluffCatalogPreferences !== "undefined" ? fluffCatalogPreferences : null
+    property var networkStatus: typeof fluffNetworkStatus !== "undefined" ? fluffNetworkStatus : null
+    readonly property string networkState: networkStatus ? networkStatus.state : "unknown"
+    readonly property bool networkOffline: networkState === "offline"
+    readonly property bool networkReady: !networkStatus || networkStatus.ready !== false
+    readonly property bool networkAdvisory: ["local", "limited", "portal", "connecting"].indexOf(networkState) >= 0
     property var installedApps: backend ? backend.installedApps : []
     property bool installedLoading: backend ? backend.installedLoading : false
     property string installedError: backend ? backend.installedError : ""
@@ -144,6 +149,7 @@ ApplicationWindow {
     }
     function showAbout() { aboutDialog.open() }
     function showUpdates() {
+        if (networkOffline) return
         stack.get(0).openCategory("Updates")
         showCatalog()
     }

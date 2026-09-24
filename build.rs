@@ -68,6 +68,10 @@ fn main() {
         .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
         .status().expect("failed to run Qt moc").success());
     let mut objects = Vec::new();
+    let network_generated = output_dir.join("moc_network_status.cpp");
+    assert!(Command::new(&moc).arg("src/network_status.h").arg("-o").arg(&network_generated)
+        .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
+        .status().expect("failed to run Qt moc").success());
     let display_version = std::fs::read_to_string("VERSION").expect("VERSION is missing");
     for source in [
         PathBuf::from("src/qt_bridge.cpp"),
@@ -78,9 +82,11 @@ fn main() {
         PathBuf::from("src/flatpak_updates.cpp"),
         PathBuf::from("src/flatpak_catalog.cpp"),
         PathBuf::from("src/catalog_stats.cpp"),
+        PathBuf::from("src/network_status.cpp"),
         generated,
         stats_generated,
         preferences_generated,
+        network_generated,
     ] {
         let object = output_dir
             .join(source.file_stem().unwrap())
@@ -125,6 +131,8 @@ fn main() {
     println!("cargo:rerun-if-changed=src/qt_bridge.cpp");
     println!("cargo:rerun-if-changed=src/catalog_stats.h");
     println!("cargo:rerun-if-changed=src/catalog_stats.cpp");
+    println!("cargo:rerun-if-changed=src/network_status.h");
+    println!("cargo:rerun-if-changed=src/network_status.cpp");
     println!("cargo:rerun-if-changed=src/catalog_preferences.h");
     println!("cargo:rerun-if-changed=VERSION");
     println!("cargo:rerun-if-changed=src/source_removal.h");

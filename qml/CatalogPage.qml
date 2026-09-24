@@ -6,13 +6,14 @@ Page {
     focusPolicy: Qt.ClickFocus
     id: page
     StackView.onActivated: {
-        if (!page.updatesView) searchField.forceActiveFocus()
+        if (searchField.enabled) searchField.forceActiveFocus()
     }
     background: Control { focusPolicy: Qt.ClickFocus }
     readonly property bool installedView: window.selectedCategory === "Installed"
     readonly property bool updatesView: window.selectedCategory === "Updates"
     readonly property bool homeView: window.selectedCategory === "All Apps" && !window.searchText
     readonly property bool catalogView: !installedView && !updatesView && !window.searchText
+    readonly property bool networkBlocked: window.networkOffline && !installedView && !updatesView
     property int catalogSortIndex: 2
     // Category choices are temporary and never written to Home's preference.
     property int categorySortIndex: 0
@@ -66,6 +67,7 @@ Page {
         else categorySortIndex = index
     }
     function loadCatalogPopularity() {
+        if (window.networkOffline || !window.networkReady) return
         const index = homeView ? catalogSortIndex : categorySortIndex
         if (catalogView && (index === 2 || index === 3) && window.catalogStats)
             window.catalogStats.loadPopularity()
@@ -213,6 +215,7 @@ Page {
     }
 
     function openCategory(category) {
+        if (category === "Updates" && window.networkOffline) return
         searchTimer.stop()
         searchField.clear()
         window.searchText = ""
@@ -337,18 +340,31 @@ Page {
                 id: downloadsControl
                 x: page.categorySidebarWidth + 12
                 anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: window.networkAdvisory ? -10 : 0
+            }
+
+            NetworkNotice {
+                objectName: "catalogNetworkNote"
+                compact: true; networkState: window.networkState
+                visible: window.networkAdvisory
+                // Queue narrows Search; the note may extend beneath the other
+                // header controls so it still fits without stealing catalog height.
+                width: Math.min(page.width - page.categorySidebarWidth - 36, Math.max(360, searchField.width))
+                anchors.right: searchField.right
+                anchors.top: searchField.bottom; anchors.topMargin: 3
             }
 
             TextField {
                 id: searchField
                 objectName: "searchField"
-                enabled: !page.updatesView
+                enabled: !page.updatesView && (!window.networkOffline || page.installedView)
                 opacity: enabled ? 1 : 0.45
                 width: Math.min(420, Math.max(100, page.width - page.categorySidebarWidth
                                             - (downloadsControl.visible ? downloadsControl.width + 112 : 92)))
                 anchors.right: parent.right
                 anchors.rightMargin: 24
                 anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: window.networkAdvisory ? -10 : 0
                 placeholderText: "Search applications…"
                 color: window.textColor; placeholderTextColor: window.mutedTextColor
                 leftPadding: 46; rightPadding: 48; implicitHeight: 44
@@ -440,6 +456,7 @@ Page {
                 objectName: "applicationMenuButton"
                 anchors.right: searchField.left; anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
+                anchors.verticalCenterOffset: window.networkAdvisory ? -10 : 0
                 width: 44; height: 44
                 text: "⋮"; font.pixelSize: 28
                 Accessible.name: qsTr("Application menu")
@@ -588,6 +605,7 @@ Page {
                     FluffToolButton {
                         id: updatesButton
                         objectName: "updatesButton"
+                        enabled: !window.networkOffline
                         width: parent.width; height: sidebar.navigationRowHeight
                         text: qsTr("Updates"); icon.name: "system-upgrade"
                         icon.width: sidebar.navigationIconSize; icon.height: sidebar.navigationIconSize
@@ -598,6 +616,7 @@ Page {
                         leftInset: 0; rightInset: 0; topInset: 0; bottomInset: 0
                         onClicked: window.showUpdates()
                         contentItem: RowLayout {
+                            opacity: updatesButton.enabled ? 1 : 0.38
                             spacing: sidebar.navigationSpacing
                             Image {
                                 Layout.preferredWidth: sidebar.navigationIconSize; Layout.preferredHeight: sidebar.navigationIconSize
@@ -607,10 +626,10 @@ Page {
                         }
                         background: Rectangle {
                             radius: window.cornerRadius
-                            color: updatesButton.hovered || updatesButton.down ? window.hoverColor : page.updatesView
+                            color: updatesButton.enabled && (updatesButton.hovered || updatesButton.down) ? window.hoverColor : page.updatesView && updatesButton.enabled
                                    ? Qt.rgba(window.accentColor.r, window.accentColor.g, window.accentColor.b, 0.14)
                                    : "transparent"
-                            border.color: page.updatesView ? window.accentColor : "transparent"
+                            border.color: page.updatesView && updatesButton.enabled ? window.accentColor : "transparent"
                         }
                     }
                     FluffSeparator {
@@ -701,6 +720,7 @@ Page {
             visible: !page.updatesView
             Layout.fillWidth: true; Layout.fillHeight: true; clip: true
             ColumnLayout {
+                visible: !page.networkBlocked
                 anchors.fill: parent; spacing: 18
                 Loader {
                     active: !page.homeView
@@ -828,13 +848,20 @@ Page {
                 running: page.installedView && !!window.installedLoading
                 color: window.textColor
             }
+            NetworkNotice {
+                objectName: "catalogOfflineMessage"
+                anchors.centerIn: parent
+                width: Math.min(620, parent.width - 48)
+                networkState: "offline"
+                visible: page.networkBlocked
+            }
             Label {
                 objectName: "catalogEmptyMessage"
                 anchors.centerIn: parent
                 width: parent.width - 48
                 wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
-                visible: page.installedView ? !window.installedLoading && (window.installedError || page.installedMatches.length === 0)
-                                            : window.catalogLoaded && page.visibleApps.length === 0
+                visible: !page.networkBlocked && (page.installedView ? !window.installedLoading && (window.installedError || page.installedMatches.length === 0)
+                                            : window.catalogLoaded && page.visibleApps.length === 0)
                 text: page.installedView && window.installedError ? window.installedError
                       : !page.installedView && window.catalog.length === 0 && window.backend && window.backend.sourcesBusy
                       ? qsTr("Loading applications…") : qsTr("No results.")
@@ -849,6 +876,14 @@ Page {
 
     Connections {
         target: window
+        function onNetworkStateChanged() {
+            if (window.networkOffline) {
+                searchTimer.stop()
+                if (!page.installedView) searchField.focus = false
+            }
+            page.loadCatalogPopularity()
+        }
+        function onNetworkReadyChanged() { page.loadCatalogPopularity() }
         function onSearchTextChanged() { catalogGrid.positionViewAtBeginning() }
         function onSelectedCategoryChanged() {
             page.categorySortIndex = 0

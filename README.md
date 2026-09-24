@@ -90,6 +90,36 @@ public popularity data without checking for updates or changing installed apps.
 
 ## Manual updates
 
+### Network availability
+
+App Center observes NetworkManager's system-bus properties while it is running.
+When NetworkManager reports networking disabled or no active network connection
+(including a machine with no network interfaces), **Updates** is grayed out.
+Home, categories and catalog search show **No Network Connection** with KDE's
+themed `dialog-warning` triangle instead of app tiles. Installed apps,
+their local search, Settings and the download queue remain accessible.
+
+LAN-only, limited Internet and captive-portal connections display a small note
+under Search but **do not disable browsing or updates**. An unavailable or unknown
+NetworkManager state also leaves actions enabled: it is not proof of being offline.
+This uses NetworkManager's overall `State`, not `Connectivity=NONE`, which may
+also occur on a working LAN without an Internet route. State definitions are in
+the [NetworkManager API](https://networkmanager.dev/docs/api/latest/nm-dbus-types.html).
+
+Changes apply live. Losing the connection while Updates is open disables new
+checks and Update Selected without discarding the list or selection; cancellation
+of an existing check stays available. Reconnecting restores the controls but never
+starts an update check. Catalog popularity may resume loading separately.
+The observer only reads properties and listens for changes: no connectivity
+probes, networking changes, privileged service, password prompt or NM autostart.
+
+Network tests: `sh tests/native/run_network_status.sh` uses a private D-Bus daemon,
+and `tests/qml/tst_network.qml` covers UI transitions with a mocked status source.
+`tests/integration/NetworkSmoke.qml` captures real KDE-rendered screenshots with
+simulated statuses; it does not disconnect the host or change Flatpak apps.
+
+### Checking and installing updates
+
 **Updates**, directly below Installed, shows an installed-style list in the main
 window, keeping the sidebar and header visible. Search is grayed out and disabled
 while Updates is selected.
