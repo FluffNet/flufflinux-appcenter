@@ -2,6 +2,17 @@
 
 Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
 
+## Header edge spacing — 2026-09-24
+
+- Reduced the menu's right margin from 24px to 12px; Search follows the button,
+  keeping the same width and 10px inter-control gap. Theme insets may add space
+  beyond that margin. The dropdown remains right-aligned and inside the window.
+- At each of 100% and 150% scale: Network 47 passed, Search Input 12 passed,
+  selected Sources menu-layout test 4 passed (126 total). The menu test also
+  verifies at least 12px clearance from the page edge at both window sizes.
+- Native KDE/Wayland normal and compact screenshots passed geometry assertions
+  and visual inspection. The real update backend stayed idle throughout.
+
 ## Search/menu order and update history cleanup — 2026-09-24
 
 - Removed Last checked from the App Updates page, including after a completed

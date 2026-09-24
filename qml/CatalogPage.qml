@@ -443,7 +443,7 @@ Page {
             FluffToolButton {
                 id: applicationMenuButton
                 objectName: "applicationMenuButton"
-                anchors.right: parent.right; anchors.rightMargin: 24
+                anchors.right: parent.right; anchors.rightMargin: 12
                 anchors.verticalCenter: parent.verticalCenter
                 width: 44; height: 44
                 text: "⋮"; font.pixelSize: 28
