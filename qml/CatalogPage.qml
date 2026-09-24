@@ -349,10 +349,10 @@ Page {
                 objectName: "searchField"
                 enabled: !page.updatesView && (!window.networkOffline || page.installedView)
                 opacity: enabled ? 1 : 0.45
-                width: Math.min(420, Math.max(100, page.width - page.categorySidebarWidth
+                width: Math.min(420, Math.max(100, parent.width - page.categorySidebarWidth
                                             - (downloadsControl.visible ? downloadsControl.width + 112 : 92)))
-                anchors.right: parent.right
-                anchors.rightMargin: 24
+                anchors.right: applicationMenuButton.left
+                anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
                 placeholderText: "Search applications…"
                 color: window.textColor; placeholderTextColor: window.mutedTextColor
@@ -443,7 +443,7 @@ Page {
             FluffToolButton {
                 id: applicationMenuButton
                 objectName: "applicationMenuButton"
-                anchors.right: searchField.left; anchors.rightMargin: 10
+                anchors.right: parent.right; anchors.rightMargin: 24
                 anchors.verticalCenter: parent.verticalCenter
                 width: 44; height: 44
                 text: "⋮"; font.pixelSize: 28
@@ -459,6 +459,7 @@ Page {
                     property bool restoreKeyboardFocus: false
                     modal: false
                     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
+                    x: applicationMenuButton.width - width
                     y: applicationMenuButton.height + 6
                     width: 210
                     Overlay.onPressed: restoreKeyboardFocus = false

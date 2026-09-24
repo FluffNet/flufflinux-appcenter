@@ -140,7 +140,7 @@ starts the check. Loading, cancellation, timeout, and partial source errors are
 visible; checking never enters Queue or deploys an app/runtime transaction.
 
 The date line reads **Apps were last updated:** (or **Not recorded** when history
-is unavailable). The last-check timestamp remains available after a check.
+is unavailable). The last-check timestamp is not displayed.
 The initial page has no redundant checking instructions or center prompt.
 At narrow widths, the title and check button stack instead of overlapping.
 

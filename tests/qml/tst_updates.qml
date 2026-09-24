@@ -56,7 +56,7 @@ TestCase {
         compare(findChild(page(), "checkForUpdatesButton").text, "Check for App Updates")
         compare(findChild(page(), "updateDates").text, "Apps were last updated: Not recorded")
         verify(!findChild(page(), "updatesEmpty").visible)
-        backend.updates = {state:"idle", items:[], lastUpdated:"24/09/2026 12:39"}
+        backend.updates = {state:"idle", items:[], lastUpdated:"24/09/2026 12:39", lastChecked:"24/09/2026 13:00"}
         compare(findChild(page(), "updateDates").text, "Apps were last updated: 24/09/2026 12:39")
         compare(backend.checks, 0)
     }
@@ -178,7 +178,7 @@ TestCase {
         backend.updates = Object.assign({}, backend.updates, {items:[row("Alpha", "user"), row("Alpha", "system")]})
         compare(page().selectedBytes, 600)
         compare(findChild(page(), "updateDates").text,
-            "Apps were last updated: 22/09/2026 11:00\nLast checked: 23/09/2026 12:30")
+            "Apps were last updated: 22/09/2026 11:00")
     }
     function test_empty_error_and_busy() {
         open(); backend.updates = {state:"ready", items:[], error:"Offline source"}

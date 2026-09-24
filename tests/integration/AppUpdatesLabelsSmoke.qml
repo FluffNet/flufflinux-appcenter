@@ -26,11 +26,15 @@ AppCenter.Main {
                 main.showUpdates(); main.stage = 1; return
             }
             const page = probe.findChild(stack.get(0), "updatesPage")
+            const search = probe.findChild(stack.get(0), "searchField"), menu = probe.findChild(stack.get(0), "applicationMenuButton")
+            main.check(Math.abs(search.x + search.width + 10 - menu.x) < 1, "Search first, menu second")
+            main.check(Math.abs(menu.x + menu.width - menu.parent.width + 24) < 1, "Menu right margin")
             const title = probe.findChild(page, "appUpdatesTitle"), check = probe.findChild(page, "checkForUpdatesButton")
             main.check(title.text === "App Updates", "Page title")
             main.check(probe.findChild(stack.get(0), "updatesButton").text === "App Updates", "Sidebar label")
             main.check(check.text === "Check for App Updates", "Check button")
             main.check(probe.findChild(page, "updateDates").text.indexOf("Apps were last updated:") === 0, "Recorded date label")
+            main.check(probe.findChild(page, "updateDates").text.indexOf("Last checked") < 0, "No last-checked line")
             main.check(!probe.findChild(page, "updatesEmpty").visible, "No redundant center instruction")
             main.check(title.contentWidth <= title.width + 1, "Title fits")
             const t = title.mapToItem(page, 0, 0), c = check.mapToItem(page, 0, 0)

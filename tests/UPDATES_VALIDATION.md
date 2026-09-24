@@ -2,6 +2,21 @@
 
 Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
 
+## Search/menu order and update history cleanup — 2026-09-24
+
+- Removed Last checked from the App Updates page, including after a completed
+  check. Apps were last updated remains visible; backend bookkeeping is unchanged.
+- Search now precedes the three-dot menu. The dropdown is aligned to the right
+  edge of its button so it stays inside the window. Search width uses the actual
+  header content width, preserving clearance from Queue at minimum window size.
+- At both 100% and 150% scale: Updates 18 passed, Network 47 passed, Search Input
+  12 passed, Focus 90 passed, and the selected Sources menu-layout test 4 passed
+  (171 per scale, 342 total). Header geometry covers narrow/wide windows, Queue
+  visible/hidden, and offline/online states. Settings/About interactions still pass.
+- AppUpdatesLabelsSmoke.qml passed on KDE/Wayland, capturing normal and compact
+  screenshots with a recorded update date and no Last checked line. Search/menu
+  geometry is asserted; the real backend stays idle. No Flatpak apps were updated.
+
 ## Centered checking indicator — 2026-09-24
 
 - Spinner and Checking for app updates text are centered together in the main

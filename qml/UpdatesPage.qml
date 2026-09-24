@@ -66,7 +66,6 @@ Page {
             objectName: "updateDates"
             Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
             text: qsTr("Apps were last updated: %1").arg(page.updateData.lastUpdated || qsTr("Not recorded"))
-                + (page.updateData.lastChecked ? "\n" + qsTr("Last checked: %1").arg(page.updateData.lastChecked) : "")
         }
         NetworkNotice {
             objectName: "updatesOfflineNote"
