@@ -726,13 +726,13 @@ Page {
                                 catalogGrid.contentY += homeHeadingLoader.mapToItem(catalogGrid, 0, 0).y - 26
                         }
                         width: catalogGrid.width
-                        height: page.homeView ? homeHeader.implicitHeight + 20 : 0
+                        height: page.homeView ? homeHeader.implicitHeight + 12 : 0
                         visible: page.homeView
                         ColumnLayout {
                             id: homeHeader
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
                             anchors.leftMargin: 8; anchors.rightMargin: 8; anchors.topMargin: 20
-                            spacing: 12
+                            spacing: 8
                             Label {
                                 objectName: "recommendedHeading"
                                 visible: page.recommendedApps.length > 0
@@ -755,7 +755,7 @@ Page {
                                         required property var modelData
                                         objectName: "recommended-" + modelData.id
                                         Layout.fillWidth: true; Layout.preferredWidth: 1
-                                        Layout.preferredHeight: catalogGrid.height < 500 ? 56 : 72
+                                        Layout.preferredHeight: catalogGrid.height < 500 ? 64 : 80
                                         app: modelData
                                         onClicked: window.openApp(app)
                                     }
@@ -763,7 +763,7 @@ Page {
                             }
                             Loader {
                                 id: homeHeadingLoader
-                                active: page.homeView; Layout.fillWidth: true; Layout.bottomMargin: 16
+                                active: page.homeView; Layout.fillWidth: true; Layout.bottomMargin: 8
                                 sourceComponent: CatalogHeading { catalogPage: page }
                             }
                         }

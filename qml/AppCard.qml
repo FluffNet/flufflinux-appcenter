@@ -40,6 +40,7 @@ AbstractButton {
         ColumnLayout {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: 6
             Label { Layout.fillWidth: true; text: app.name; color: window.textColor; font.pixelSize: 18; font.weight: Font.DemiBold; elide: Text.ElideRight }
+            AppPublisher { objectName: "catalogAppPublisher"; app: card.app; Layout.fillWidth: true; font.pixelSize: 12 }
             Label {
                 Layout.fillWidth: true; Layout.fillHeight: true
                 text: app.summary || "Application for Fluff Linux"

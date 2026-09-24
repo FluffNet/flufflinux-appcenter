@@ -1,0 +1,19 @@
+import QtQuick
+import QtQuick.Controls
+
+Label {
+    id: label
+    property var app: null
+    property bool showTooltip: true
+    text: typeof window.publisherFor === "function" ? window.publisherFor(app)
+        : String(app && app.developer || "").trim()
+    visible: text.length > 0
+    textFormat: Text.PlainText
+    color: window.accentColor
+    font.weight: Font.DemiBold
+    elide: Text.ElideRight
+    ToolTip.visible: showTooltip && truncated && pointer.hovered
+    ToolTip.delay: 700
+    ToolTip.text: text
+    HoverHandler { id: pointer }
+}

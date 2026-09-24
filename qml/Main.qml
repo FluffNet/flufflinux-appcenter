@@ -83,6 +83,37 @@ ApplicationWindow {
             ? source + "?revision=" + iconRevision : source
     }
     function installApp(app) { if (backend) backend.installApp(app) }
+    function publisherFor(app) {
+        if (!app) return ""
+        const direct = String(app.developer || "").trim()
+        if (direct) return direct
+        const ref = String(app.installedRef || app.flatpakRef || "")
+        if (app.runtime || ref.startsWith("runtime/")) return ""
+        function identity(item) {
+            const parts = String(item.installedRef || item.flatpakRef || "").split("/")
+            return parts.length === 4 ? parts[1] : String(item.id || "")
+        }
+        const id = identity(app), remote = app.installedOrigin || app.remote || ""
+        if (!id) return ""
+        // Updates and queue entries may only carry an identity. Resolve their
+        // publisher from existing local metadata, never from the repository name
+        // or a different branch/source. This does not make a network request.
+        for (const alias of [false, true]) {
+            if (alias && ref) break
+            for (const entry of (installedApps || []).concat(catalog || [])) {
+                for (const candidate of [entry].concat(entry.sources || [])) {
+                    const candidateId = identity(candidate)
+                    if ((alias ? candidateId + ".desktop" : candidateId) !== id) continue
+                    if (ref && (candidate.installedRef || candidate.flatpakRef || "") !== ref) continue
+                    if (remote && (candidate.installedOrigin || candidate.remote || "") !== remote) continue
+                    if (app.sourceUrl && candidate.sourceUrl !== app.sourceUrl) continue
+                    const publisher = String(candidate.developer || "").trim()
+                    if (publisher) return publisher
+                }
+            }
+        }
+        return ""
+    }
     function detailsFor(app) {
         const installed = findInstalled(app)
         if (installed) return installed

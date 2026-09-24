@@ -40,6 +40,7 @@ AbstractButton {
                 font.pixelSize: 18; font.weight: Font.DemiBold
                 elide: Text.ElideRight
             }
+            AppPublisher { objectName: "installedAppPublisher"; app: row.app; Layout.fillWidth: true }
             GridLayout {
                 Layout.fillWidth: true
                 columns: 2

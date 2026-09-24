@@ -338,7 +338,7 @@ Page {
                         Layout.fillWidth: true; spacing: 7
                         Label { Layout.fillWidth: true; text: app ? app.name : ""; color: window.textColor; font.pixelSize: 34; font.weight: Font.DemiBold; wrapMode: Text.WordWrap }
                         Label { Layout.fillWidth: true; text: app ? app.summary : ""; color: window.mutedTextColor; font.pixelSize: 17; wrapMode: Text.WordWrap }
-                        Label { objectName: "appDeveloper"; text: app && app.developer || ""; textFormat: Text.PlainText; visible: text.length > 0; color: window.accentColor; font.weight: Font.DemiBold }
+                        AppPublisher { objectName: "appDeveloper"; app: page.app; Layout.fillWidth: true; wrapMode: Text.Wrap; elide: Text.ElideNone }
                     }
                     AppInstallDetails {
                         id: installDetails

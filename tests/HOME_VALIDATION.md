@@ -3,13 +3,19 @@
 Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
 
 - Rust: 12 tests passed; optimized Linux build passed.
-- Full QML regression suite: 499 passed, zero failures across 19 suites.
+- Full QML regression suite: 524 passed, zero failures across 20 suites.
   The search/sidebar regression now expects A–Z when opening a category instead
   of the old input-catalog order; search relevance assertions are unchanged.
 - Category suite: 75 passed at both 100% and 150% scaling, including all six
   orders in all eleven categories, unknown values, live/offline popularity,
   recommendation retention, reset-on-category-switch, details/back navigation,
   Home/Installed/search/Updates independence and narrow/wide/short layouts.
+- Publisher suite: 25 passed at both 100% and 150% scaling. Covers populated,
+  markup-like and missing publisher names across recommendations, catalog cards,
+  Installed, Updates, Queue and app details; shared color/weight/plain-text style;
+  local metadata fallback with source/branch checks and `.desktop` identities;
+  no invented repository/runtime publishers; long-name elision and full-name
+  tooltips; and compact layouts preserving readable app names and All Apps.
 - Focused Home suite: 20 passed at both 100% and 150% scaling. Covers all six
   orders, real zero versus unknown values, unavailable popularity, independent
   alphabetical recommendations, stable source identity, clicking recommendations,
@@ -53,6 +59,9 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   catalog, preserved recommended apps in category results, reset category choices
   on navigation, and left Home's choice untouched. Wide and narrow category
   screenshots were visually inspected; no QML binding/type errors occurred.
+  The publisher smoke run additionally matched the visible recommendation,
+  catalog and installed labels against real metadata. Wide/narrow Home and
+  Installed screenshots were visually inspected with the new publisher rows.
 
 No regular Flatpak app was installed, updated or removed during this validation.
 The existing AnyDesk, Steam, Flatpak Builder and system Firefox versions were

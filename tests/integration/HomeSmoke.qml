@@ -34,6 +34,11 @@ AppCenter.Main {
                 main.check(page.recommendedApps.length === 9, "all nine available recommendations")
                 const names = page.recommendedApps.map(app => app.name)
                 main.check(names.join() === names.slice().sort((a,b) => a.localeCompare(b)).join(), "alphabetical recommendations")
+                for (const app of page.recommendedApps) {
+                    const card = probe.findChild(page, "recommended-" + app.id)
+                    const publisher = probe.findChild(card, "recommendedAppPublisher")
+                    main.check(publisher.text === String(app.developer || "").trim(), "native recommendation publisher")
+                }
                 main.check(!main.catalog.some(app => /org\.(videolan\.VLC|libreoffice\.LibreOffice)(\.desktop)?$/.test(app.id)), "default exclusions on this VM")
                 console.log("HOME_RECOMMENDED", names.join(", "))
                 grid.positionViewAtBeginning(); main.stage = 1
@@ -52,6 +57,8 @@ AppCenter.Main {
                 main.check(main.catalogStats.state === "ready", "live public popularity fetch")
                 main.check(Object.keys(main.catalogStats.counts).length > 3000, "complete popularity catalog")
                 const apps = page.visibleApps
+                const firstCard = grid.itemAtIndex(0)
+                main.check(firstCard && probe.findChild(firstCard, "catalogAppPublisher").text === main.publisherFor(apps[0]), "native catalog publisher")
                 const recommended = page.recommendedApps.map(app => page.catalogId(app))
                 main.check(!apps.some(app => recommended.indexOf(page.catalogId(app)) >= 0), "no duplicated recommendations in popularity")
                 main.check(page.catalogSortOptions.length === 6, "Home has no size sorting")
@@ -99,7 +106,16 @@ AppCenter.Main {
                 main.check(page.categorySortIndex === 0, "returning category stays A–Z")
                 page.openCategory("All Apps")
                 main.check(page.catalogSortIndex === 2, "Home keeps its preference")
-                console.log("HOME_PASS", "including category sorting"); Qt.quit()
+                page.openCategory("Installed"); main.stage = 14
+            } else if (main.stage === 14) {
+                const list = probe.findChild(page, "installedList")
+                for (let i = 0; i < list.count; ++i) {
+                    const row = list.itemAtIndex(i)
+                    if (row) main.check(probe.findChild(row, "installedAppPublisher").text === main.publisherFor(row.app), "native installed publisher")
+                }
+                main.capture(stack, "installed-publishers", 15)
+            } else if (main.stage === 15) {
+                console.log("HOME_PASS", "including category sorting and publisher labels"); Qt.quit()
             }
         }
     }

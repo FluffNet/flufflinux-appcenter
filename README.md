@@ -19,6 +19,15 @@ alphabetical. Only apps available from
 the configured official stable Flathub catalog are shown; recommendations never
 add a source or install an app.
 
+Publisher/developer names use the same accent-colored styling as app details
+throughout recommendations, catalog/category/search cards, Installed, Updates and
+Queue. They come from existing AppStream metadata; unavailable names are hidden,
+never replaced with the repository name or an invented publisher. Updates can
+resolve the matching app/source/branch from local catalog or installed metadata
+without network requests. Names are plain text, not HTML or a verification badge.
+Long names are elided with the full name available on hover; compact recommended
+tiles still leave All Apps visible at the minimum window size.
+
 The sorting control is available on **Home and every catalog category**, with
 A–Z/Z–A, most/least popular, and newest/oldest published release. Home defaults to
 most popular. Each category starts at A–Z; its temporary choice resets when switching

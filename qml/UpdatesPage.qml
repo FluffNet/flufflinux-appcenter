@@ -153,6 +153,7 @@ Page {
                         ColumnLayout {
                             Layout.fillWidth: true; spacing: 5
                             Label { text: modelData.name; textFormat: Text.PlainText; font.pixelSize: 18; font.weight: Font.DemiBold; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                            AppPublisher { objectName: "updateAppPublisher"; app: modelData; Layout.fillWidth: true }
                             Label { text: modelData.oldVersion + " → " + modelData.newVersion; textFormat: Text.PlainText; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
                             Label { text: qsTr("Download: up to %1").arg(page.sizeText(modelData.downloadBytes || 0)); color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
                             Label { text: page.sourceLabel(modelData); textFormat: Text.PlainText; color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap }

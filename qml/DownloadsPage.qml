@@ -135,7 +135,11 @@ Page {
                                         Accessible.ignored: true
                                         icon: modelData.icon || ""
                                     }
-                                    Label { objectName: "downloadAppName"; text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 20; font.bold: true; color: window.textColor; Layout.fillWidth: true }
+                                    ColumnLayout {
+                                        Layout.fillWidth: true; spacing: 5
+                                        Label { objectName: "downloadAppName"; text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 20; font.bold: true; color: window.textColor; Layout.fillWidth: true }
+                                        AppPublisher { objectName: "downloadAppPublisher"; app: downloadCard.detailsApp; Layout.fillWidth: true }
+                                    }
                                 }
                                 HoverHandler { cursorShape: detailsButton.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
                             }
