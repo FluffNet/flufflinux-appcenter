@@ -726,7 +726,10 @@ Page {
                                 catalogGrid.contentY += homeHeadingLoader.mapToItem(catalogGrid, 0, 0).y - 26
                         }
                         width: catalogGrid.width
-                        height: page.homeView ? homeHeader.implicitHeight + 12 : 0
+                        // Include the actual top inset, then leave a clear gap
+                        // below both the All Apps heading and sorting control.
+                        height: page.homeView ? homeHeader.anchors.topMargin + homeHeader.implicitHeight
+                            + (catalogGrid.height < 500 ? 16 : 24) : 0
                         visible: page.homeView
                         ColumnLayout {
                             id: homeHeader
@@ -763,7 +766,7 @@ Page {
                             }
                             Loader {
                                 id: homeHeadingLoader
-                                active: page.homeView; Layout.fillWidth: true; Layout.bottomMargin: 8
+                                active: page.homeView; Layout.fillWidth: true
                                 sourceComponent: CatalogHeading { catalogPage: page }
                             }
                         }

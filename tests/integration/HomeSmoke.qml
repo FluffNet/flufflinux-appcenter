@@ -13,6 +13,15 @@ AppCenter.Main {
     function check(value, message) {
         if (!value) { console.error("HOME_FAIL", message); Qt.exit(2); throw new Error(message) }
     }
+    function checkAppListSpacing(page, grid) {
+        const title = probe.findChild(page, "catalogTitleLabel"), sort = probe.findChild(page, "catalogSort")
+        const card = grid.itemAtIndex(0)
+        main.check(!!card, "first app card remains visible")
+        const headingBottom = Math.max(title.mapToItem(grid, 0, title.height).y,
+                                      sort.mapToItem(grid, 0, sort.height).y)
+        const gap = card.mapToItem(grid, 0, 0).y - headingBottom
+        main.check(Math.abs(gap - (grid.height < 500 ? 16 : 24)) < 1, "native heading-to-card spacing: " + gap)
+    }
     function capture(item, name, next) {
         stage = -1
         item.grabToImage(function(result) {
@@ -56,6 +65,7 @@ AppCenter.Main {
                            "default sorting must not scroll past recommendations")
                 main.check(!probe.findChild(page, "catalogSortDescription").visible, "no permanent popularity note")
                 main.check(grid.headerItem.height < grid.height - 32, "All Apps and its list visible on wide Home")
+                main.checkAppListSpacing(page, grid)
                 main.capture(stack, "wide", 2)
             }
             else if (main.stage === 2) { page.catalogSortIndex = 0; page.catalogSortIndex = 2; main.stage = 3 }
@@ -82,6 +92,7 @@ AppCenter.Main {
             } else if (main.stage === 6) { grid.positionViewAtBeginning(); main.stage = 7 }
             else if (main.stage === 7) {
                 main.check(grid.headerItem.height < grid.height - 32, "All Apps and its list visible on narrow Home")
+                main.checkAppListSpacing(page, grid)
                 for (const app of page.recommendedApps) {
                     const publisher = probe.findChild(probe.findChild(page, "recommended-" + app.id), "recommendedAppPublisher")
                     main.check(!publisher.truncated && publisher.contentWidth <= publisher.width + 1,

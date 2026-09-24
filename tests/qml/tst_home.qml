@@ -182,6 +182,22 @@ TestCase {
         return [{tag:"narrow", width:720, height:520}, {tag:"wide", width:1400, height:1000},
             {tag:"short", width:1180, height:520}, {tag:"desktop", width:1920, height:1080}]
     }
+    function verifyAppListSpacing(grid) {
+        const title = findChild(page(), "catalogTitleLabel"), sort = findChild(page(), "catalogSort")
+        const firstCard = grid.itemAtIndex(0)
+        verify(firstCard, "First app card must remain visible")
+        const headingBottom = Math.max(title.mapToItem(grid, 0, title.height).y,
+                                      sort.mapToItem(grid, 0, sort.height).y)
+        const gap = firstCard.mapToItem(grid, 0, 0).y - headingBottom
+        const expected = grid.height < 500 ? 16 : 24
+        verify(Math.abs(gap - expected) < 1, "Heading/sort-to-card gap: " + gap + " expected " + expected)
+    }
+    function test_spacing_without_recommendations() {
+        const grid = findChild(page(), "catalogGrid")
+        grid.positionViewAtBeginning(); waitForPolish(grid); wait(30)
+        compare(page().recommendedApps.length, 0)
+        verifyAppListSpacing(grid)
+    }
     function test_sort_keeps_all_apps_heading_visible() {
         main.width = 720; main.height = 540
         main.catalog = page().recommendedIds.map((id, i) => app(id, "Pick " + i, i, ""))
@@ -218,6 +234,7 @@ TestCase {
         verify(heading.mapToItem(grid, 0, 0).y < sort.mapToItem(grid, 0, 0).y)
         verify(grid.headerItem.height <= grid.height - 32,
                "Home must show All Apps and the beginning of its list without scrolling")
+        verifyAppListSpacing(grid)
         for (const pick of page().recommendedApps) {
             const card = findChild(page(), "recommended-" + pick.id)
             verify(card.mapToItem(grid, 0, 0).y >= 0 && card.mapToItem(grid, 0, card.height).y < grid.height)

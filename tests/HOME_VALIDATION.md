@@ -3,7 +3,7 @@
 Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
 
 - Rust: 12 tests passed; optimized Linux build passed.
-- QML regression: 530 passed across 20 suites, including the final seven-test
+- Baseline QML regression before the spacing refinement: 530 passed across 20 suites, including the final seven-test
   style rerun after making heading glyph rendering explicit. No failures remain.
   The search/sidebar regression now expects A–Z when opening a category instead
   of the old input-catalog order; search relevance assertions are unchanged.
@@ -21,7 +21,7 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   left edges, in a compact text group beside the icon; there is no separate footer.
   All nine real publisher names fit without elision while preserving app names
   and All Apps, including Microsoft Corporation and VinegarHQ & Sober contributors.
-- Focused Home suite: 24 passed at both 100% and 150% scaling. Covers all six
+- Focused Home suite: 25 passed at both 100% and 150% scaling. Covers all six
   orders, real zero versus unknown values, unavailable popularity, independent
   alphabetical recommendations, stable source identity, clicking recommendations,
   no app counts on Home, categories, search or Installed, preserving All Apps
@@ -35,6 +35,12 @@ Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
   nine recommended app and publisher names remain untruncated; text stays within
   the tile boundaries and above the readable minimum font size. All Apps and at
   least the start of its first row remain visible without scrolling.
+- Home spacing refinement: 104 focused checks passed (Home 25 + publishers 27 at
+  each of 100% and 150% scale). The gap below both All Apps and its sort control is
+  24 logical pixels, or 16 in short windows, including when recommendations are
+  unavailable. Header height includes the actual top inset instead of cancelling
+  the bottom spacing. Native wide/narrow Home checks and screenshots confirmed
+  the gap while keeping All Apps and the first app row visible.
 - Native CatalogStats tests passed: count validation, pagination consistency,
   oversized/malformed data rejection, cache loading, no request merely from
   constructing the data object. Home requests popularity presentation data on
