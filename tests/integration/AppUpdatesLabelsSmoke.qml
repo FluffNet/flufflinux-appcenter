@@ -28,7 +28,7 @@ AppCenter.Main {
             const page = probe.findChild(stack.get(0), "updatesPage")
             const search = probe.findChild(stack.get(0), "searchField"), menu = probe.findChild(stack.get(0), "applicationMenuButton")
             main.check(Math.abs(search.x + search.width + 10 - menu.x) < 1, "Search first, menu second")
-            main.check(Math.abs(menu.x + menu.width - menu.parent.width + 12) < 1, "Menu right margin")
+            main.check(Math.abs(main.width - menu.mapToItem(main.contentItem, menu.width, 0).x - 8) < 1, "Menu window-edge gap")
             const title = probe.findChild(page, "appUpdatesTitle"), check = probe.findChild(page, "checkForUpdatesButton")
             main.check(title.text === "App Updates", "Page title")
             main.check(probe.findChild(stack.get(0), "updatesButton").text === "App Updates", "Sidebar label")

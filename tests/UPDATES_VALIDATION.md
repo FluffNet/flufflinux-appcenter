@@ -2,6 +2,23 @@
 
 Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
 
+## Actual page-edge alignment and Home section spacing — 2026-09-24
+
+- Compensated for KDE's header content padding: the menu button now has an 8px
+  gap to the actual page/window edge, overlapping the scrollbar column above it.
+  Search follows the menu without changing their 10px gap or field width.
+- Added 8px above the All Apps title/sort row when Common Apps are present.
+  Short windows reclaim that space from the Common Apps top inset so All Apps
+  and the beginning of its list remain visible. The existing gap below is unchanged.
+- Final Network (47) and Home (28) suites pass at both 100% and 150% scaling.
+  The header-only change also passed Search Input (12) and selected Sources
+  menu-layout tests (4) at each scale. Geometry checks now measure the actual
+  page edge and scrollbar overlap instead of assuming a theme inset size.
+- HeaderEdgeSmoke.qml passed in native KDE/Wayland with normal and compact
+  screenshots, open dropdown, hovered button and real catalogue scrollbar.
+  It verifies the edge gap, dropdown alignment and Common Apps section spacing;
+  the real app-update backend stays idle.
+
 ## Header edge spacing — 2026-09-24
 
 - Reduced the menu's right margin from 24px to 12px; Search follows the button,

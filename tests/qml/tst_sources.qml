@@ -59,8 +59,10 @@ TestCase {
         const search = findChild(main, "searchField")
         waitForRendering(button)
         fuzzyCompare(search.x + search.width + 10, button.x, 0.5)
-        fuzzyCompare(button.x + button.width, button.parent.width - 12, 0.5)
-        verify(page().width - button.mapToItem(page(), button.width, 0).x >= 12, "Menu retains at least 12px from the page edge")
+        fuzzyCompare(page().width - button.mapToItem(page(), button.width, 0).x, 8, 0.5)
+        const bar = findChild(page(), "catalogPageScrollBar")
+        verify(button.mapToItem(page(), button.width, 0).x > bar.mapToItem(page(), 0, 0).x,
+               "Menu button overlaps the scrollbar column")
         verify(button.mapToItem(page(), 0, 0).x >= page().categorySidebarWidth)
         mouseClick(button)
         const menu = findChild(main, "applicationMenu")

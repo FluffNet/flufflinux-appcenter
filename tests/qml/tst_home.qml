@@ -203,6 +203,12 @@ TestCase {
     }
     function verifyAppListSpacing(grid) {
         const title = findChild(page(), "catalogTitleLabel"), sort = findChild(page(), "catalogSort")
+        const common = findChild(page(), "recommendedGrid")
+        if (common.visible) {
+            const headingTop = Math.min(title.mapToItem(grid, 0, 0).y, sort.mapToItem(grid, 0, 0).y)
+            fuzzyCompare(headingTop - common.mapToItem(grid, 0, common.height).y,
+                         (grid.height < 500 ? 4 : 8) + 8, 1)
+        }
         const firstCard = grid.itemAtIndex(0)
         verify(firstCard, "First app card must remain visible")
         const headingBottom = Math.max(title.mapToItem(grid, 0, title.height).y,

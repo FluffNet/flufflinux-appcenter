@@ -443,7 +443,9 @@ Page {
             FluffToolButton {
                 id: applicationMenuButton
                 objectName: "applicationMenuButton"
-                anchors.right: parent.right; anchors.rightMargin: 12
+                anchors.right: parent.right
+                // Measure from the header edge, not KDE's inset content area.
+                anchors.rightMargin: 8 - headerControl.rightPadding
                 anchors.verticalCenter: parent.verticalCenter
                 width: 44; height: 44
                 text: "⋮"; font.pixelSize: 28
@@ -743,7 +745,10 @@ Page {
                         ColumnLayout {
                             id: homeHeader
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
-                            anchors.leftMargin: 8; anchors.rightMargin: 8; anchors.topMargin: 20
+                            anchors.leftMargin: 8; anchors.rightMargin: 8
+                            // Keep All Apps visible in short windows while giving
+                            // its heading more separation from the common apps.
+                            anchors.topMargin: catalogGrid.height < 500 && page.recommendedApps.length > 0 ? 12 : 20
                             spacing: catalogGrid.height < 500 ? 4 : 8
                             Label {
                                 objectName: "recommendedHeading"
@@ -777,6 +782,7 @@ Page {
                             Loader {
                                 id: homeHeadingLoader
                                 active: page.homeView; Layout.fillWidth: true
+                                Layout.topMargin: page.recommendedApps.length > 0 ? 8 : 0
                                 sourceComponent: CatalogHeading { catalogPage: page }
                             }
                         }

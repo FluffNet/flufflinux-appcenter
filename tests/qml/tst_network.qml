@@ -159,7 +159,7 @@ TestCase {
         const search = control("searchField")
         const menu = control("applicationMenuButton"), queue = control("downloadsButton")
         fuzzyCompare(search.x + search.width + 10, menu.x, 0.5)
-        fuzzyCompare(menu.x + menu.width, menu.parent.width - 12, 0.5)
+        fuzzyCompare(root().width - menu.mapToItem(root(), menu.width, 0).x, 8, 0.5)
         if (queue.visible) verify(search.x >= queue.x + queue.width + 10, "Queue and Search do not overlap")
         compare(control("catalogNetworkNote"), null)
         compare(search.anchors.verticalCenterOffset, 0)
