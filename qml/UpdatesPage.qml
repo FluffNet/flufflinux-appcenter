@@ -74,16 +74,6 @@ Page {
             visible: window.networkOffline
             Layout.fillWidth: true
         }
-        RowLayout {
-            visible: page.checking; Layout.fillWidth: true
-            LoadingSpinner { running: page.checking; Layout.preferredWidth: 24; Layout.preferredHeight: 24 }
-            Label {
-                objectName: "updateCheckStatus"
-                text: qsTr("Checking for app updates…")
-                textFormat: Text.PlainText; wrapMode: Text.Wrap
-                color: window.mutedTextColor; Layout.fillWidth: true
-            }
-        }
         Label {
             objectName: "updatesError"; visible: !!page.updateData.error
             Layout.fillWidth: true; maximumLineCount: 3
@@ -129,10 +119,12 @@ Page {
             }
         }
         Item {
+            objectName: "updatesContentArea"
             Layout.fillWidth: true; Layout.fillHeight: true
             ListView {
                 id: list
                 objectName: "updatesList"
+                visible: !page.checking
                 anchors.fill: parent
                 clip: true; spacing: 12; model: page.rows; contentWidth: width
                 boundsBehavior: Flickable.StopAtBounds
@@ -182,6 +174,25 @@ Page {
                             FluffProgressBar { visible: !!job && job.active; Layout.fillWidth: true; value: job ? job.progress : 0; indeterminate: !!job && job.queued }
                         }
                     }
+                }
+            }
+            RowLayout {
+                objectName: "updateCheckIndicator"
+                anchors.centerIn: parent
+                width: Math.min(implicitWidth, parent.width)
+                spacing: 10
+                visible: page.checking
+                LoadingSpinner {
+                    objectName: "updateCheckSpinner"
+                    running: page.checking && page.visible
+                    color: window.textColor
+                    Layout.preferredWidth: 24; Layout.preferredHeight: 24
+                }
+                Label {
+                    objectName: "updateCheckStatus"
+                    text: qsTr("Checking for app updates…")
+                    textFormat: Text.PlainText; wrapMode: Text.Wrap
+                    color: window.mutedTextColor; Layout.fillWidth: true
                 }
             }
             Label {

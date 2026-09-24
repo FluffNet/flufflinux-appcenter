@@ -67,6 +67,7 @@ TestCase {
         open(); compare(backend.checks, 0)
         mouseClick(findChild(page(), "checkForUpdatesButton")); compare(backend.checks, 1)
         verify(page().checking); verify(!findChild(page(), "checkForUpdatesButton").enabled)
+        waitForPolish(page()); waitForRendering(page()) // Click the rendered Cancel button, not its pre-layout position.
         mouseClick(findChild(page(), "cancelUpdateCheckButton"))
         verify(findChild(page(), "updatesEmpty").text.indexOf("cancelled") >= 0)
     }
@@ -82,6 +83,7 @@ TestCase {
             verify(label.visible)
             compare(label.text, "Checking for app updates…")
         }
+        waitForPolish(page()); waitForRendering(page())
         mouseClick(findChild(page(), "cancelUpdateCheckButton"))
         verify(!label.visible)
         ready()
@@ -119,6 +121,29 @@ TestCase {
         mouseClick(findChild(root(), "categoryButton-Internet"))
         compare(main.selectedCategory, "Internet"); verify(search.enabled); verify(!page().visible)
         open(); compare(page().selected.length, 1); compare(backend.checks, 0)
+    }
+    function test_check_indicator_centered_data() { return test_layout_data() }
+    function test_check_indicator_centered(data) {
+        main.width = data.width; main.height = data.height; open()
+        mouseClick(findChild(page(), "checkForUpdatesButton"))
+        waitForPolish(page()); wait(30)
+        const area = findChild(page(), "updatesContentArea")
+        const indicator = findChild(page(), "updateCheckIndicator")
+        const spinner = findChild(page(), "updateCheckSpinner")
+        const label = findChild(page(), "updateCheckStatus")
+        verify(indicator.visible && spinner.running && label.visible)
+        fuzzyCompare(indicator.x + indicator.width / 2, area.width / 2, 0.5)
+        fuzzyCompare(indicator.y + indicator.height / 2, area.height / 2, 0.5)
+        verify(indicator.x >= 0 && indicator.x + indicator.width <= area.width)
+        verify(label.x >= spinner.x + spinner.width)
+        verify(!label.truncated && label.contentWidth <= label.width + 1)
+        verify(!findChild(page(), "updatesList").visible)
+        verify(findChild(page(), "cancelUpdateCheckButton").enabled)
+        root().openCategory("Installed"); verify(!spinner.running)
+        open(); verify(spinner.running); compare(backend.checks, 1)
+        mouseClick(findChild(page(), "cancelUpdateCheckButton"))
+        verify(!indicator.visible && !spinner.running)
+        ready(); verify(!indicator.visible && findChild(page(), "updatesList").visible)
     }
     function test_return_from_queue_and_settings() {
         open(); ready()

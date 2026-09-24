@@ -2,6 +2,20 @@
 
 Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
 
+## Centered checking indicator — 2026-09-24
+
+- Spinner and Checking for app updates text are centered together in the main
+  results area, below the header/history. Cancel remains in the header.
+- Geometry assertions at 720, 1180 and 1920 widths verify both axes, text fit,
+  spinner activity, hidden result rows, cancellation, and navigation away/back.
+  The animation stops when its page is hidden or checking ends.
+- App Updates suite: 18 passed at both 100% and 150%; network suite: 47 passed
+  at both scales. Mouse tests wait for the new Cancel layout to render before
+  clicking; all cancellation assertions are retained.
+- Real KDE normal/compact screenshots from AppUpdatesCheckingSmoke.qml use a
+  simulated pending check and assert the real backend remains idle. No app
+  updates, source changes or actual update checks were performed.
+
 ## App Updates wording — 2026-09-24
 
 - Sidebar, heading and check button explicitly say App Updates. Offline advice,
