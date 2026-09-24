@@ -1,4 +1,6 @@
 #include "flatpak_manager.h"
+#include "catalog_stats.h"
+#include "catalog_preferences.h"
 #include "window_preferences.h"
 #include "ui_typography.h"
 #include <QFile>
@@ -73,14 +75,18 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     const auto document = QJsonDocument::fromJson(catalog.readAll());
     if (!document.isArray()) return 3;
     FlatpakManager manager(document.array().toVariantList());
+    CatalogStats catalogStats;
     // Custom QML is used by read-only UI fixtures; it must not read/write the
     // desktop user's window preferences or override fixture geometry.
     const bool manageWindow = !qEnvironmentVariableIsSet("FLUFF_APP_CENTER_QML");
+    CatalogPreferences catalogPreferences(manageWindow ? WindowPreferences::defaultPath() : QString());
     std::unique_ptr<WindowPreferences> windowPreferences;
     if (manageWindow) windowPreferences = std::make_unique<WindowPreferences>();
     QQmlApplicationEngine engine;
     engine.addImageProvider("icon", new ThemeIconProvider);
     engine.rootContext()->setContextProperty("fluffBackend", &manager);
+    engine.rootContext()->setContextProperty("fluffCatalogStats", &catalogStats);
+    engine.rootContext()->setContextProperty("fluffCatalogPreferences", &catalogPreferences);
     engine.rootContext()->setContextProperty("fluffAppIconUrl", QUrl::fromLocalFile(QString::fromUtf8(icon_path)));
     engine.rootContext()->setContextProperty("fluffInitialCatalog", document.array().toVariantList());
     engine.rootContext()->setContextProperty("fluffWindowManaged", manageWindow);

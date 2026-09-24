@@ -281,6 +281,9 @@ void FlatpakManager::connectWorker(WorkerState &worker) {
             if (!preparation && !m_stopping) {
                 if (!m_sizeApp.isEmpty()) requestInstallInfo(m_sizeApp);
                 refreshCaches();
+                // Excluded apps are visible only while installed. Re-evaluate
+                // that exception after deployment/removal, using local data.
+                reloadCatalog();
             }
             QTimer::singleShot(0, this, &FlatpakManager::startNext);
         });

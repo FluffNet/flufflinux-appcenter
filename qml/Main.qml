@@ -37,6 +37,8 @@ ApplicationWindow {
                           ? fluffInitialCatalog : []
     property var selectedApp: null
     property var backend: typeof fluffBackend !== "undefined" ? fluffBackend : null
+    property var catalogStats: typeof fluffCatalogStats !== "undefined" ? fluffCatalogStats : null
+    property var catalogPreferences: typeof fluffCatalogPreferences !== "undefined" ? fluffCatalogPreferences : null
     property var installedApps: backend ? backend.installedApps : []
     property bool installedLoading: backend ? backend.installedLoading : false
     property string installedError: backend ? backend.installedError : ""

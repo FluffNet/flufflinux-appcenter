@@ -9,6 +9,58 @@ library only), QML, and the system Qt 6 and libflatpak libraries. There are no
 background update services, notifications, or tray components. Settings currently
 contains Flatpak source management.
 
+## Home and catalog exclusions
+
+Home shows **Recommended Apps** above **All Apps**, sharing the main page's
+scrollbar. Compact name-and-icon tiles keep All Apps visible below them, including
+at the minimum window size. The curated list is Brave, Discord, Google Chrome,
+Minecraft Launcher, Sober, Spotify, Steam, Telegram and Visual Studio Code, always
+alphabetical. Only apps available from
+the configured official stable Flathub catalog are shown; recommendations never
+add a source or install an app.
+
+The sorting control affects **All Apps on Home only**. It defaults to most popular
+and supports A–Z/Z–A, most/least popular, smallest/largest app download, and
+newest/oldest published release. Recommendations, category navigation, search
+relevance and Installed sorting are independent. Unknown values go last in both
+directions; real zero-byte sizes/zero install counts remain valid.
+The selected Home order is saved immediately as `Catalog/homeSort` in
+`~/.config/flufflinux-appcenter.conf` and restored on the next launch. Missing or
+invalid values default to `popularity-desc`. Other valid keys are `popularity-asc`,
+`name-asc`, `name-desc`, `size-asc`, `size-desc`, `release-asc` and `release-desc`.
+Window settings and unrelated config entries are preserved. The steady-state
+popularity explanation is omitted; loading/offline status remains available.
+
+Popularity uses Flathub's public `installs_last_month` count (last 30 days), loaded
+when Home is shown with a popularity sort and cached for 24 hours. No installed-app
+list is sent. Failed requests retain saved statistics; without saved data, the
+page explicitly falls back to A–Z. Download sizes and release dates come from
+local Flatpak/AppStream metadata, not per-app network queries. Download sizes
+exclude shared runtimes. None of these actions checks for app updates.
+
+Edit **`/etc/flufflinux-appcenter/exclusions.conf`**, one exact Flatpak/AppStream ID
+per line. Blank lines and `#` comments are supported; wildcards are not. The
+defaults hide `org.videolan.VLC` and `org.libreoffice.LibreOffice`, since Fluff
+Linux supplies them as system packages. **An installed Flatpak copy is never
+hidden**: it remains visible/manageable and can receive updates. Otherwise the
+exclusion removes it from Home, categories, search and recommendations. This is
+a catalog presentation rule, not a security policy blocking direct file installs.
+Restart App Center after editing the file, or use Settings' Refresh. App Center
+re-evaluates the installed exception after its install/removal transactions.
+An empty config disables exclusions; a missing/unreadable config uses the bundled
+defaults. Installed system packages are not mistaken for installed Flatpak copies.
+
+`make install` preserves an existing config. `DESTDIR=... make install` automatically
+copies the host's edited exclusions into fakeroot; if absent, it installs the
+bundled defaults. Use `EXCLUSIONS_FILE=data/exclusions.conf` for defaults-only,
+reproducible staging, or point it at a curated file. Uninstall preserves the config.
+
+Catalog tests: `sh tests/run_catalog.sh`, `sh tests/run_qml_suite.sh`,
+`python3 tests/integration/test_catalog_exclusions.py` (read-only populated-catalog
+check), and `python3 tests/integration/test_exclusions_packaging.py` (temporary
+staging only). `tests/integration/HomeSmoke.qml` checks the native layout and live
+public popularity data without checking for updates or changing installed apps.
+
 ## Manual updates
 
 **Updates**, directly below Installed, shows an installed-style list in the main

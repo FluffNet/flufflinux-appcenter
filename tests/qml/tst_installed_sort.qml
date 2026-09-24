@@ -69,7 +69,8 @@ TestCase {
         main.selectedCategory = "All Apps"
         verify(!sort.visible)
         main.selectedCategory = "Installed"
-        verify(sort.visible)
+        // Home has its own scrolling heading; returning recreates this heading.
+        verify(findChild(page(), "installedSort").visible)
         compare(page().installedSortIndex, 5)
     }
     function test_search_and_live_refresh_preserve_order() {

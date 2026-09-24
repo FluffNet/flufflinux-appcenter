@@ -2,10 +2,12 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::ffi::{CStr, c_char, c_void};
+use std::ffi::{CStr, CString, c_char, c_void};
 
 unsafe extern "C" {
     fn fluff_visit_catalogs(visit: unsafe extern "C" fn(*const c_char, *const c_char, *const c_char, *mut c_void), data: *mut c_void);
+    fn fluff_catalog_download_size(remote: *const c_char, url: *const c_char, flatpak_ref: *const c_char) -> f64;
+    fn fluff_catalog_app_installed(id: *const c_char) -> bool;
 }
 unsafe extern "C" fn catalog_root(path: *const c_char, remote: *const c_char, url: *const c_char, data: *mut c_void) {
     if path.is_null() { return; }
@@ -27,6 +29,9 @@ pub struct App {
     pub license: String,
     pub homepage: String,
     pub version: String,
+    pub release_date: String,
+    pub release_timestamp: Option<u64>,
+    pub download_bytes: Option<u64>,
     pub screenshots: Vec<String>,
     pub flatpak_ref: String,
     pub remote: String,
@@ -36,6 +41,7 @@ pub struct App {
 
 pub fn load_catalog() -> Vec<App> {
     let mut apps = HashMap::<String, App>::new();
+    let exclusions = crate::catalog_exclusions::load();
     let mut roots = Vec::<(PathBuf, String, String)>::new();
     unsafe { fluff_visit_catalogs(catalog_root, &mut roots as *mut _ as *mut c_void); }
     for (root, remote, url) in roots {
@@ -54,8 +60,16 @@ pub fn load_catalog() -> Vec<App> {
                 continue;
             }
             if let Some(mut app) = parse_component(component, &path) {
+                let id = app.id.strip_suffix(".desktop").unwrap_or(&app.id);
+                if exclusions.contains(id) && !CString::new(id).ok()
+                    .is_some_and(|id| unsafe { fluff_catalog_app_installed(id.as_ptr()) }) { continue; }
                 app.remote = remote.clone();
                 app.source_url = url.clone();
+                if let (Ok(remote), Ok(url), Ok(reference)) = (CString::new(remote.as_str()),
+                        CString::new(url.as_str()), CString::new(app.flatpak_ref.as_str())) {
+                    let size = unsafe { fluff_catalog_download_size(remote.as_ptr(), url.as_ptr(), reference.as_ptr()) };
+                    if size >= 0.0 { app.download_bytes = Some(size as u64); }
+                }
                 let variant = app.clone();
                 app.sources.push(variant);
                 let key = app.id.strip_suffix(".desktop").unwrap_or(&app.id).to_string();
@@ -138,6 +152,9 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
     let license = base_text(xml, "project_license").unwrap_or_default();
     let homepage = tagged_text(xml, "url", "homepage").unwrap_or_default();
     let version = release_version(xml);
+    let release = first_release(xml).unwrap_or_default();
+    let release_date = attribute(release, "date").unwrap_or_default();
+    let release_timestamp = attribute(release, "timestamp").and_then(|value| value.parse::<u64>().ok()).filter(|value| *value > 0);
     let mut seen_screenshots = HashSet::new();
     let screenshots = blocks(xml, "screenshot")
         .into_iter()
@@ -157,6 +174,9 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         license,
         homepage,
         version,
+        release_date,
+        release_timestamp,
+        download_bytes: None,
         screenshots,
         flatpak_ref,
         remote,
@@ -289,6 +309,16 @@ fn release_version(xml: &str) -> String {
             attribute(&rest[..=rest.find('>')?], "version").filter(|value| !value.is_empty())
         })
         .unwrap_or_default()
+}
+
+fn first_release(xml: &str) -> Option<&str> {
+    let releases = element(xml, "releases")?;
+    releases.match_indices("<release").filter(|(offset, _)| {
+        releases.as_bytes().get(offset + 8).is_some_and(u8::is_ascii_whitespace)
+    }).find_map(|(offset, _)| {
+        let rest = &releases[offset..];
+        Some(&rest[..=rest.find('>')?])
+    })
 }
 
 fn blocks<'a>(input: &'a str, tag: &str) -> Vec<&'a str> {
@@ -426,14 +456,16 @@ pub fn to_json(apps: &[App]) -> String {
         let search_haystack =
             format!("{search_name} {search_summary} {search_description} {search_metadata}");
         output.push_str(&format!(
-            "{{\"id\":{},\"name\":{},\"summary\":{},\"description\":{},\"icon\":{},\"category\":{},\"developer\":{},\"license\":{},\"homepage\":{},\"screenshots\":[{}],\"searchName\":{},\"searchSummary\":{},\"searchDescription\":{},\"searchMetadata\":{},\"searchHaystack\":{},\"flatpakRef\":{},\"remote\":{},\"version\":{},\"sourceUrl\":{},\"sources\":{}}}",
+            "{{\"id\":{},\"name\":{},\"summary\":{},\"description\":{},\"icon\":{},\"category\":{},\"developer\":{},\"license\":{},\"homepage\":{},\"screenshots\":[{}],\"searchName\":{},\"searchSummary\":{},\"searchDescription\":{},\"searchMetadata\":{},\"searchHaystack\":{},\"flatpakRef\":{},\"remote\":{},\"version\":{},\"sourceUrl\":{},\"sources\":{},\"releaseDate\":{},\"releaseTimestamp\":{},\"downloadBytes\":{}}}",
             escape_json(&app.id), escape_json(&app.name), escape_json(&app.summary),
             escape_json(&app.description), escape_json(&app.icon), escape_json(&app.category),
             escape_json(&app.developer), escape_json(&app.license), escape_json(&app.homepage), screenshots,
             escape_json(&search_name), escape_json(&search_summary),
             escape_json(&search_description), escape_json(&search_metadata),
             escape_json(&search_haystack), escape_json(&app.flatpak_ref), escape_json(&app.remote),
-            escape_json(&app.version), escape_json(&app.source_url), to_json(&app.sources)
+            escape_json(&app.version), escape_json(&app.source_url), to_json(&app.sources),
+            escape_json(&app.release_date), app.release_timestamp.map(|value| value.to_string()).unwrap_or("null".into()),
+            app.download_bytes.map(|value| value.to_string()).unwrap_or("null".into())
         ));
     }
     output.push(']');
@@ -443,6 +475,20 @@ pub fn to_json(apps: &[App]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn serializes_release_dates_and_unknown_sizes_without_inventing_values() {
+        let prefix = "<component type='desktop-application'><id>org.example.Date</id><name>Date</name>";
+        let app = parse_component(&format!("{prefix}<releases><release version='2' timestamp='1789940480' date='2026-09-21'/><release version='1' date='2020-01-01'/></releases></component>"), Path::new("/tmp/appstream.xml")).unwrap();
+        assert_eq!(app.release_timestamp, Some(1789940480));
+        assert_eq!(app.release_date, "2026-09-21");
+        assert_eq!(app.download_bytes, None);
+        assert!(to_json(&[app.clone()]).contains("\"downloadBytes\":null"));
+        let zero = App { download_bytes: Some(0), ..app };
+        assert!(to_json(&[zero]).contains("\"downloadBytes\":0"));
+        let missing = parse_component(&format!("{prefix}<releases><release version='1' timestamp='bad'/></releases></component>"), Path::new("/tmp/appstream.xml")).unwrap();
+        assert_eq!(missing.release_timestamp, None);
+        assert!(missing.release_date.is_empty());
+    }
     #[test]
     fn keeps_distinct_sources_without_duplicate_catalog_cards() {
         let base = App { id: "org.example.App".into(), name: "Test".into(), remote: "stable".into(),

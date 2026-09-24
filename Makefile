@@ -1,6 +1,9 @@
 PREFIX ?= /usr
 SYSCONFDIR ?= /etc
 DESTDIR ?=
+# Include the machine's curated exclusions in archiso/fakeroot staging. Set
+# EXCLUSIONS_FILE=data/exclusions.conf for a reproducible defaults-only package.
+EXCLUSIONS_FILE ?= $(if $(wildcard $(SYSCONFDIR)/flufflinux-appcenter/exclusions.conf),$(SYSCONFDIR)/flufflinux-appcenter/exclusions.conf,data/exclusions.conf)
 
 ifneq ($(shell uname -s),Linux)
 $(error App Center can only be built on Fluff Linux/Arch Linux)
@@ -11,7 +14,7 @@ endif
 build: target/release/flufflinux-appcenter-source-helper
 	cargo build --release
 
-target/release/flufflinux-appcenter: Cargo.toml Cargo.lock VERSION build.rs $(wildcard src/*.rs src/*.cpp src/*.h)
+target/release/flufflinux-appcenter: Cargo.toml Cargo.lock VERSION build.rs data/exclusions.conf $(wildcard src/*.rs src/*.cpp src/*.h)
 	cargo build --release
 
 target/release/flufflinux-appcenter-source-helper: src/source_helper.cpp src/source_removal.h src/flatpak_sources.h
@@ -32,6 +35,8 @@ install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter
 	install -m644 assets/flufflinux-appcenter.svg "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/flufflinux-appcenter.svg"
 	install -m644 assets/flufflinux-appcenter.svg "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/flufflinux-appcenter.svg"
 	install -m644 data/flufflinux-appcenter.desktop "$(DESTDIR)$(PREFIX)/share/applications/flufflinux-appcenter.desktop"
+	mkdir -p "$(DESTDIR)$(SYSCONFDIR)/flufflinux-appcenter"
+	@if [ -n "$(DESTDIR)" ] || [ ! -e "$(DESTDIR)$(SYSCONFDIR)/flufflinux-appcenter/exclusions.conf" ]; then install -m644 "$(EXCLUSIONS_FILE)" "$(DESTDIR)$(SYSCONFDIR)/flufflinux-appcenter/exclusions.conf"; fi
 	sh scripts/register-flatpak-handler.sh "$(DESTDIR)$(SYSCONFDIR)/xdg/mimeapps.list"
 	@if [ -z "$(DESTDIR)" ]; then update-desktop-database "$(PREFIX)/share/applications"; gtk-update-icon-cache -f -t "$(PREFIX)/share/icons/hicolor"; fi
 

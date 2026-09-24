@@ -1,4 +1,5 @@
 mod appstream;
+mod catalog_exclusions;
 
 #[cfg(not(target_os = "linux"))]
 compile_error!("App Center supports Fluff Linux/Arch Linux only.");

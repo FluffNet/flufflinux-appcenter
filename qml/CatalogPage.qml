@@ -11,6 +11,103 @@ Page {
     background: Control { focusPolicy: Qt.ClickFocus }
     readonly property bool installedView: window.selectedCategory === "Installed"
     readonly property bool updatesView: window.selectedCategory === "Updates"
+    readonly property bool homeView: window.selectedCategory === "All Apps" && !window.searchText
+    property int catalogSortIndex: 2
+    property bool sortControlsReady: false
+    property bool revealOnPopularityUpdate: false
+    readonly property var catalogSortKeys: ["name-asc", "name-desc", "popularity-desc", "popularity-asc",
+        "size-asc", "size-desc", "release-desc", "release-asc"]
+    readonly property var catalogSortOptions: [
+        qsTr("Name: A–Z"), qsTr("Name: Z–A"),
+        qsTr("Popularity: Most first"), qsTr("Popularity: Least first"),
+        qsTr("Size: Smallest first"), qsTr("Size: Largest first"),
+        qsTr("Released: Newest first"), qsTr("Released: Oldest first")
+    ]
+    readonly property var popularityCounts: window.catalogStats ? window.catalogStats.counts : ({})
+    readonly property string sortDescription: {
+        if (catalogSortIndex === 2 || catalogSortIndex === 3) {
+            const state = window.catalogStats ? window.catalogStats.state : "unavailable"
+            const cached = Object.keys(popularityCounts).length > 0
+            if (state === "loading") return cached ? qsTr("Refreshing Flathub popularity; using saved counts…") : qsTr("Loading Flathub popularity…")
+            if (state === "unavailable" || state === "idle") return cached ? qsTr("Offline — using saved Flathub popularity.") : qsTr("Popularity unavailable — showing Name: A–Z.")
+            return ""
+        }
+        if (catalogSortIndex === 4 || catalogSortIndex === 5)
+            return qsTr("App download size, excluding shared runtimes. Unknown sizes appear last.")
+        return qsTr("Latest published release date. Unknown dates appear last.")
+    }
+    function revealAllApps() {
+        // Keep the All Apps heading/sort control in view, rather than jumping
+        // back above recommendations whenever the user chooses another order.
+        Qt.callLater(function() {
+            if (page.homeView && catalogGrid.headerItem)
+                catalogGrid.headerItem.showAllApps()
+        })
+    }
+    onPopularityCountsChanged: {
+        if (revealOnPopularityUpdate && (catalogSortIndex === 2 || catalogSortIndex === 3)) revealAllApps()
+    }
+    onCatalogSortIndexChanged: {
+        if (!sortControlsReady) return
+        if (window.catalogPreferences && catalogSortIndex >= 0 && catalogSortIndex < catalogSortKeys.length)
+            window.catalogPreferences.homeSort = catalogSortKeys[catalogSortIndex]
+        revealOnPopularityUpdate = catalogSortIndex === 2 || catalogSortIndex === 3
+        revealAllApps()
+        loadHomePopularity()
+    }
+    function loadHomePopularity() {
+        if (homeView && (catalogSortIndex === 2 || catalogSortIndex === 3) && window.catalogStats)
+            window.catalogStats.loadPopularity()
+    }
+    onHomeViewChanged: { if (sortControlsReady) loadHomePopularity() }
+    Component.onCompleted: {
+        if (window.catalogPreferences) {
+            const savedIndex = catalogSortKeys.indexOf(window.catalogPreferences.homeSort)
+            catalogSortIndex = savedIndex >= 0 ? savedIndex : 2
+        }
+        sortControlsReady = true
+        // Initial popularity loading must not scroll past the recommendations.
+        loadHomePopularity()
+    }
+    // Fluff Linux's curated picks, displayed alphabetically independently of All Apps.
+    readonly property var recommendedIds: ["com.discordapp.Discord", "com.valvesoftware.Steam",
+        "org.telegram.desktop", "com.spotify.Client", "com.google.Chrome", "com.brave.Browser", "com.visualstudio.code",
+        "org.vinegarhq.Sober", "com.mojang.Minecraft"]
+    function stableFlathub(app) {
+        return /^https:\/\/(dl\.flathub\.org\/repo|flathub\.org\/repo)\/?$/.test(app.sourceUrl || "")
+            && String(app.flatpakRef || "").endsWith("/stable")
+    }
+    function catalogId(app) {
+        const ref = String(app.flatpakRef || "").split("/")
+        return ref.length === 4 ? ref[1] : String(app.id).replace(/\.desktop$/, "")
+    }
+    readonly property var recommendedApps: {
+        const available = {}
+        for (const app of window.catalog) {
+            const id = catalogId(app)
+            const match = [app].concat(app.sources || []).find(source => stableFlathub(source))
+            if (match && !available[id]) available[id] = match
+        }
+        return recommendedIds.map(id => available[id]).filter(app => !!app)
+            .sort((a, b) => a.name.localeCompare(b.name) || a.id.localeCompare(b.id))
+    }
+    function catalogValue(app, index, counts) {
+        if (index === 2 || index === 3)
+            return stableFlathub(app) ? counts[catalogId(app)] : undefined
+        if (index === 4 || index === 5) return app.downloadBytes
+        return typeof app.releaseTimestamp === "number" && app.releaseTimestamp > 0
+            ? app.releaseTimestamp * 1000 : Date.parse(app.releaseDate || "")
+    }
+    function compareCatalog(a, b, index, counts) {
+        const tie = a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+        if (index < 2) return index === 1 ? -tie : tie
+        const left = catalogValue(a, index, counts), right = catalogValue(b, index, counts)
+        const leftKnown = typeof left === "number" && isFinite(left) && left >= 0
+        const rightKnown = typeof right === "number" && isFinite(right) && right >= 0
+        if (leftKnown !== rightKnown) return leftKnown ? -1 : 1
+        if (!leftKnown) return tie
+        return ((index === 3 || index === 4 || index === 7) ? left - right : right - left) || tie
+    }
     onUpdatesViewChanged: {
         if (updatesView) {
             searchTimer.stop()
@@ -67,6 +164,7 @@ Page {
                                                                    return category.label
                                                                }))))
     readonly property var visibleApps: {
+        const sortIndex = homeView ? catalogSortIndex : 0, counts = popularityCounts
         const query = window.searchText.trim().toLowerCase()
         const compactQuery = page.compactSearchText(query)
         const activeCategory = query ? window.searchCategoryFilter : window.selectedCategory
@@ -82,7 +180,7 @@ Page {
                         || compactNameMatches || compactDescriptionMatches)
         })
         if (!query)
-            return matches
+            return homeView ? matches.sort((a, b) => page.compareCatalog(a, b, sortIndex, counts)) : matches
         const scoredMatches = matches.map(function(app) {
             return { app: app, score: page.searchScore(app, query) }
         })
@@ -588,54 +686,14 @@ Page {
             Layout.fillWidth: true; Layout.fillHeight: true; clip: true
             ColumnLayout {
                 anchors.fill: parent; spacing: 18
-                RowLayout {
+                Loader {
+                    active: !page.homeView
+                    visible: active
                     Layout.fillWidth: true
                     Layout.leftMargin: 28
                     Layout.rightMargin: 28
                     Layout.topMargin: 26
-                    spacing: 18
-
-                    ColumnLayout {
-                        spacing: 5
-                        Label { text: page.installedView ? qsTr("Installed") : window.searchText ? "Search results" : window.selectedCategory; color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold }
-                        Label {
-                            objectName: "catalogCountLabel"
-                            readonly property int count: page.installedView ? page.installedMatches.length : page.visibleApps.length
-                            text: count + (count === 1 ? " application" : " applications")
-                            color: window.mutedTextColor
-                            // Match typed text: native hinted glyphs change the
-                            // shape of small digits at fractional display scales.
-                            renderType: Text.QtRendering
-                        }
-                    }
-                    Item { Layout.fillWidth: true }
-                    FluffComboBox {
-                        id: installedSort
-                        hoverEnabled: true
-                        objectName: "installedSort"
-                        visible: page.installedView
-                        Layout.preferredWidth: 210
-                        Layout.preferredHeight: 42
-                        model: page.installedSortOptions
-                        currentIndex: page.installedSortIndex
-                        onActivated: function(index) { page.installedSortIndex = index }
-                        Accessible.name: qsTr("Sort installed apps")
-                    }
-                    FluffComboBox {
-                        id: searchCategoryFilter
-                        objectName: "searchCategoryFilter"
-                        hoverEnabled: true
-                        visible: !page.installedView && window.searchText.length > 0
-                        Layout.preferredWidth: 210
-                        Layout.preferredHeight: 42
-                        model: page.categories
-                        textRole: "name"
-                        currentIndex: page.categoryIndex(window.searchCategoryFilter)
-                        displayText: currentIndex === 0
-                                     ? "Category: All"
-                                     : "Category: " + currentText
-                        onActivated: function(index) { window.searchCategoryFilter = page.categories[index].name }
-                    }
+                    sourceComponent: CatalogHeading { catalogPage: page }
                 }
                 GridView {
                     id: catalogGrid
@@ -646,6 +704,54 @@ Page {
                     Layout.leftMargin: 20; Layout.rightMargin: 20; Layout.bottomMargin: 20
                     clip: true
                     model: page.visibleApps
+                    header: Item {
+                        function showAllApps() {
+                            if (homeHeadingLoader.item)
+                                catalogGrid.contentY += homeHeadingLoader.mapToItem(catalogGrid, 0, 0).y - 26
+                        }
+                        width: catalogGrid.width
+                        height: page.homeView ? homeHeader.implicitHeight + 20 : 0
+                        visible: page.homeView
+                        ColumnLayout {
+                            id: homeHeader
+                            anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
+                            anchors.leftMargin: 8; anchors.rightMargin: 8; anchors.topMargin: 20
+                            spacing: 12
+                            Label {
+                                objectName: "recommendedHeading"
+                                visible: page.recommendedApps.length > 0
+                                Layout.fillWidth: true
+                                text: qsTr("Recommended Apps"); color: window.textColor
+                                font.pixelSize: catalogGrid.height < 500 ? 22 : 26; font.weight: Font.DemiBold
+                                wrapMode: Text.WordWrap
+                            }
+                            GridLayout {
+                                objectName: "recommendedGrid"
+                                visible: page.recommendedApps.length > 0
+                                Layout.fillWidth: true
+                                // Compact, name-and-icon tiles keep all nine picks
+                                // and All Apps visible even at the minimum window size.
+                                columns: Math.max(3, Math.min(5, Math.floor(width / 190)))
+                                columnSpacing: width < 600 ? 8 : 12; rowSpacing: 8
+                                Repeater {
+                                    model: page.homeView ? page.recommendedApps : []
+                                    RecommendedAppCard {
+                                        required property var modelData
+                                        objectName: "recommended-" + modelData.id
+                                        Layout.fillWidth: true; Layout.preferredWidth: 1
+                                        Layout.preferredHeight: catalogGrid.height < 500 ? 56 : 72
+                                        app: modelData
+                                        onClicked: window.openApp(app)
+                                    }
+                                }
+                            }
+                            Loader {
+                                id: homeHeadingLoader
+                                active: page.homeView; Layout.fillWidth: true; Layout.bottomMargin: 16
+                                sourceComponent: CatalogHeading { catalogPage: page }
+                            }
+                        }
+                    }
                     readonly property int columnCount: Math.max(1, Math.floor(width / 285))
                     readonly property int rowCount: Math.max(1, Math.floor(height / 158))
                     cellWidth: width / columnCount

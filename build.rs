@@ -44,7 +44,7 @@ fn main() {
         PathBuf::from(command_output("pkg-config", &["--variable=libexecdir", "Qt6Core"]).trim())
             .join("moc");
     let generated = output_dir.join("moc_flatpak_manager.cpp");
-    let status = Command::new(moc)
+    let status = Command::new(&moc)
         .arg("src/flatpak_manager.h")
         .arg("-o")
         .arg(&generated)
@@ -59,6 +59,14 @@ fn main() {
         status.success(),
         "failed to generate Flatpak manager bindings"
     );
+    let stats_generated = output_dir.join("moc_catalog_stats.cpp");
+    assert!(Command::new(&moc).arg("src/catalog_stats.h").arg("-o").arg(&stats_generated)
+        .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
+        .status().expect("failed to run Qt moc").success());
+    let preferences_generated = output_dir.join("moc_catalog_preferences.cpp");
+    assert!(Command::new(&moc).arg("src/catalog_preferences.h").arg("-o").arg(&preferences_generated)
+        .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
+        .status().expect("failed to run Qt moc").success());
     let mut objects = Vec::new();
     let display_version = std::fs::read_to_string("VERSION").expect("VERSION is missing");
     for source in [
@@ -69,7 +77,10 @@ fn main() {
         PathBuf::from("src/flatpak_permissions.cpp"),
         PathBuf::from("src/flatpak_updates.cpp"),
         PathBuf::from("src/flatpak_catalog.cpp"),
+        PathBuf::from("src/catalog_stats.cpp"),
         generated,
+        stats_generated,
+        preferences_generated,
     ] {
         let object = output_dir
             .join(source.file_stem().unwrap())
@@ -112,6 +123,9 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=src/qt_bridge.cpp");
+    println!("cargo:rerun-if-changed=src/catalog_stats.h");
+    println!("cargo:rerun-if-changed=src/catalog_stats.cpp");
+    println!("cargo:rerun-if-changed=src/catalog_preferences.h");
     println!("cargo:rerun-if-changed=VERSION");
     println!("cargo:rerun-if-changed=src/source_removal.h");
     println!("cargo:rerun-if-changed=src/window_preferences.h");
