@@ -116,7 +116,7 @@ sources, a deliberately empty source list or a cancelled operation are not
 classified as connection failures. Settings retains individual source errors.
 
 Changes apply live. Losing the connection while Updates is open disables new
-checks and Update Selected without discarding the list or selection; cancellation
+checks and the update action without discarding the list or selection; cancellation
 of an existing check stays available. Reconnecting restores the controls but never
 starts an update check. Catalog popularity may resume loading separately.
 The observer only reads properties and listens for changes: no connectivity
@@ -165,14 +165,20 @@ components once. Actual transfers can be smaller because of cached data,
 language subsets and deltas. Missing published version labels use an explicit
 commit revision instead of inventing a version. Version labels come from
 Flatpak/AppStream; the selected update is checked against its reviewed commit.
+Matching version labels append **(Refresh)** to the destination version.
 
 Changed sandbox permissions have a **View Permission Changes** dialog showing
 added and removed rules in the existing grouped layout. Unknown permission
 metadata is explicitly unavailable, never “unchanged.” These are changes to
 the app's declared permissions; existing overrides and portal grants are not
 modified by the comparison.
+Unchanged permissions have no status line; changed or unavailable comparisons
+remain visible.
 
-**Update Selected** queues only the selected deployments. Required runtimes may
+The action reads **Update All Apps** when every row is selected, otherwise
+**Update selected apps**. It queues only the selected deployments. Queued rows
+show **Queued…** without a progress bar; progress appears once work starts.
+Required runtimes may
 update with their apps even if their standalone row is unchecked. The worker
 verifies the installation, full ref, current commit, source identity/signing
 configuration, and resolved operation plan before deployment; stale plans fail
@@ -187,10 +193,12 @@ Successful app deployment records its UTC last-update time in
 `$XDG_DATA_HOME/FluffNet LLC/flufflinux-appcenter/update-dates.json` (normally
 under `~/.local/share`). Records are keyed by installation and full ref, survive
 restarts/Queue clearing, and appear in Installed and at the bottom of app
-details in the system's locale/timezone. Original install dates remain separate.
+details below Website in the system's locale/timezone. Original install dates remain separate.
 No-op, failed and cancelled-before-deployment updates do not acquire a new date;
 a completed deployment is recorded even if a later operation fails. Previously
-unobserved/external updates say **Not recorded** rather than guessing a date.
+unobserved/external updates have no Last updated row in Installed or app details,
+rather than guessing a date. The App Updates page still shows Not recorded when
+no overall update history exists.
 
 Repeatable offline tests build two versions of two tiny apps plus a shared
 runtime. `--keep` preserves old/new commits, bundles and a manifest; `--reset`

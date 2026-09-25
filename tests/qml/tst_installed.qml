@@ -8,7 +8,7 @@ TestCase {
     AppCenter.Main { id: main; visible: true }
     function test_installation_date_only_when_recorded() {
         const app = {id: "org.example.Dated", name: "Dated app", icon: "", summary: "", description: "",
-            category: "", license: "", homepage: "", developer: "", screenshots: [],
+            category: "", license: "", homepage: "https://example.org", developer: "", screenshots: [],
             installedSize: "10 MB", installedVersion: "1.0", installation: "user",
             installedBranch: "stable", installedArch: "x86_64"}
         const stack = findChild(main, "navigationStack")
@@ -19,22 +19,44 @@ TestCase {
         tryVerify(function() { return list.itemAtIndex(0) !== null })
         verify(!findChild(list.itemAtIndex(0), "installedDateCaption").visible)
         verify(!findChild(list.itemAtIndex(0), "installedDateValue").visible)
-        compare(findChild(list.itemAtIndex(0), "installedUpdatedDateValue").text, "Not recorded")
+        for (const updatedDate of [undefined, null, ""]) {
+            main.installedApps = [Object.assign({}, app, {updatedDate:updatedDate})]
+            tryVerify(function() { return list.itemAtIndex(0) !== null })
+            verify(!findChild(list.itemAtIndex(0), "installedUpdatedDateCaption").visible)
+            verify(!findChild(list.itemAtIndex(0), "installedUpdatedDateValue").visible)
+            compare(findChild(list.itemAtIndex(0), "installedUpdatedDateValue").text, "")
+        }
         main.openApp(app); tryCompare(stack, "busy", false)
         verify(!findChild(stack.currentItem, "appInstalledDateCaption").visible)
         verify(!findChild(stack.currentItem, "appInstalledDateValue").visible)
+        verify(!findChild(stack.currentItem, "appUpdatedDateCaption").visible)
+        verify(!findChild(stack.currentItem, "appUpdatedDateValue").visible)
         main.installedApps = [Object.assign({}, app, {installedDate: "16 September 2026", updatedDate: "23 September 2026"})]
         compare(findChild(stack.currentItem, "appInstalledDateValue").text, "16 September 2026")
         verify(findChild(stack.currentItem, "appInstalledDateCaption").visible)
         verify(findChild(stack.currentItem, "appInstalledDateValue").visible)
-        compare(findChild(stack.currentItem, "appUpdatedDateValue").text, "Last updated: 23 September 2026")
+        compare(findChild(stack.currentItem, "appUpdatedDateValue").text, "23 September 2026")
+        verify(findChild(stack.currentItem, "appUpdatedDateCaption").visible)
+        verify(findChild(stack.currentItem, "appUpdatedDateValue").visible)
+        waitForPolish(stack.currentItem)
+        const website = findChild(stack.currentItem, "appWebsiteLink")
+        const updated = findChild(stack.currentItem, "appUpdatedDateValue")
+        tryVerify(function() { return updated.mapToItem(stack.currentItem, 0, 0).y >= website.mapToItem(stack.currentItem, 0, website.height).y }, 5000,
+               "Last updated follows Website in the details grid")
         main.showCatalog(); tryCompare(stack, "busy", false)
         tryVerify(function() { return list.itemAtIndex(0) !== null })
         const date = findChild(list.itemAtIndex(0), "installedDateValue")
         verify(date.visible && date.font.bold)
         compare(date.text, "16 September 2026")
         compare(findChild(list.itemAtIndex(0), "installedUpdatedDateValue").text, "23 September 2026")
+        verify(findChild(list.itemAtIndex(0), "installedUpdatedDateCaption").visible)
+        verify(findChild(list.itemAtIndex(0), "installedUpdatedDateValue").visible)
         const formerlyInstalled = main.installedApps[0]
+        main.openApp(formerlyInstalled); tryCompare(stack, "busy", false)
+        main.installedApps = [app]
+        verify(!findChild(stack.currentItem, "appUpdatedDateCaption").visible)
+        verify(!findChild(stack.currentItem, "appUpdatedDateValue").visible)
+        main.showCatalog(); tryCompare(stack, "busy", false)
         main.installedApps = []
         compare(main.detailsFor(formerlyInstalled).installedDate, undefined)
         compare(main.detailsFor(formerlyInstalled).updatedDate, undefined)

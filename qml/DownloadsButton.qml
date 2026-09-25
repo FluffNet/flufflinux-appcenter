@@ -33,6 +33,7 @@ ToolButton {
     bottomPadding: 8
     Accessible.name: window.downloadQueue.activeCount === 0
         ? (window.downloadQueue.hasError ? qsTr("Queue finished with errors") : qsTr("Queue complete"))
+        : window.downloadQueue.runningCount === 0 ? qsTr("Queue: %1 queued").arg(window.downloadQueue.activeCount)
         : qsTr("Queue: %1 active, %2% complete")
         .arg(window.downloadQueue.activeCount).arg(Math.round(window.downloadQueue.progress * 100))
     ToolTip.visible: hovered
@@ -44,7 +45,8 @@ ToolButton {
         color: control.hovered ? window.hoverColor : window.raisedSurfaceColor
         border.color: control.visualFocus ? window.accentColor : window.borderColor
         Rectangle {
-            visible: window.downloadQueue.activeCount > 0
+            objectName: "queueButtonProgress"
+            visible: window.downloadQueue.runningCount > 0
             x: 6; y: parent.height - 7
             width: parent.width - 12; height: 3; radius: 1.5
             color: window.borderColor

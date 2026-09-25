@@ -8,6 +8,7 @@ QtObject {
     readonly property bool buttonVisible: jobs.length > 0
     readonly property int activeCount: jobs.filter(function(job) { return job.active === true }).length
     readonly property var currentJobs: jobs.filter(function(job) { return job.active === true })
+    readonly property int runningCount: currentJobs.filter(function(job) { return job.queued !== true }).length
     readonly property real progress: currentJobs.length ? currentJobs.reduce(function(total, job) {
         return total + job.progress
     }, 0) / currentJobs.length : (jobs.length ? 1 : 0)

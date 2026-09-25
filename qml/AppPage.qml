@@ -535,21 +535,24 @@ Page {
                         onActivated: function(url) { Qt.openUrlExternally(url) }
                     }
                 }
+                Label {
+                    objectName: "appUpdatedDateCaption"
+                    text: qsTr("Last updated"); color: window.mutedTextColor
+                    visible: !!(app && app.updatedDate)
+                }
+                Label {
+                    objectName: "appUpdatedDateValue"
+                    text: app && app.updatedDate || ""; color: window.textColor
+                    visible: text.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap
+                }
             }
             FluffButton {
                 id: permissionsButton
                 objectName: "viewAppPermissionsButton"
-                Layout.alignment: Qt.AlignLeft; Layout.bottomMargin: app && app.installation ? 8 : 38
+                Layout.alignment: Qt.AlignLeft; Layout.bottomMargin: 38
                 text: qsTr("View App Permissions")
                 icon.name: "object-locked"
                 onClicked: permissionsDialog.open()
-            }
-            Label {
-                objectName: "appUpdatedDateValue"
-                visible: !!(app && app.installation)
-                Layout.fillWidth: true; Layout.bottomMargin: 24
-                text: qsTr("Last updated: %1").arg(app && app.updatedDate || qsTr("Not recorded"))
-                color: window.mutedTextColor; wrapMode: Text.Wrap
             }
         }
     }

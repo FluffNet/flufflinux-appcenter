@@ -45,6 +45,7 @@ TestCase {
         main.showCatalog(); tryCompare(stack(), "busy", false)
         root().openCategory("Installed")
         backend.updates = {state:"idle", items:[]}; backend.checks = 0; backend.submitted = []; backend.busy = false
+        backend.jobs = []
         main.width = 1180; main.height = 760; main.requestActivate()
         waitForPolish(root()); wait(30)
     }
@@ -160,18 +161,97 @@ TestCase {
     }
     function test_defaults_selection_and_shared_downloads() {
         open(); ready()
+        const button = findChild(page(), "installUpdatesButton")
+        compare(button.text, "Update All Apps")
         compare(page().selected.length, 2); compare(page().selectedBytes, 400)
         const alpha = findChild(page(), "selectUpdate-user:Alpha")
         mouseClick(alpha); compare(page().selected.length, 1); compare(page().selectedBytes, 300)
+        compare(button.text, "Update selected apps")
+        waitForPolish(page()); waitForRendering(button)
+        mouseClick(button); compare(backend.submitted, ["user:Beta"])
         const all = findChild(page(), "selectAllUpdates")
         verify(all.contentItem.leftPadding >= all.indicator.width + 8)
         compare(all.checkState, Qt.PartiallyChecked)
         mouseClick(all); compare(page().selected.length, 2)
+        compare(button.text, "Update All Apps")
         mouseClick(all); compare(page().selected.length, 0)
+        compare(button.text, "Update selected apps")
         verify(!findChild(page(), "installUpdatesButton").enabled)
         mouseClick(all); mouseClick(findChild(page(), "installUpdatesButton"))
         compare(backend.submitted, ["user:Alpha", "user:Beta"])
         verify(!findChild(page(), "installUpdatesButton").activeFocus)
+    }
+    function test_single_update_all_label() {
+        open()
+        backend.updates = {state:"ready", items:[row("Alpha", "user")]}
+        const button = findChild(page(), "installUpdatesButton")
+        compare(button.text, "Update All Apps")
+        backend.selectAllUpdates(false)
+        compare(button.text, "Update selected apps"); verify(!button.enabled)
+        backend.selectAllUpdates(true)
+        compare(button.text, "Update All Apps"); verify(button.enabled)
+    }
+    function test_version_labels_data() {
+        return [{tag:"refresh804", oldVersion:"8.0.4", newVersion:"8.0.4", text:"8.0.4 → 8.0.4 (Refresh)"},
+            {tag:"refresh171", oldVersion:"1.7.1", newVersion:"1.7.1", text:"1.7.1 → 1.7.1 (Refresh)"},
+            {tag:"new", oldVersion:"1.7.1", newVersion:"1.7.2", text:"1.7.1 → 1.7.2"},
+            {tag:"revisions", oldVersion:"Revision abc123", newVersion:"Revision def456", text:"Revision abc123 → Revision def456"},
+            {tag:"missing", oldVersion:"", newVersion:"", text:" → "}]
+    }
+    function test_version_labels(data) {
+        open()
+        backend.updates = {state:"ready", items:[Object.assign(row("Alpha", "user"), data)]}
+        const list = findChild(page(), "updatesList")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        compare(findChild(list.itemAtIndex(0), "updateVersion").text, data.text)
+    }
+    function test_permission_status_data() {
+        return [{tag:"unchanged", state:"unchanged", runtime:false, visible:false, text:""},
+            {tag:"changed", state:"changed", runtime:false, visible:true, text:"Permissions changed"},
+            {tag:"unavailable", state:"unavailable", runtime:false, visible:true, text:"Permission comparison unavailable"},
+            {tag:"runtime", state:"unavailable", runtime:true, visible:false, text:"Permission comparison unavailable"}]
+    }
+    function test_permission_status(data) {
+        open()
+        backend.updates = {state:"ready", items:[Object.assign(row("Alpha", "user"),
+            {runtime:data.runtime, permissions:{state:data.state, groups:[]}})]}
+        const list = findChild(page(), "updatesList")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const label = findChild(list.itemAtIndex(0), "updatePermissionsStatus")
+        compare(label.visible, data.visible); compare(label.text, data.text)
+        const button = findChild(list.itemAtIndex(0), "viewUpdatePermissionChanges")
+        compare(button.visible, data.state === "changed")
+        if (button.visible) {
+            waitForPolish(page()); waitForRendering(button); mouseClick(button)
+            const dialog = findChild(page(), "appPermissionsDialog")
+            tryCompare(dialog, "opened", true)
+            dialog.close(); tryCompare(dialog, "visible", false)
+        }
+    }
+    function test_queued_updates_have_status_only_data() {
+        return [{tag:"new-job", progress:0}, {tag:"stale-progress", progress:0.45}]
+    }
+    function test_queued_updates_have_status_only(data) {
+        open(); ready()
+        const list = findChild(page(), "updatesList")
+        const card = list.itemAtIndex(0), other = list.itemAtIndex(1)
+        const label = findChild(card, "updateJobStatus"), progress = findChild(card, "updateJobProgress")
+        const queued = {key:"user:Alpha", action:"update", active:true, queued:true, progress:data.progress, status:"Queued"}
+        backend.jobs = [queued]
+        verify(label.visible); compare(label.text, "Queued…"); verify(!progress.visible && !progress.indeterminate)
+        verify(!findChild(other, "updateJobStatus").visible)
+        backend.jobs = [Object.assign({}, queued, {queued:false, progress:0.5, status:"Updating…"})]
+        verify(progress.visible); compare(progress.value, 0.5); compare(label.text, "Updating…")
+        backend.jobs = [queued]
+        verify(!progress.visible); compare(label.text, "Queued…")
+        backend.jobs = [Object.assign({}, queued, {cancelling:true, status:"Cancelling…"})]
+        compare(label.text, "Cancelling…"); verify(!progress.visible)
+        backend.jobs = [Object.assign({}, queued, {active:false, queued:false, failed:true, status:"Failed", error:"Connection lost"})]
+        verify(!progress.visible); compare(label.text, "Failed\nConnection lost")
+        backend.jobs = [Object.assign({}, queued, {active:false, queued:false, status:"Complete"})]
+        verify(!progress.visible); compare(label.text, "Complete")
+        backend.jobs = []
+        verify(!label.visible && !progress.visible)
     }
     function test_scopes_and_dates() {
         open(); ready()
@@ -217,6 +297,13 @@ TestCase {
             const point = button.mapToItem(page(), 0, 0)
             verify(point.x >= 0 && point.x + button.width <= page().width, name + " must fit beside the sidebar")
         }
+        backend.selectUpdate("user:Alpha", false)
+        waitForPolish(page())
+        const selectedButton = findChild(page(), "installUpdatesButton")
+        compare(selectedButton.text, "Update selected apps")
+        const selectedPoint = selectedButton.mapToItem(page(), 0, 0)
+        verify(selectedPoint.x >= 0 && selectedPoint.x + selectedButton.width <= page().width,
+               "Partial-selection label fits beside the sidebar")
         compare(list.contentWidth, list.width)
         const bar = findChild(page(), "updatesPageScrollBar")
         compare(bar.parent, page().contentItem)

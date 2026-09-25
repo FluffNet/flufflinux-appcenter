@@ -1,6 +1,30 @@
-# Updates validation — 2026-09-23–24
+# Updates validation — 2026-09-23–25
 
 Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
+
+## Update presentation and conditional history — 2026-09-25
+
+- Unchanged permissions no longer occupy a row. Changed and unavailable
+  comparisons retain their warnings; View Permission Changes still opens.
+- All-selected (including a single available row) says Update All Apps; a partial
+  or empty selection says Update selected apps, disabled when empty. Submission
+  still contains only selected keys. Equal nonempty version labels append
+  (Refresh); newer versions and commit-revision fallbacks keep the ordinary arrow.
+- Queued update rows show Queued… with no progress bar, even with stale nonzero
+  progress. Running, cancellation, errors and completion states are preserved.
+  The Queue toolbar also hides its progress when only queued work exists, while
+  retaining its badge; accessibility text reports queued count, not percentage.
+- Installed hides both Last updated cells without a recorded date. App details
+  puts the conditional date row below Website, aligned with the metadata grid.
+  Original install dates and persisted history data are unchanged.
+- At each of 100% and 150% scale: Updates 30, Installed 4, Installed Sort 12,
+  Network 47, Publishers 29, Permissions 11, Transactions 43, Downloads 7 and
+  Downloads Page 18 passed (201 per scale, 402 total; Network was also rerun
+  after the toolbar adjustment). Small/normal/large button layouts are covered.
+- UpdatePresentationSmoke.qml passed in native KDE/Wayland with seven inspected
+  screenshots: all/partial selection, queued, Installed with/without dates,
+  details with/without dates, and compact layout. Data is explicitly simulated;
+  the real backend remains idle and no Flatpak apps or history are mutated.
 
 ## Actual page-edge alignment and Home section spacing — 2026-09-24
 

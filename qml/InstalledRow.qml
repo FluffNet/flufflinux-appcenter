@@ -85,10 +85,15 @@ AbstractButton {
                     color: window.textColor; font.weight: Font.Bold
                     wrapMode: Text.Wrap
                 }
-                MetadataLabel { text: qsTr("Last updated:"); color: window.mutedTextColor }
+                MetadataLabel {
+                    objectName: "installedUpdatedDateCaption"
+                    visible: !!app.updatedDate
+                    text: qsTr("Last updated:"); color: window.mutedTextColor
+                }
                 MetadataLabel {
                     objectName: "installedUpdatedDateValue"
-                    Layout.fillWidth: true; text: app.updatedDate || qsTr("Not recorded")
+                    visible: !!app.updatedDate
+                    Layout.fillWidth: true; text: app.updatedDate || ""
                     color: window.textColor; font.weight: Font.Bold; wrapMode: Text.Wrap
                 }
             }

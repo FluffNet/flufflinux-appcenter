@@ -14,6 +14,7 @@ Page {
     readonly property bool compact: width < 600
     onVisibleChanged: if (!visible) changesDialog.close()
     readonly property var selected: rows.filter(row => row.selected)
+    readonly property bool allSelected: rows.length > 0 && selected.length === rows.length
     readonly property real selectedBytes: {
         const seen = {}; let total = 0
         for (const row of selected) for (const op of row.plan || []) {
@@ -30,6 +31,13 @@ Page {
     function jobFor(row) {
         const jobs = (window.backend && window.backend.jobs || []).filter(job => job.action === "update" && job.key === row.key)
         return jobs.length ? jobs[jobs.length - 1] : null
+    }
+    function versionLabel(row) {
+        const oldVersion = String(row.oldVersion || "").trim()
+        const newVersion = String(row.newVersion || "").trim()
+        return oldVersion && oldVersion === newVersion
+            ? qsTr("%1 → %2 (Refresh)").arg(oldVersion).arg(newVersion)
+            : qsTr("%1 → %2").arg(oldVersion).arg(newVersion)
     }
     function sourceLabel(row) {
         const parts = String(row.flatpakRef || "").split("/")
@@ -95,7 +103,7 @@ Page {
                 Layout.row: 0; Layout.column: 0
                 objectName: "selectAllUpdates"
                 text: qsTr("Select All"); enabled: !page.busy && page.updateData.state === "ready"
-                checkState: page.selected.length === page.rows.length ? Qt.Checked : page.selected.length ? Qt.PartiallyChecked : Qt.Unchecked
+                checkState: page.allSelected ? Qt.Checked : page.selected.length ? Qt.PartiallyChecked : Qt.Unchecked
                 nextCheckState: function() { return checkState === Qt.Checked ? Qt.Unchecked : Qt.Checked }
                 onClicked: window.backend.selectAllUpdates(checkState === Qt.Checked)
             }
@@ -112,7 +120,8 @@ Page {
                 Layout.row: 0; Layout.column: page.compact ? 1 : 2
                 Layout.alignment: Qt.AlignRight
                 objectName: "installUpdatesButton"
-                text: qsTr("Update Selected"); icon.name: "system-upgrade"
+                text: page.allSelected ? qsTr("Update All Apps") : qsTr("Update selected apps")
+                icon.name: "system-upgrade"
                 enabled: !window.networkOffline && page.selected.length > 0 && !page.busy && page.updateData.state === "ready"
                 onClicked: if (!window.networkOffline) window.backend.installSelectedUpdates()
             }
@@ -136,6 +145,7 @@ Page {
                 NaturalWheelScroll { scrollTarget: list }
                 delegate: Rectangle {
                     required property var modelData
+                    objectName: "updateRow-" + modelData.key
                     readonly property var job: page.jobFor(modelData)
                     width: list.width; implicitHeight: contents.implicitHeight + 32
                     color: window.surfaceColor; radius: window.cornerRadius; border.color: window.borderColor
@@ -154,23 +164,36 @@ Page {
                             Layout.fillWidth: true; spacing: 5
                             Label { text: modelData.name; textFormat: Text.PlainText; font.pixelSize: 18; font.weight: Font.DemiBold; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
                             AppPublisher { objectName: "updateAppPublisher"; app: modelData; Layout.fillWidth: true }
-                            Label { text: modelData.oldVersion + " → " + modelData.newVersion; textFormat: Text.PlainText; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
+                            Label { objectName: "updateVersion"; text: page.versionLabel(modelData); textFormat: Text.PlainText; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
                             Label { text: qsTr("Download: up to %1").arg(page.sizeText(modelData.downloadBytes || 0)); color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
                             Label { text: page.sourceLabel(modelData); textFormat: Text.PlainText; color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
                             Label {
-                                visible: !modelData.runtime
+                                objectName: "updatePermissionsStatus"
+                                visible: !modelData.runtime && modelData.permissions.state !== "unchanged"
                                 text: modelData.permissions.state === "changed" ? qsTr("Permissions changed")
-                                    : modelData.permissions.state === "unchanged" ? qsTr("No permission changes") : qsTr("Permission comparison unavailable")
-                                color: modelData.permissions.state === "unchanged" ? window.mutedTextColor : window.accentColor
+                                    : modelData.permissions.state === "unchanged" ? "" : qsTr("Permission comparison unavailable")
+                                color: window.accentColor
                                 Layout.fillWidth: true; wrapMode: Text.Wrap
                             }
                             FluffButton {
+                                objectName: "viewUpdatePermissionChanges"
                                 visible: modelData.permissions.state === "changed"
                                 text: qsTr("View Permission Changes"); icon.name: "object-locked"
                                 onClicked: { changesDialog.app = modelData; changesDialog.changes = modelData.permissions; changesDialog.open() }
                             }
-                            Label { visible: !!job; text: job ? job.status + (job.error ? "\n" + job.error : "") : ""; textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.Wrap; color: job && job.failed ? window.accentColor : window.mutedTextColor }
-                            FluffProgressBar { visible: !!job && job.active; Layout.fillWidth: true; value: job ? job.progress : 0; indeterminate: !!job && job.queued }
+                            Label {
+                                objectName: "updateJobStatus"
+                                visible: !!job
+                                text: job ? (job.active && job.queued && !job.failed && !job.cancelling ? qsTr("Queued…") : job.status)
+                                    + (job.error ? "\n" + job.error : "") : ""
+                                textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.Wrap
+                                color: job && job.failed ? window.accentColor : window.mutedTextColor
+                            }
+                            FluffProgressBar {
+                                objectName: "updateJobProgress"
+                                visible: !!job && job.active && !job.queued
+                                Layout.fillWidth: true; value: job ? job.progress : 0
+                            }
                         }
                     }
                 }

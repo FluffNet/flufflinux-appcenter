@@ -80,4 +80,25 @@ TestCase {
         compare(queue.activeCount, 0)
         compare(button.visible, true)
     }
+    function test_only_queued_hides_header_progress() {
+        main.showCatalog()
+        const stack = findChild(main, "navigationStack")
+        tryCompare(stack, "busy", false)
+        const queue = main.downloadQueue
+        const button = findChild(stack.currentItem, "downloadsButton")
+        const bar = findChild(button, "queueButtonProgress")
+        const waiting = Object.assign(job("Waiting", 0.4, true, false), {queued:true})
+        queue.jobs = [waiting]
+        compare(queue.activeCount, 1); compare(queue.runningCount, 0)
+        verify(button.visible); verify(!bar.visible)
+        compare(button.Accessible.name, "Queue: 1 queued")
+        queue.jobs = [waiting, job("Running", 0.5, true, false)]
+        compare(queue.activeCount, 2); compare(queue.runningCount, 1); verify(bar.visible)
+        queue.jobs = [Object.assign({}, waiting, {queued:false})]
+        compare(queue.runningCount, 1); verify(bar.visible)
+        queue.jobs = [Object.assign({}, waiting, {active:false, queued:false})]
+        compare(queue.runningCount, 0); verify(!bar.visible)
+        queue.jobs = []
+        verify(!button.visible && !bar.visible)
+    }
 }
