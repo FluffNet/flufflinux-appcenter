@@ -2,6 +2,28 @@
 
 Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
 
+## Theme-aware update icons and size wording — 2026-09-25
+
+- The App Updates sidebar icon uses Kirigami's explicit foreground/mask rendering
+  instead of a pre-colored theme pixmap. Check, update, cancel and permission-change
+  buttons opt into the same theme-aware rendering. Other button artwork, including
+  colored destructive icons, is unchanged. Disabled icons retain their dimming.
+- Per-row labels say Size; the summary says N selected — Total size: ….
+  Downloaded/total bytes, speeds and the underlying size calculation are unchanged.
+- At each of 100% and 150%: Updates 43, Style 7, Network 47, Downloads Page 18,
+  Transactions 43 and Focus 90 passed: **496 QML checks, zero failures**.
+  Covers dark/light/custom foregrounds, live recoloring, loaded icons and disabled
+  controls, selection totals and narrow layouts. Rendered colors were checked in
+  native KDE captures rather than relying on the offscreen runner's icon renderer.
+- Both native presentation fixtures passed. Pixel checks of their screenshots
+  found 111 near-white sidebar-icon pixels in dark mode, 112 dark pixels in light
+  mode, and 48/45 dark pixels in the enabled light check/update icons respectively.
+  Native light/dark progress screenshots were visually inspected as well.
+  All preview update values are simulated; no Flatpak apps were changed.
+- Installed the three changed QML files and restarted the live App Center.
+  Prior files are preserved at `/tmp/appcenter-before-update-icons.KBbz6e` on
+  the VM. The application binary, exclusions and authorization rules were unchanged.
+
 ## Shared live update progress — 2026-09-25
 
 - Update rows now use the existing InstallationProgress component, not a second

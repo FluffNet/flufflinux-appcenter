@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import org.kde.kirigami as Kirigami
 
 Page {
     focusPolicy: Qt.ClickFocus
@@ -609,9 +610,12 @@ Page {
                         contentItem: RowLayout {
                             opacity: updatesButton.enabled ? 1 : 0.38
                             spacing: sidebar.navigationSpacing
-                            Image {
+                            Kirigami.Icon {
+                                objectName: "updatesNavigationIcon"
                                 Layout.preferredWidth: sidebar.navigationIconSize; Layout.preferredHeight: sidebar.navigationIconSize
-                                source: window.iconSource(updatesButton.icon.name); fillMode: Image.PreserveAspectFit
+                                source: updatesButton.icon.name
+                                isMask: true; color: window.textColor
+                                Accessible.ignored: true
                             }
                             Label { text: updatesButton.text; color: window.textColor; font: updatesButton.font; Layout.fillWidth: true; fontSizeMode: Text.Fit; minimumPixelSize: 1 }
                         }

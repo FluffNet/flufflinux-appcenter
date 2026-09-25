@@ -71,6 +71,10 @@ AppCenter.Main {
                 main.showUpdates(); main.stage = 1
             } else if (main.stage === 1) {
                 main.check(button.text === "Update All Apps", "All-selection label")
+                for (const icon of [probe.findChild(stack.get(0), "updatesNavigationIcon"),
+                        probe.findChild(button, "fluffButtonMonochromeIcon"),
+                        probe.findChild(probe.findChild(updatesPage, "checkForUpdatesButton"), "fluffButtonMonochromeIcon")])
+                    main.check(icon.visible && icon.isMask && icon.color === main.textColor, "Theme-aware update icons")
                 const row = probe.findChild(updatesPage, "updateRow-user:org.example.Refresh")
                 main.check(probe.findChild(row, "updateVersion").text === "1.7.1 → 1.7.1 (Refresh)", "Refresh suffix")
                 main.check(!probe.findChild(row, "updatePermissionsStatus").visible, "Unchanged permissions hidden")
@@ -153,8 +157,8 @@ AppCenter.Main {
                 main.check(probe.findChild(progress, "downloadBytesLabel").text === "128.00 MiB / 512.00 MiB (2.30 MiB/s)", "Live transfer metrics")
                 main.check(probe.findChild(progress, "overallPercentageLabel").text === "22%", "Live percentage")
                 main.check(!probe.findChild(row, "updateJobStatus").visible, "No redundant transfer status")
-                main.check(probe.findChild(row, "updateDownloadSize").text === "Download: 512.00 MiB", "Resolved row size")
-                main.check(probe.findChild(updatesPage, "updatesDownloadSummary").text === "2 selected - 522.00 MiB download", "Resolved selection size")
+                main.check(probe.findChild(row, "updateDownloadSize").text === "Size: 512.00 MiB", "Resolved row size")
+                main.check(probe.findChild(updatesPage, "updatesDownloadSummary").text === "2 selected — Total size: 522.00 MiB", "Resolved selection size")
                 main.capture(stack, main.stage === 17 ? "downloading" : "downloading-compact", main.stage + 1)
             } else if (main.stage === 18) {
                 fixture.jobs = [Object.assign({}, fixture.jobs[0], {phase:"install", progress:0.9, downloadComplete:true}), fixture.jobs[1]]

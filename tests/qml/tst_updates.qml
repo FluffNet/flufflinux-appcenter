@@ -50,6 +50,43 @@ TestCase {
         waitForPolish(root()); wait(30)
     }
     function open() { main.showUpdates(); tryCompare(stack(), "busy", false); waitForPolish(page()); wait(30) }
+    function test_update_icons_follow_theme_data() {
+        return [{tag:"dark", background:"#202326", foreground:"#ffffff"},
+            {tag:"light", background:"#eff0f1", foreground:"#202326"},
+            {tag:"custom", background:"#302922", foreground:"#f2e7d9"}]
+    }
+    function test_update_icons_follow_theme(data) {
+        const background = main.palette.window, foreground = main.palette.windowText, network = main.networkStatus
+        try {
+            main.palette.window = data.background; main.palette.windowText = data.foreground
+            open(); ready()
+            const navigation = findChild(root(), "updatesNavigationIcon")
+            compare(navigation.source.toString(), "system-upgrade")
+            for (const icon of [navigation,
+                    findChild(findChild(page(), "checkForUpdatesButton"), "fluffButtonMonochromeIcon"),
+                    findChild(findChild(page(), "installUpdatesButton"), "fluffButtonMonochromeIcon")]) {
+                verify(icon.visible && icon.isMask); compare(icon.color, main.textColor)
+                tryCompare(icon, "status", 1) // Kirigami.Icon.Ready; native KDE captures verify rendered colors.
+            }
+            backend.checkForUpdates(); waitForPolish(page())
+            const cancel = findChild(findChild(page(), "cancelUpdateCheckButton"), "fluffButtonMonochromeIcon")
+            verify(cancel.visible && cancel.isMask); compare(cancel.color, main.textColor)
+            tryCompare(cancel, "status", 1)
+            ready(); backend.busy = true
+            const install = findChild(page(), "installUpdatesButton")
+            verify(!install.enabled); compare(install.contentItem.opacity, 0.45)
+            compare(findChild(install, "fluffButtonMonochromeIcon").color, main.textColor)
+            main.networkStatus = {state:"offline", ready:true}
+            verify(!findChild(root(), "updatesButton").enabled)
+            compare(navigation.parent.opacity, 0.38); compare(navigation.color, main.textColor)
+            main.networkStatus = network; backend.busy = false
+            // Check recoloring of the existing renderer, without recreating it.
+            main.palette.windowText = data.tag === "light" ? "#ffffff" : "#202326"
+            compare(navigation.color, main.textColor)
+        } finally {
+            main.palette.window = background; main.palette.windowText = foreground; main.networkStatus = network
+        }
+    }
     function test_clear_app_update_labels() {
         open()
         compare(findChild(root(), "updatesButton").text, "App Updates")
@@ -164,7 +201,7 @@ TestCase {
         const button = findChild(page(), "installUpdatesButton")
         compare(button.text, "Update All Apps")
         compare(page().selected.length, 2); compare(page().selectedBytes, 400)
-        compare(findChild(page(), "updatesDownloadSummary").text, "2 selected - 400 B download")
+        compare(findChild(page(), "updatesDownloadSummary").text, "2 selected — Total size: 400 B")
         const alpha = findChild(page(), "selectUpdate-user:Alpha")
         mouseClick(alpha); compare(page().selected.length, 1); compare(page().selectedBytes, 300)
         compare(button.text, "Update selected apps")
@@ -287,17 +324,17 @@ TestCase {
         compare(bytes.text, "128.00 MiB / 512.00 MiB (2.30 MiB/s)"); verify(bytes.visible)
         compare(bytes.color, main.textColor); compare(percentage.text, "50%")
         verify(!status.visible, "Shared display replaces duplicate download status")
-        compare(size.text, "Download: 512.00 MiB")
+        compare(size.text, "Size: 512.00 MiB")
         verify(bytes.x + bytes.width <= percentage.x, "Bytes and percentage must not overlap")
         verify(bytes.contentWidth <= bytes.width + 1, "Bytes wrap in narrow cards")
         verify(bar.width > 0 && bar.width <= card.width)
         backend.jobs = [Object.assign({}, job, {phase:"install", progress:0.95, downloadComplete:true,
             downloadTotalSize:"256.00 MiB"})]
         verify(!bytes.visible); verify(bar.activeStep); compare(percentage.text, "95%")
-        compare(size.text, "Download: 256.00 MiB")
+        compare(size.text, "Size: 256.00 MiB")
         backend.jobs = [Object.assign({}, job, {hasDownload:false, downloadComplete:true,
             downloadTotalSize:"0 B", phase:"install"})]
-        verify(!bytes.visible && bar.visible && bar.activeStep); compare(size.text, "Download: 0 B")
+        verify(!bytes.visible && bar.visible && bar.activeStep); compare(size.text, "Size: 0 B")
         backend.jobs = [Object.assign({}, job, {operations:[], status:"Preparing…"})]
         verify(bar.indeterminate); verify(!bytes.visible && !percentage.visible)
         verify(status.visible); compare(status.text, "Preparing…")
@@ -319,7 +356,7 @@ TestCase {
             {ref:"shared", commit:"b", downloadBytes:200, receivedBytes:0, downloadProgress:1}]
         backend.jobs = [{key:"user:Alpha", action:"update", active:true, operations:operations}]
         compare(page().selectedBytes, 160) // 60 actual + 100 for Beta; cached shared runtime is zero.
-        compare(summary.text, "2 selected - 160 B download")
+        compare(summary.text, "2 selected — Total size: 160 B")
         backend.jobs = [{key:"user:Alpha", action:"update", active:true, queued:true, operations:operations}]
         compare(page().selectedBytes, 400, "Queued values must not replace the plan")
         backend.jobs = [{key:"user:Alpha", action:"update", active:true, operations:
@@ -331,7 +368,7 @@ TestCase {
             [{ref:"shared", commit:"b", downloadBytes:200, receivedBytes:0, downloadProgress:1}]}]
         compare(page().selectedBytes, 280, "A later cache hit must not erase the shared bytes already received")
         backend.selectAllUpdates(false)
-        compare(summary.text, "0 selected - 0 B download")
+        compare(summary.text, "0 selected — Total size: 0 B")
     }
     function test_download_size_labels_data() {
         return [{tag:"zero", bytes:0, text:"0 B"}, {tag:"small", bytes:1024, text:"1.00 KiB"},
@@ -342,7 +379,7 @@ TestCase {
         backend.updates = {state:"ready", items:[Object.assign(row("Alpha", "user"), {downloadBytes:data.bytes})]}
         const list = findChild(page(), "updatesList")
         tryVerify(function() { return list.itemAtIndex(0) !== null })
-        compare(findChild(list.itemAtIndex(0), "updateDownloadSize").text, "Download: " + data.text)
+        compare(findChild(list.itemAtIndex(0), "updateDownloadSize").text, "Size: " + data.text)
     }
     function test_old_jobs_do_not_supply_new_scan_totals() {
         open()
@@ -357,14 +394,14 @@ TestCase {
         backend.jobs = [oldJob]
         compare(page().selectedBytes, 300)
         verify(!findChild(card, "updateJobStatus").visible)
-        compare(findChild(card, "updateDownloadSize").text, "Download: 300 B")
+        compare(findChild(card, "updateDownloadSize").text, "Size: 300 B")
         backend.jobs = [Object.assign({}, oldJob, {oldCommit:"old", commit:"new",
             plan:[{ref:"Alpha", commit:"a"}, {ref:"shared", commit:"previous-runtime"}]})]
         compare(page().selectedBytes, 300, "Old dependency refresh must not supply current transfer totals")
         verify(!findChild(card, "updateJobStatus").visible)
         backend.jobs = [Object.assign({}, oldJob, {oldCommit:"old", commit:"new"})]
         compare(page().selectedBytes, 210)
-        compare(findChild(card, "updateDownloadSize").text, "Download: 10 B")
+        compare(findChild(card, "updateDownloadSize").text, "Size: 10 B")
     }
     function test_scopes_and_dates() {
         open(); ready()

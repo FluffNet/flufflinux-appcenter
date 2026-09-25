@@ -84,6 +84,7 @@ Page {
                 objectName: "checkForUpdatesButton"
                 visible: !page.checking
                 text: qsTr("Check for App Updates"); icon.name: "view-refresh"
+                contentItem: FluffButtonContent { monochromeIcon: true }
                 Layout.alignment: Qt.AlignRight
                 enabled: !window.networkOffline && !page.busy && !page.checking
                 onClicked: if (!window.networkOffline) window.backend.checkForUpdates()
@@ -91,6 +92,7 @@ Page {
             FluffButton {
                 objectName: "cancelUpdateCheckButton"
                 visible: page.checking; text: qsTr("Cancel"); icon.name: "dialog-cancel"
+                contentItem: FluffButtonContent { monochromeIcon: true }
                 Layout.alignment: Qt.AlignRight
                 onClicked: window.backend.cancelUpdateCheck()
             }
@@ -137,7 +139,7 @@ Page {
                 Layout.row: page.compact ? 1 : 0; Layout.column: page.compact ? 0 : 1
                 Layout.columnSpan: page.compact ? 2 : 1
                 Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
-                text: qsTr("%1 selected - %2 download").arg(page.selected.length).arg(page.sizeText(page.selectedBytes))
+                text: qsTr("%1 selected — Total size: %2").arg(page.selected.length).arg(page.sizeText(page.selectedBytes))
                 HoverHandler { id: downloadSummaryHover }
                 ToolTip.visible: downloadSummaryHover.hovered
                 ToolTip.text: qsTr("Required components update with selected apps. Shared components are counted once; cached data may reduce the download.")
@@ -148,6 +150,7 @@ Page {
                 objectName: "installUpdatesButton"
                 text: page.allSelected ? qsTr("Update All Apps") : qsTr("Update selected apps")
                 icon.name: "system-upgrade"
+                contentItem: FluffButtonContent { monochromeIcon: true }
                 enabled: !window.networkOffline && page.selected.length > 0 && !page.busy && page.updateData.state === "ready"
                 onClicked: if (!window.networkOffline) window.backend.installSelectedUpdates()
             }
@@ -194,7 +197,7 @@ Page {
                             Label { objectName: "updateVersion"; text: page.versionLabel(modelData); textFormat: Text.PlainText; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
                             Label {
                                 objectName: "updateDownloadSize"
-                                text: qsTr("Download: %1").arg(job && job.downloadTotalSize
+                                text: qsTr("Size: %1").arg(job && job.downloadTotalSize
                                     ? job.downloadTotalSize : page.sizeText(modelData.downloadBytes || 0))
                                 color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap
                             }
@@ -211,6 +214,7 @@ Page {
                                 objectName: "viewUpdatePermissionChanges"
                                 visible: modelData.permissions.state === "changed"
                                 text: qsTr("View Permission Changes"); icon.name: "object-locked"
+                                contentItem: FluffButtonContent { monochromeIcon: true }
                                 onClicked: { changesDialog.app = modelData; changesDialog.changes = modelData.permissions; changesDialog.open() }
                             }
                             Label {

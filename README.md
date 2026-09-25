@@ -160,7 +160,8 @@ invalidate prior update candidates and require another explicit check.
 
 Apps and runtimes are listed A–Z (apps first), selected by default. Each row
 shows the installed and available version, source/branch, and download size
-including required components. The selected total counts shared
+including required components, labeled **Size**. The selection summary reads
+**N selected — Total size: …**. The selected total counts shared
 components once. Actual transfers can be smaller because of cached data,
 language subsets and deltas: initial sizes come from Flatpak's transfer estimate,
 then both the row and selected total use resolved live transfer sizes as pulls
@@ -184,6 +185,8 @@ updates reuse the same `InstallationProgress` component as app installs and the
 queue: downloaded/total size, download speed, overall percentage and bar. Transfer
 metrics disappear once downloading completes, while deployment activity continues.
 Preparation, review, cancellation, failure and completion messages remain visible.
+App Updates navigation and action icons use KDE's monochrome renderer with the
+text foreground color, including in light themes; disabled controls still dim.
 Required runtimes may
 update with their apps even if their standalone row is unchecked. The worker
 verifies the installation, full ref, current commit, source identity/signing
