@@ -45,7 +45,7 @@ TestCase {
         main.showCatalog(); tryCompare(stack(), "busy", false)
         root().openCategory("Installed")
         backend.updates = {state:"idle", items:[]}; backend.checks = 0; backend.submitted = []; backend.busy = false
-        backend.jobs = []
+        backend.jobs = []; backend.review = ({})
         main.width = 1180; main.height = 760; main.requestActivate()
         waitForPolish(root()); wait(30)
     }
@@ -164,6 +164,7 @@ TestCase {
         const button = findChild(page(), "installUpdatesButton")
         compare(button.text, "Update All Apps")
         compare(page().selected.length, 2); compare(page().selectedBytes, 400)
+        compare(findChild(page(), "updatesDownloadSummary").text, "2 selected - 400 B download")
         const alpha = findChild(page(), "selectUpdate-user:Alpha")
         mouseClick(alpha); compare(page().selected.length, 1); compare(page().selectedBytes, 300)
         compare(button.text, "Update selected apps")
@@ -229,29 +230,141 @@ TestCase {
         }
     }
     function test_queued_updates_have_status_only_data() {
-        return [{tag:"new-job", progress:0}, {tag:"stale-progress", progress:0.45}]
+        const cases = []
+        for (const theme of [{tag:"dark", background:"#202326", foreground:"#ffffff"},
+                             {tag:"light", background:"#eff0f1", foreground:"#202326"}])
+            for (const progress of [0, 0.45]) cases.push(Object.assign({}, theme, {tag:theme.tag + progress, progress:progress}))
+        return cases
     }
     function test_queued_updates_have_status_only(data) {
+        const originalBackground = main.palette.window, originalForeground = main.palette.windowText
+        main.palette.window = data.background; main.palette.windowText = data.foreground
         open(); ready()
         const list = findChild(page(), "updatesList")
         const card = list.itemAtIndex(0), other = list.itemAtIndex(1)
         const label = findChild(card, "updateJobStatus"), progress = findChild(card, "updateJobProgress")
+        const bar = findChild(progress, "overallInstallProgress")
         const queued = {key:"user:Alpha", action:"update", active:true, queued:true, progress:data.progress, status:"Queued"}
         backend.jobs = [queued]
-        verify(label.visible); compare(label.text, "Queued…"); verify(!progress.visible && !progress.indeterminate)
+        verify(label.visible); compare(label.text, "Queued…"); verify(!progress.visible && !bar.visible)
+        verify(label.font.bold); compare(label.color, main.textColor)
         verify(!findChild(other, "updateJobStatus").visible)
         backend.jobs = [Object.assign({}, queued, {queued:false, progress:0.5, status:"Updating…"})]
-        verify(progress.visible); compare(progress.value, 0.5); compare(label.text, "Updating…")
+        verify(progress.visible); compare(bar.value, 0.5); compare(label.text, "Updating…")
+        verify(!label.font.bold); compare(label.color, main.mutedTextColor)
         backend.jobs = [queued]
         verify(!progress.visible); compare(label.text, "Queued…")
+        verify(label.font.bold); compare(label.color, main.textColor)
         backend.jobs = [Object.assign({}, queued, {cancelling:true, status:"Cancelling…"})]
         compare(label.text, "Cancelling…"); verify(!progress.visible)
+        verify(!label.font.bold); compare(label.color, main.mutedTextColor)
         backend.jobs = [Object.assign({}, queued, {active:false, queued:false, failed:true, status:"Failed", error:"Connection lost"})]
         verify(!progress.visible); compare(label.text, "Failed\nConnection lost")
+        verify(!label.font.bold); compare(label.color, main.accentColor)
         backend.jobs = [Object.assign({}, queued, {active:false, queued:false, status:"Complete"})]
         verify(!progress.visible); compare(label.text, "Complete")
         backend.jobs = []
         verify(!label.visible && !progress.visible)
+        main.palette.window = originalBackground; main.palette.windowText = originalForeground
+    }
+    function test_shared_live_progress_data() { return test_layout_data() }
+    function test_shared_live_progress(data) {
+        main.width = data.width; main.height = data.height; open(); ready()
+        const card = findChild(page(), "updatesList").itemAtIndex(0)
+        const progress = findChild(card, "updateJobProgress")
+        const bar = findChild(progress, "overallInstallProgress")
+        const bytes = findChild(progress, "downloadBytesLabel")
+        const percentage = findChild(progress, "overallPercentageLabel")
+        const status = findChild(card, "updateJobStatus")
+        const size = findChild(card, "updateDownloadSize")
+        const job = {index:0, key:"user:Alpha", action:"update", active:true, queued:false,
+            progress:0.5, hasDownload:true, downloadComplete:false, phase:"download",
+            downloadedSize:"128.00 MiB", downloadTotalSize:"512.00 MiB", downloadSpeed:"2.30 MiB/s",
+            status:"Dependency: shared\nDownloading…", operations:[{ref:"Alpha", commit:"a", downloadBytes:100}]}
+        backend.jobs = [job]; waitForPolish(page()); wait(30)
+        verify(progress.visible && bar.visible && !bar.indeterminate)
+        compare(bar.value, 0.5); verify(!bar.activeStep)
+        compare(bytes.text, "128.00 MiB / 512.00 MiB (2.30 MiB/s)"); verify(bytes.visible)
+        compare(bytes.color, main.textColor); compare(percentage.text, "50%")
+        verify(!status.visible, "Shared display replaces duplicate download status")
+        compare(size.text, "Download: 512.00 MiB")
+        verify(bytes.x + bytes.width <= percentage.x, "Bytes and percentage must not overlap")
+        verify(bytes.contentWidth <= bytes.width + 1, "Bytes wrap in narrow cards")
+        verify(bar.width > 0 && bar.width <= card.width)
+        backend.jobs = [Object.assign({}, job, {phase:"install", progress:0.95, downloadComplete:true,
+            downloadTotalSize:"256.00 MiB"})]
+        verify(!bytes.visible); verify(bar.activeStep); compare(percentage.text, "95%")
+        compare(size.text, "Download: 256.00 MiB")
+        backend.jobs = [Object.assign({}, job, {hasDownload:false, downloadComplete:true,
+            downloadTotalSize:"0 B", phase:"install"})]
+        verify(!bytes.visible && bar.visible && bar.activeStep); compare(size.text, "Download: 0 B")
+        backend.jobs = [Object.assign({}, job, {operations:[], status:"Preparing…"})]
+        verify(bar.indeterminate); verify(!bytes.visible && !percentage.visible)
+        verify(status.visible); compare(status.text, "Preparing…")
+        backend.jobs = [job]; backend.review = {jobIndex:0}
+        verify(status.visible, "Review status remains visible")
+        backend.review = ({})
+        verify(!status.visible)
+        backend.jobs = [Object.assign({}, job, {cancelling:true, status:"Cancelling…"})]
+        verify(status.visible); compare(status.text, "Cancelling…")
+        backend.jobs = [Object.assign({}, job, {active:false, failed:true, status:"Failed", error:"Connection lost"})]
+        verify(status.visible && !progress.visible); compare(status.text, "Failed\nConnection lost")
+        backend.jobs = [Object.assign({}, job, {active:false, progress:1, status:"Complete"})]
+        verify(!progress.visible); compare(status.text, "Complete")
+    }
+    function test_resolved_download_totals() {
+        open(); ready()
+        const summary = findChild(page(), "updatesDownloadSummary")
+        const operations = [{ref:"Alpha", commit:"a", downloadBytes:100, receivedBytes:60, downloadProgress:1},
+            {ref:"shared", commit:"b", downloadBytes:200, receivedBytes:0, downloadProgress:1}]
+        backend.jobs = [{key:"user:Alpha", action:"update", active:true, operations:operations}]
+        compare(page().selectedBytes, 160) // 60 actual + 100 for Beta; cached shared runtime is zero.
+        compare(summary.text, "2 selected - 160 B download")
+        backend.jobs = [{key:"user:Alpha", action:"update", active:true, queued:true, operations:operations}]
+        compare(page().selectedBytes, 400, "Queued values must not replace the plan")
+        backend.jobs = [{key:"user:Alpha", action:"update", active:true, operations:
+            [{ref:"Alpha", commit:"a", downloadBytes:100, receivedBytes:150, downloadProgress:0.9}]}]
+        compare(page().selectedBytes, 450, "Received bytes may exceed the initial estimate")
+        backend.jobs = [{key:"user:Alpha", action:"update", active:false, operations:
+            [{ref:"shared", commit:"b", downloadBytes:200, receivedBytes:80, downloadProgress:1}]},
+            {key:"user:Beta", action:"update", active:true, operations:
+            [{ref:"shared", commit:"b", downloadBytes:200, receivedBytes:0, downloadProgress:1}]}]
+        compare(page().selectedBytes, 280, "A later cache hit must not erase the shared bytes already received")
+        backend.selectAllUpdates(false)
+        compare(summary.text, "0 selected - 0 B download")
+    }
+    function test_download_size_labels_data() {
+        return [{tag:"zero", bytes:0, text:"0 B"}, {tag:"small", bytes:1024, text:"1.00 KiB"},
+            {tag:"large", bytes:1170378588, text:"1.09 GiB"}]
+    }
+    function test_download_size_labels(data) {
+        open()
+        backend.updates = {state:"ready", items:[Object.assign(row("Alpha", "user"), {downloadBytes:data.bytes})]}
+        const list = findChild(page(), "updatesList")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        compare(findChild(list.itemAtIndex(0), "updateDownloadSize").text, "Download: " + data.text)
+    }
+    function test_old_jobs_do_not_supply_new_scan_totals() {
+        open()
+        const candidate = Object.assign(row("Alpha", "user"), {oldCommit:"old", commit:"new", downloadBytes:300})
+        backend.updates = {state:"ready", items:[candidate]}
+        const list = findChild(page(), "updatesList")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const card = list.itemAtIndex(0)
+        const oldJob = {key:candidate.key, action:"update", active:false, status:"Complete",
+            oldCommit:"older", commit:"old", downloadTotalSize:"10 B", plan:candidate.plan,
+            operations:[{ref:"Alpha", commit:"a", downloadBytes:100, receivedBytes:10, downloadProgress:1}]}
+        backend.jobs = [oldJob]
+        compare(page().selectedBytes, 300)
+        verify(!findChild(card, "updateJobStatus").visible)
+        compare(findChild(card, "updateDownloadSize").text, "Download: 300 B")
+        backend.jobs = [Object.assign({}, oldJob, {oldCommit:"old", commit:"new",
+            plan:[{ref:"Alpha", commit:"a"}, {ref:"shared", commit:"previous-runtime"}]})]
+        compare(page().selectedBytes, 300, "Old dependency refresh must not supply current transfer totals")
+        verify(!findChild(card, "updateJobStatus").visible)
+        backend.jobs = [Object.assign({}, oldJob, {oldCommit:"old", commit:"new"})]
+        compare(page().selectedBytes, 210)
+        compare(findChild(card, "updateDownloadSize").text, "Download: 10 B")
     }
     function test_scopes_and_dates() {
         open(); ready()

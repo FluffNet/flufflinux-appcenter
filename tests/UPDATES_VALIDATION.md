@@ -2,6 +2,39 @@
 
 Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
 
+## Shared live update progress — 2026-09-25
+
+- Update rows now use the existing InstallationProgress component, not a second
+  progress-bar implementation: received/total bytes, measured speed, overall
+  percentage, preparation and deployment activity match installs and Queue.
+  Duplicate dependency/download status is hidden, while review, cancellation,
+  failure, completion and preparation messages remain visible.
+- Queued… is bold in the theme foreground (white in dark, dark in light) with no
+  bar. Active transfer metrics disappear only once all downloads are complete;
+  cache-only transactions retain deployment progress without fake downloads.
+- Removed “up to” from row and selection labels. Row totals follow the backend's
+  live resolved total; the selection total applies the same completed-pull byte
+  accounting, including zero-byte cache hits, with shared components counted once.
+  Initial Flatpak sizes are still estimates, as with installs, not a guarantee of
+  the final network traffic. No byte counts or speeds are invented by the UI.
+- Old jobs for a different release or dependency plan cannot supply new-scan
+  totals/status. A later shared cache hit cannot erase bytes already transferred.
+- At both 100% and 150%: Updates 40, Transactions 43, Downloads 7 and Downloads
+  Page 18 passed: **216 QML checks, zero failures**. Includes small/normal/large
+  layouts, both queued-text palettes, size units, zero/download/cache/install
+  states, cancellation/errors/review and selection totals. The native C++
+  transaction-progress/download-rate assertions also passed.
+- UpdatePresentationSmoke.qml and UpdatePresentationLightSmoke.qml passed in
+  native KDE/Wayland. Saved and inspected normal/compact download and dark/light
+  screenshots, plus deployment activity. All preview apps/transfer values are
+  explicitly simulated. The real backend stays idle; no Flatpak app or history
+  was changed for these screenshots.
+- Deployed only UpdatesPage.qml and restarted the live service successfully.
+  Previous page preserved at `/tmp/appcenter-before-update-progress.lwFCvd` on
+  the VM. Installed page SHA-256:
+  `6492665a844ba6a42654a6ab18f7fbd7700c4510f6a84a493393cf4103a898c6`.
+  The executable, exclusions file and authorization policy were unchanged.
+
 ## Update presentation and conditional history — 2026-09-25
 
 - Unchanged permissions no longer occupy a row. Changed and unavailable

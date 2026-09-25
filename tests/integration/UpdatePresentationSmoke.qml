@@ -10,6 +10,7 @@ AppCenter.Main {
     backend: fixture
     property int stage: 0
     property bool capturing: false
+    property string capturePrefix: "update-presentation-"
     TestCase { id: probe; when: false }
     property Component snapshotBackground: Rectangle { color: main.backgroundColor }
     function sample(id, name, version, next, date) {
@@ -45,7 +46,7 @@ AppCenter.Main {
     function capture(item, name, next) {
         main.capturing = true
         main.check(item.grabToImage(function(result) {
-            main.check(result.saveToFile(Qt.resolvedUrl("../../target/update-presentation-" + name + ".png").toString().replace("file://", "")), "Save screenshot")
+            main.check(result.saveToFile(Qt.resolvedUrl("../../target/" + main.capturePrefix + name + ".png").toString().replace("file://", "")), "Save screenshot")
             console.log("UPDATE_PRESENTATION_CAPTURE", name)
             main.stage = next; main.capturing = false
         }), "Capture accepted")
@@ -87,6 +88,8 @@ AppCenter.Main {
             } else if (main.stage === 5) {
                 const row = probe.findChild(updatesPage, "updateRow-user:org.example.Refresh")
                 main.check(probe.findChild(row, "updateJobStatus").text === "Queued…", "Queued status")
+                main.check(probe.findChild(row, "updateJobStatus").font.bold
+                    && probe.findChild(row, "updateJobStatus").color === main.textColor, "Bold theme-aware queued text")
                 main.check(!probe.findChild(row, "updateJobProgress").visible, "No queued bar")
                 main.check(!probe.findChild(stack.get(0), "queueButtonProgress").visible, "No queued-only toolbar bar")
                 main.capture(stack, "queued", 6)
@@ -127,7 +130,44 @@ AppCenter.Main {
                 const point = button.mapToItem(updatesPage, 0, 0)
                 main.check(point.x >= 0 && point.x + button.width <= updatesPage.width, "Small-window selection button fits")
                 main.capture(stack, "compact", 16)
-            } else if (main.stage === 16) { console.log("UPDATE_PRESENTATION_PASS"); Qt.quit() }
+            } else if (main.stage === 16) {
+                main.width = 1180; main.height = 900; fixture.busy = true
+                const rows = fixture.updates.items.map((row, index) => Object.assign({}, row, {
+                    selected:true, downloadBytes:(index ? 10 : 512) * 1048576,
+                    permissions:{state:"unchanged", groups:[]},
+                    plan:[{ref:row.id, commit:"fixture", downloadBytes:(index ? 10 : 512) * 1048576}]}))
+                fixture.updates = Object.assign({}, fixture.updates, {items:rows})
+                fixture.jobs = [{index:0, key:rows[0].key, id:rows[0].id, action:"update", name:rows[0].name,
+                    active:true, queued:false, status:"Downloading…", phase:"download", progress:0.225,
+                    hasDownload:true, downloadComplete:false, receivedBytes:134217728, downloadTotalBytes:536870912,
+                    downloadedSize:"128.00 MiB", downloadTotalSize:"512.00 MiB", downloadSpeed:"2.30 MiB/s",
+                    operations:[{ref:rows[0].id, commit:"fixture", downloadBytes:536870912,
+                        receivedBytes:134217728, downloadProgress:0.25}]},
+                    {index:1, key:rows[1].key, id:rows[1].id, action:"update", name:rows[1].name,
+                        active:true, queued:true, status:"Queued", progress:0, operations:[]}]
+                main.stage = 17
+            } else if (main.stage === 17 || main.stage === 21) {
+                const row = probe.findChild(updatesPage, "updateRow-user:org.example.Refresh")
+                const progress = probe.findChild(row, "updateJobProgress")
+                main.check(progress.visible, "Shared progress visible")
+                main.check(probe.findChild(progress, "downloadBytesLabel").text === "128.00 MiB / 512.00 MiB (2.30 MiB/s)", "Live transfer metrics")
+                main.check(probe.findChild(progress, "overallPercentageLabel").text === "22%", "Live percentage")
+                main.check(!probe.findChild(row, "updateJobStatus").visible, "No redundant transfer status")
+                main.check(probe.findChild(row, "updateDownloadSize").text === "Download: 512.00 MiB", "Resolved row size")
+                main.check(probe.findChild(updatesPage, "updatesDownloadSummary").text === "2 selected - 522.00 MiB download", "Resolved selection size")
+                main.capture(stack, main.stage === 17 ? "downloading" : "downloading-compact", main.stage + 1)
+            } else if (main.stage === 18) {
+                fixture.jobs = [Object.assign({}, fixture.jobs[0], {phase:"install", progress:0.9, downloadComplete:true}), fixture.jobs[1]]
+                main.stage = 19
+            } else if (main.stage === 19) {
+                const row = probe.findChild(updatesPage, "updateRow-user:org.example.Refresh")
+                main.check(!probe.findChild(row, "downloadBytesLabel").visible, "Finished download metrics hidden")
+                main.check(probe.findChild(row, "overallInstallProgress").activeStep, "Deployment activity shown")
+                main.capture(stack, "installing", 20)
+            } else if (main.stage === 20) {
+                fixture.jobs = [Object.assign({}, fixture.jobs[0], {phase:"download", progress:0.225, downloadComplete:false}), fixture.jobs[1]]
+                main.width = 720; main.height = 520; main.stage = 21
+            } else if (main.stage === 22) { console.log("UPDATE_PRESENTATION_PASS"); Qt.quit() }
         }
     }
     Timer { interval: 60000; running: true; onTriggered: Qt.exit(3) }

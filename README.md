@@ -159,10 +159,12 @@ updates. A partial check does not claim every app is up to date. Source changes
 invalidate prior update candidates and require another explicit check.
 
 Apps and runtimes are listed A–Z (apps first), selected by default. Each row
-shows the installed and available version, source/branch, and maximum download
-estimate including required components. The selected total counts shared
+shows the installed and available version, source/branch, and download size
+including required components. The selected total counts shared
 components once. Actual transfers can be smaller because of cached data,
-language subsets and deltas. Missing published version labels use an explicit
+language subsets and deltas: initial sizes come from Flatpak's transfer estimate,
+then both the row and selected total use resolved live transfer sizes as pulls
+complete, like the normal install display. Missing published version labels use an explicit
 commit revision instead of inventing a version. Version labels come from
 Flatpak/AppStream; the selected update is checked against its reviewed commit.
 Matching version labels append **(Refresh)** to the destination version.
@@ -177,7 +179,11 @@ remain visible.
 
 The action reads **Update All Apps** when every row is selected, otherwise
 **Update selected apps**. It queues only the selected deployments. Queued rows
-show **Queued…** without a progress bar; progress appears once work starts.
+show **Queued…** in bold theme-foreground text without a progress bar. Active
+updates reuse the same `InstallationProgress` component as app installs and the
+queue: downloaded/total size, download speed, overall percentage and bar. Transfer
+metrics disappear once downloading completes, while deployment activity continues.
+Preparation, review, cancellation, failure and completion messages remain visible.
 Required runtimes may
 update with their apps even if their standalone row is unchecked. The worker
 verifies the installation, full ref, current commit, source identity/signing

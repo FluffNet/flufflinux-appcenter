@@ -16,12 +16,30 @@ Page {
     readonly property var selected: rows.filter(row => row.selected)
     readonly property bool allSelected: rows.length > 0 && selected.length === rows.length
     readonly property real selectedBytes: {
-        const seen = {}; let total = 0
+        const sizes = {}
         for (const row of selected) for (const op of row.plan || []) {
             const key = row.installation + ":" + op.ref + ":" + op.commit
-            if (!seen[key]) { seen[key] = true; total += Number(op.downloadBytes || 0) }
+            sizes[key] = Number(op.downloadBytes || 0)
         }
-        return total
+        // Use resolved transfer totals once jobs start, just as the install
+        // page does. Completed pulls report actual bytes, including cache hits.
+        // Apply these after the plans so a queued app's shared dependency
+        // cannot overwrite an already-resolved total.
+        const resolved = {}
+        for (const row of selected) {
+            const job = jobFor(row)
+            if (!job || job.queued) continue
+            for (const op of job.operations || []) {
+                const key = row.installation + ":" + op.ref + ":" + op.commit
+                if (sizes[key] === undefined) continue
+                const received = Number(op.receivedBytes || 0)
+                const bytes = op.downloadProgress >= 1 ? received
+                    : Math.max(received, Number(op.downloadBytes || 0))
+                resolved[key] = Math.max(resolved[key] || 0, bytes)
+            }
+        }
+        Object.assign(sizes, resolved)
+        return Object.values(sizes).reduce((total, bytes) => total + bytes, 0)
     }
     function sizeText(bytes) {
         const units = ["B", "KiB", "MiB", "GiB", "TiB"]
@@ -29,7 +47,14 @@ Page {
         return bytes.toLocaleString(Qt.locale(), 'f', i ? 2 : 0) + " " + units[i]
     }
     function jobFor(row) {
-        const jobs = (window.backend && window.backend.jobs || []).filter(job => job.action === "update" && job.key === row.key)
+        const jobs = (window.backend && window.backend.jobs || []).filter(job => {
+            if (job.action !== "update" || job.key !== row.key) return false
+            // Finished history must not supply sizes/status for a later scan
+            // of another release (including dependency-only refreshes).
+            if (row.commit && (job.commit !== row.commit || job.oldCommit !== row.oldCommit)) return false
+            return !row.plan || !job.plan || (row.plan.length === job.plan.length
+                && row.plan.every(op => job.plan.some(other => op.ref === other.ref && op.commit === other.commit)))
+        })
         return jobs.length ? jobs[jobs.length - 1] : null
     }
     function versionLabel(row) {
@@ -108,10 +133,11 @@ Page {
                 onClicked: window.backend.selectAllUpdates(checkState === Qt.Checked)
             }
             Label {
+                objectName: "updatesDownloadSummary"
                 Layout.row: page.compact ? 1 : 0; Layout.column: page.compact ? 0 : 1
                 Layout.columnSpan: page.compact ? 2 : 1
                 Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
-                text: qsTr("%1 selected - up to %2 download").arg(page.selected.length).arg(page.sizeText(page.selectedBytes))
+                text: qsTr("%1 selected - %2 download").arg(page.selected.length).arg(page.sizeText(page.selectedBytes))
                 HoverHandler { id: downloadSummaryHover }
                 ToolTip.visible: downloadSummaryHover.hovered
                 ToolTip.text: qsTr("Required components update with selected apps. Shared components are counted once; cached data may reduce the download.")
@@ -144,6 +170,7 @@ Page {
                 }
                 NaturalWheelScroll { scrollTarget: list }
                 delegate: Rectangle {
+                    id: updateRow
                     required property var modelData
                     objectName: "updateRow-" + modelData.key
                     readonly property var job: page.jobFor(modelData)
@@ -165,7 +192,12 @@ Page {
                             Label { text: modelData.name; textFormat: Text.PlainText; font.pixelSize: 18; font.weight: Font.DemiBold; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
                             AppPublisher { objectName: "updateAppPublisher"; app: modelData; Layout.fillWidth: true }
                             Label { objectName: "updateVersion"; text: page.versionLabel(modelData); textFormat: Text.PlainText; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
-                            Label { text: qsTr("Download: up to %1").arg(page.sizeText(modelData.downloadBytes || 0)); color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                            Label {
+                                objectName: "updateDownloadSize"
+                                text: qsTr("Download: %1").arg(job && job.downloadTotalSize
+                                    ? job.downloadTotalSize : page.sizeText(modelData.downloadBytes || 0))
+                                color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap
+                            }
                             Label { text: page.sourceLabel(modelData); textFormat: Text.PlainText; color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
                             Label {
                                 objectName: "updatePermissionsStatus"
@@ -183,16 +215,22 @@ Page {
                             }
                             Label {
                                 objectName: "updateJobStatus"
-                                visible: !!job
-                                text: job ? (job.active && job.queued && !job.failed && !job.cancelling ? qsTr("Queued…") : job.status)
+                                readonly property bool queuedStatus: !!job && job.active && job.queued && !job.failed && !job.cancelling
+                                // The shared installation display supplies normal
+                                // transfer/deployment details. Keep actionable states.
+                                visible: !!job && (queuedStatus || !job.active || job.failed || job.error || job.cancelling
+                                    || !updateProgress.planned || (job.index !== undefined && window.backend.review && window.backend.review.jobIndex === job.index))
+                                text: job ? (queuedStatus ? qsTr("Queued…") : job.status)
                                     + (job.error ? "\n" + job.error : "") : ""
                                 textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.Wrap
-                                color: job && job.failed ? window.accentColor : window.mutedTextColor
+                                font.bold: queuedStatus
+                                color: job && job.failed ? window.accentColor : queuedStatus ? window.textColor : window.mutedTextColor
                             }
-                            FluffProgressBar {
+                            InstallationProgress {
+                                id: updateProgress
                                 objectName: "updateJobProgress"
-                                visible: !!job && job.active && !job.queued
-                                Layout.fillWidth: true; value: job ? job.progress : 0
+                                Layout.fillWidth: true
+                                job: updateRow.job
                             }
                         }
                     }
