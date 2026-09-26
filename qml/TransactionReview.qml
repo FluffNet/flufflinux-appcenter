@@ -68,8 +68,10 @@ Dialog {
         }
     }
     contentItem: ScrollView {
+        id: reviewScroll
         contentWidth: availableWidth
         clip: true
+        property MiddleMouseScroll middleScroll: MiddleMouseScroll { scrollTarget: reviewScroll.contentItem; idleZ: 1 }
         ColumnLayout {
             id: body
             width: parent.width

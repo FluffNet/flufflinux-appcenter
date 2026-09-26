@@ -293,6 +293,7 @@ Page {
         NaturalWheelScroll {
             objectName: "detailsNaturalScroll"
             scrollTarget: detailsFlickable
+            middleScrollIdleZ: -1 // Let the nested screenshot strip handle horizontal scrolling first.
         }
         ColumnLayout {
             id: detailsLayout
@@ -390,6 +391,7 @@ Page {
                 model: app ? app.screenshots : []
                 boundsBehavior: Flickable.DragAndOvershootBounds
                 flickDeceleration: 2500
+                MiddleMouseScroll { scrollTarget: screenshotList; horizontal: true; vertical: false }
                 WheelHandler {
                     id: screenshotTouchpadScroll
                     objectName: "screenshotTouchpadScroll"

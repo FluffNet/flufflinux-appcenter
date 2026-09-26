@@ -38,6 +38,7 @@ Page {
         contentWidth: availableWidth
         clip: true
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
+        property MiddleMouseScroll middleScroll: MiddleMouseScroll { scrollTarget: scroll.contentItem; idleZ: 1 }
         ColumnLayout {
             width: scroll.availableWidth
             spacing: 16

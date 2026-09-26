@@ -308,6 +308,16 @@ visible cards are not hidden, and there is no row snapping.
 Scrollbar thumbs remain directly draggable by touch as well as the mouse;
 KDE's transient-touch setting cannot turn off their interaction.
 
+The mouse's Back side button performs the same navigation as the page Back
+button, preserving the previous catalogue position. It does not navigate behind
+an open menu or dialog. Middle-click a scrollable page to start autoscrolling:
+move above/below the anchor to choose direction and speed, and click again,
+press Escape, or use the wheel to stop. Holding the middle button while moving
+also scrolls, stopping on release. Leaving the view, switching pages or windows,
+or opening a dialog stops it. The screenshot strip scrolls horizontally; other
+pages and scrollable dialogs scroll vertically. The stopping click is consumed
+so it cannot accidentally activate an app action underneath.
+
 `tests/integration/StyleSmoke.qml` is a read-only visual check in the real KDE
 session. It captures the catalog, Installed, app and Queue pages plus native
 and Qt-rendered count comparisons in `target/style-*.png`, then leaves the
@@ -696,6 +706,13 @@ Catalog, Installed, app details and Queue, plus retained button/search
 input, keyboard traversal, scroll drags and modal focus. Repeated menu dismissal
 covers mouse/touch input on empty areas, Search and categories, including menus
 opened by keyboard. Source tests cover initial/reopened information-dialog focus.
+
+`tests/qml/tst_mouse_navigation.qml` and `tst_middle_scroll.qml` cover side-button
+navigation, nested pages, popup/tooltip handling, middle-click and held-button
+scrolling, stop gestures, bounds and nested horizontal scrolling.
+`tests/integration/MouseControlsSmoke.qml` exercises the production pages in
+KDE/Wayland using fake data, captures `target/mouse-autoscroll.png`, and exits.
+It does not run Flatpak transactions. See `tests/MOUSE_VALIDATION.md` for results.
 
 `tests/qml/tst_navigation_fit.qml` checks all 12 categories plus Installed across
 six window sizes from 540 × 300 to 1920 × 1080, including resize recovery, label

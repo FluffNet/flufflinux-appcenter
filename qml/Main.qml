@@ -142,7 +142,7 @@ ApplicationWindow {
         if (stack.currentItem.objectName !== "downloadsPage")
             stack.push(downloadsPage)
     }
-    function goBack() { if (stack.depth > 1) stack.pop() }
+    function goBack() { if (stack.depth > 1 && !stack.busy) stack.pop() }
     function showSettings() {
         if (stack.currentItem.objectName !== "settingsPage") stack.push(settingsPage)
         if (backend && typeof backend.refreshSources === "function") backend.refreshSources()
@@ -179,8 +179,15 @@ ApplicationWindow {
     MouseArea {
         anchors.fill: parent
         z: 100
-        acceptedButtons: Qt.LeftButton
+        acceptedButtons: Qt.LeftButton | Qt.BackButton
         onPressed: function(mouse) {
+            if (mouse.button === Qt.BackButton) {
+                // Do not navigate the underlying page through a menu/dialog.
+                // Hidden screenshot surfaces can keep Overlay itself visible.
+                if (!window.Overlay.overlay.children.some(item => item.visible && item.objectName !== "ToolTip")) window.goBack()
+                mouse.accepted = true
+                return
+            }
             // Observe the press, then pass it through untouched. Clearing
             // before delivery lets the clicked control take focus normally.
             // This also works with KDE controls that swallow empty-area clicks.

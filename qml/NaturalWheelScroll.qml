@@ -9,6 +9,12 @@ WheelHandler {
     property real touchpadPixelScale: 2.15
     property real smoothTargetY: 0
     property bool smoothScrolling: false
+    property real middleScrollIdleZ: 1
+    property MiddleMouseScroll middleMouseScroll: MiddleMouseScroll {
+        scrollTarget: wheelScroll.scrollTarget
+        idleZ: wheelScroll.middleScrollIdleZ
+        onStarted: wheelScroll.stopSmoothScroll()
+    }
 
     target: null
     orientation: Qt.Vertical
@@ -85,6 +91,7 @@ WheelHandler {
     }
 
     onWheel: function(event) {
+        middleMouseScroll.stop()
         const hasPixelDelta = event.pixelDelta.x !== 0 || event.pixelDelta.y !== 0
         const isTouchpad = isTouchpadDevice(point.device, hasPixelDelta)
 
