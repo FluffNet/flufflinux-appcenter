@@ -8,6 +8,7 @@
 #include "source_removal.h"
 #include "update_plan.h"
 #include "install_history.h"
+#include "flatpak_addons.h"
 #include <QCoreApplication>
 #include <QDir>
 #include <QElapsedTimer>
@@ -61,6 +62,7 @@ struct Worker {
     QString appName;
     QString problem;
     bool removing = false;
+    bool addon = false;
     bool updating = false;
     bool removalConfirmed = false;
     bool systemRemoval = false;
@@ -195,10 +197,11 @@ gboolean ready(FlatpakTransaction *tx, gpointer data) {
     if (!w.removalConfirmed && !w.ask({{"kind", "transaction"}, {"operations", w.operations},
         {"appId", w.appId}, {"removing", w.removing}, {"downloadSize", bytes(total)},
         {"title", QCoreApplication::translate("Flatpak", "Uninstall %1?").arg(w.appName)},
-        {"message", (w.systemRemoval
+        {"message", (w.addon
+            ? QCoreApplication::translate("Flatpak", "Only %1 will be removed. The parent app and its data will be kept.") : w.systemRemoval
             ? QCoreApplication::translate("Flatpak", "If you proceed, %1 will be removed for all users, and its app data for this account will be deleted.")
             : QCoreApplication::translate("Flatpak", "If you proceed, %1 and its app data will be removed.")).arg(w.appName)}})) return false;
-    return forceStopApp(w);
+    return w.addon || forceStopApp(w);
 }
 
 gboolean addRemote(FlatpakTransaction *, FlatpakTransactionRemoteReason, const char *,
@@ -548,6 +551,7 @@ bool execute(const QJsonObject &request, Worker &w) {
     g_autoptr(GError) error = nullptr;
     const auto scope = request["installation"].toString("user");
     w.removing = request["action"].toString() == "uninstall";
+    w.addon = request["addon"].toBool();
     w.updating = request["action"].toString() == "update";
     w.installationScope = scope;
     w.expectedPlan = request["plan"].toArray();
@@ -564,22 +568,25 @@ bool execute(const QJsonObject &request, Worker &w) {
     if (w.appName.isEmpty()) w.appName = w.appId;
     if (!w.appId.isEmpty() && !validId(w.appId)) { w.problem = "Invalid Flatpak app ID."; return false; }
     w.systemRemoval = w.removing && scope != "user";
+    if (w.addon && !AppAddons::validate(request, w.cancel, w.problem)) return false;
     // New apps, bundles, references and repositories ALWAYS belong to the
     // current user. Updates/removals keep an existing app's installation scope.
-    g_autoptr(FlatpakInstallation) installation = !(w.systemRemoval || (w.updating && scope != "user"))
+    // Validated add-ons use their already-installed parent's scope.
+    g_autoptr(FlatpakInstallation) installation = !(w.systemRemoval || ((w.updating || w.addon) && scope != "user"))
         ? flatpak_installation_new_user(w.cancel, &error)
         : scope != "system" && !scope.isEmpty()
             ? flatpak_installation_new_system_with_id(scope.toUtf8(), w.cancel, &error)
             : flatpak_installation_new_system(w.cancel, &error);
     if (!installation) { w.problem = str(error->message); return false; }
     if (request["action"].toString() == "repositories") return repositories(installation, request, w);
-    if (request["action"].toString() == "install"
+    if (!w.addon && request["action"].toString() == "install"
         && !ensureUserRemote(installation, request["remote"].toString().isEmpty()
             ? "flathub" : request["remote"].toString(), request["sourceUrl"].toString(), w)) return false;
     g_autoptr(FlatpakTransaction) tx = flatpak_transaction_new_for_installation(installation, w.cancel, &error);
     if (!tx) { w.problem = str(error->message); return false; }
     g_object_set_data(G_OBJECT(tx), "worker", &w);
     flatpak_transaction_set_no_interaction(tx, false);
+    if (w.addon) flatpak_transaction_set_disable_related(tx, true);
     // Reuse compatible system runtimes too; new deployments remain per-user.
     if (!w.removing) flatpak_transaction_add_default_dependency_sources(tx);
     g_signal_connect(tx, "ready-pre-auth", G_CALLBACK(ready), &w);
@@ -626,7 +633,8 @@ bool execute(const QJsonObject &request, Worker &w) {
         const auto arch = request["installedArch"].toString();
         const auto branch = request["installedBranch"].toString();
         g_autoptr(FlatpakInstalledRef) installed = flatpak_installation_get_installed_ref(installation,
-            FLATPAK_REF_KIND_APP, w.appId.toUtf8(), arch.toUtf8(), branch.toUtf8(), w.cancel, &error);
+            w.addon ? FLATPAK_REF_KIND_RUNTIME : FLATPAK_REF_KIND_APP,
+            w.appId.toUtf8(), arch.toUtf8(), branch.toUtf8(), w.cancel, &error);
         if (!installed) { w.problem = str(error->message); return false; }
         g_autofree char *ref = flatpak_ref_format_ref(FLATPAK_REF(installed));
         added = flatpak_transaction_add_uninstall(tx, ref, &error);
@@ -636,7 +644,7 @@ bool execute(const QJsonObject &request, Worker &w) {
         if (ref.isEmpty()) ref = "app/" + w.appId + "/" + str(flatpak_get_default_arch()) + "/stable";
         if (remote.isEmpty()) remote = "flathub";
         g_autoptr(FlatpakRef) parsed = flatpak_ref_parse(ref.toUtf8(), &error);
-        if (!parsed || flatpak_ref_get_kind(parsed) != FLATPAK_REF_KIND_APP
+        if (!parsed || flatpak_ref_get_kind(parsed) != (w.addon ? FLATPAK_REF_KIND_RUNTIME : FLATPAK_REF_KIND_APP)
             || str(flatpak_ref_get_name(parsed)) != w.appId) {
             w.problem = "Catalog has an invalid Flatpak application reference."; return false;
         }
@@ -707,7 +715,7 @@ bool execute(const QJsonObject &request, Worker &w) {
         if (w.problem.isEmpty() && error) w.problem = str(error->message);
         return false;
     }
-    if (w.removing) {
+    if (w.removing && !w.addon) {
         // Recheck after deployment removal in case the app was relaunched
         // during authorization/removal. Do not let it rewrite deleted data.
         if (!forceStopApp(w)) {

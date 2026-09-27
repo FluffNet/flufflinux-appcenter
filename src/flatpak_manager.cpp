@@ -3,6 +3,7 @@
 #include "transaction_progress.h"
 #include "flatpak_sizes.h"
 #include "flatpak_permissions.h"
+#include "flatpak_addons.h"
 #include "update_plan.h"
 #include <algorithm>
 #include <QCoreApplication>
@@ -17,6 +18,7 @@
 #include <QMap>
 #include <QPixmapCache>
 #include <QRegularExpression>
+#include <QSet>
 #include <QStandardPaths>
 #include <QUrl>
 #include <unistd.h>
@@ -340,6 +342,7 @@ void FlatpakManager::clearReviewsForJob(int index) {
 FlatpakManager::~FlatpakManager() {
     m_stopping = true;
     cancelAppPermissions();
+    cancelAppAddons();
     cancelAll();
     // Closing the window keeps this manager alive. Cover forced/session shutdown.
     for (auto worker : {&m_installWorker, &m_removalWorker}) {
@@ -373,7 +376,7 @@ QVariantList FlatpakManager::jobs() const {
         if (job.value("hidden").toBool()) continue;
         // Use catalog artwork before installation too, and retain it in the
         // session history. Unknown external apps fall back to their theme ID.
-        job["icon"] = metadata(normalizedId(job.value("id").toString())).value("icon");
+        if (!job.value("addon").toBool()) job["icon"] = metadata(normalizedId(job.value("id").toString())).value("icon");
         visible.append(job);
     }
     return visible;
@@ -438,6 +441,82 @@ void FlatpakManager::cancelAppPermissions(int token) {
     }
     m_appPermissions.clear();
     emit appPermissionsChanged();
+}
+void FlatpakManager::cancelAppAddons(int token) {
+    if (token && token != m_addonsToken) return;
+    auto process = m_addonsProcess;
+    m_addonsProcess = nullptr;
+    if (process) {
+        process->disconnect(this); process->kill();
+        connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), process, &QObject::deleteLater);
+        if (process->state() == QProcess::NotRunning) process->deleteLater();
+    }
+    m_appAddons.clear(); emit appAddonsChanged();
+}
+int FlatpakManager::requestAppAddons(QVariantMap app) {
+    cancelAppAddons();
+    if (m_stopping) return 0;
+    const int token = ++m_addonsToken;
+    auto parent = metadata(normalizedId(app.value("id").toString()));
+    // Resolve the real deployment and source; the UI cannot supply an arbitrary
+    // runtime, parent reference or privileged installation for an add-on.
+    for (const auto &entry : m_installed) {
+        const auto installed = entry.toMap();
+        if (normalizedId(installed.value("id").toString()) != normalizedId(app.value("id").toString())
+            || installed.value("installation") != app.value("installation")
+            || installed.value("installedRef") != app.value("installedRef")) continue;
+        parent = installed;
+        for (const auto &variant : metadata(normalizedId(app.value("id").toString())).value("sources").toList()) {
+            const auto source = variant.toMap();
+            if (source.value("flatpakRef") == installed.value("installedRef")
+                && source.value("remote") == installed.value("installedOrigin")) {
+                parent["addons"] = source.value("addons"); parent["sourceUrl"] = source.value("sourceUrl"); break;
+            }
+        }
+        break;
+    }
+    m_appAddons = {{"state", "loading"}}; emit appAddonsChanged();
+    auto process = new QProcess(this); m_addonsProcess = process;
+    auto timer = new QTimer(process); timer->setSingleShot(true);
+    auto finish = [this, process, timer](QVariantMap result) {
+        if (m_addonsProcess != process) return;
+        timer->stop(); m_addonsProcess = nullptr; m_appAddons = result; emit appAddonsChanged();
+    };
+    connect(timer, &QTimer::timeout, process, [process, finish] {
+        finish({{"state", "error"}, {"error", tr("Loading add-ons timed out. Check your connection and try again.")}}); process->kill();
+    });
+    connect(process, &QProcess::readyReadStandardOutput, this, [process, finish] {
+        if (process->bytesAvailable() > 4 * 1024 * 1024) {
+            finish({{"state", "error"}, {"error", tr("The add-on response was too large.")}}); process->kill();
+        }
+    });
+    connect(process, &QProcess::errorOccurred, this, [process, finish](QProcess::ProcessError error) {
+        if (error == QProcess::FailedToStart) {
+            finish({{"state", "error"}, {"error", tr("Could not start the add-on reader.")}}); process->deleteLater();
+        }
+    });
+    connect(process, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+        [process, finish](int code, QProcess::ExitStatus status) {
+            auto result = QJsonDocument::fromJson(process->readAllStandardOutput()).object().toVariantMap();
+            if (code || status != QProcess::NormalExit || !result.contains("state"))
+                result = {{"state", "error"}, {"error", tr("Could not load add-ons. Please try again.")}};
+            finish(result); process->deleteLater();
+        });
+    timer->start(30000);
+    process->start(QCoreApplication::applicationFilePath(), {"--addons-worker",
+        QString::fromUtf8(QJsonDocument(AppAddons::compactParent(QJsonObject::fromVariantMap(parent))).toJson(QJsonDocument::Compact))});
+    return token;
+}
+void FlatpakManager::changeAddon(QString reference, bool install) {
+    if (sourcesBusy() || m_appAddons.value("state") != "ready") return;
+    for (const auto &entry : m_appAddons.value("items").toList()) {
+        auto row = entry.toMap();
+        if (row.value("flatpakRef") != reference || !row.value("addon").toBool()) continue;
+        if (install ? (!row.value("available").toBool() || row.value("installed").toBool()) : !row.value("installed").toBool()) return;
+        row["action"] = install ? "install" : "uninstall";
+        row["parent"] = m_appAddons.value("parent");
+        enqueue(row); return;
+    }
 }
 int FlatpakManager::requestAppPermissions(QVariantMap app) {
     cancelAppPermissions();
@@ -617,7 +696,8 @@ void FlatpakManager::enqueue(QVariantMap request) {
         queueReview({{"localRemoval", true}, {"kind", "transaction"}, {"removing", true},
             {"appId", id}, {"operations", QVariantList{}},
             {"title", tr("Uninstall %1?").arg(request.value("name").toString())},
-            {"message", (system
+            {"message", (request.value("addon").toBool()
+                ? tr("Only %1 will be removed. The parent app and its data will be kept.") : system
                 ? tr("If you proceed, %1 will be removed for all users, and its app data for this account will be deleted.")
                 : tr("If you proceed, %1 and its app data will be removed.")).arg(request.value("name").toString())}},
             request.value("index").toInt());
@@ -689,7 +769,25 @@ void FlatpakManager::openSource(QString source) {
             }
         }
         if (m_metadata.contains(normalized)) { emit appOpened(metadata(normalized)); return; }
-        emit inputError(tr("The application %1 was not found in the available sources or installed apps.").arg(id)); return;
+        // KDE/desktop URL launchers canonicalize appstream:// authorities to
+        // lowercase. Prefer exact IDs above, then accept one unique folded ID.
+        // Never pick an arbitrary app when two case-sensitive IDs collide.
+        QSet<QString> matches;
+        for (auto entry = m_metadata.cbegin(); entry != m_metadata.cend(); ++entry)
+            if (entry.key().compare(normalized, Qt::CaseInsensitive) == 0) matches.insert(entry.key());
+        for (const auto &entry : m_installed) {
+            const auto candidate = normalizedId(entry.toMap().value("id").toString());
+            if (candidate.compare(normalized, Qt::CaseInsensitive) == 0) matches.insert(candidate);
+        }
+        if (matches.size() == 1) {
+            const auto canonical = *matches.cbegin();
+            for (const auto &entry : m_installed)
+                if (normalizedId(entry.toMap().value("id").toString()) == canonical) { emit appOpened(entry.toMap()); return; }
+            emit appOpened(metadata(canonical)); return;
+        }
+        emit inputError(matches.size() > 1
+            ? tr("More than one app matches %1. Open App Center and choose the app.").arg(id)
+            : tr("No matching Flatpak was found for %1. App Center manages Flatpak apps, not system packages.").arg(id)); return;
     }
     if (!url.scheme().isEmpty() && !url.isLocalFile() && url.scheme() != "https" && url.scheme() != "flatpak+https") {
         emit inputError(tr("Use an appstream: app link, a local Flatpak file, or an HTTPS Flatpak link.")); return;
@@ -759,7 +857,7 @@ void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &messa
         queueReview(message.toVariantMap(), worker.current);
     } else if (type == "identity") {
         const auto id = message["appId"].toString();
-        if (!id.isEmpty()) {
+        if (!id.isEmpty() && !m_jobs[worker.current].toMap().value("addon").toBool()) {
             auto app = metadata(id); patchJob(worker.current, {{"id", id}, {"name", app.value("name")}});
         }
     } else if (type == "plan") {
@@ -855,7 +953,7 @@ void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &messa
         if (ok && removing) {
             const auto removed = m_jobs[worker.current].toMap();
             const auto removedId = normalizedId(removed.value("id").toString());
-            const auto removedRef = "app/" + removedId + "/" + removed.value("installedArch").toString()
+            const auto removedRef = (removed.value("addon").toBool() ? "runtime/" : "app/") + removedId + "/" + removed.value("installedArch").toString()
                                     + "/" + removed.value("installedBranch").toString();
             // Remove this deployment's finished download cards, not queue IDs
             // or another installation's history. Failed/declined removals never

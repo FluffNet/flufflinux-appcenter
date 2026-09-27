@@ -22,6 +22,7 @@ unsafe extern "C" {
     ) -> i32;
     fn fluff_transaction_worker(request: *const i8) -> i32;
     fn fluff_permissions_worker(request: *const i8) -> i32;
+    fn fluff_addons_worker(request: *const i8) -> i32;
     fn fluff_updates_worker(request: *const i8) -> i32;
 }
 
@@ -100,6 +101,11 @@ fn run() -> Result<i32, String> {
         if args.len() != 2 { return Err("Missing permissions request".into()); }
         let request = CString::new(args[1].as_str()).map_err(|e| e.to_string())?;
         return Ok(unsafe { fluff_permissions_worker(request.as_ptr()) });
+    }
+    if args.first().map(String::as_str) == Some("--addons-worker") {
+        if args.len() != 2 { return Err("Missing add-ons request".into()); }
+        let request = CString::new(args[1].as_str()).map_err(|error| error.to_string())?;
+        return Ok(unsafe { fluff_addons_worker(request.as_ptr()) });
     }
     if args.first().map(String::as_str) == Some("--transaction-worker") {
         if args.len() != 2 {

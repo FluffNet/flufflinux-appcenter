@@ -39,10 +39,13 @@ pub struct App {
     pub remote: String,
     pub source_url: String,
     pub sources: Vec<App>,
+    pub extends: Vec<String>,
+    pub addons: Vec<App>,
 }
 
 pub fn load_catalog() -> Vec<App> {
     let mut apps = HashMap::<String, App>::new();
+    let mut addons = Vec::new();
     let exclusions = crate::catalog_exclusions::load();
     let mut roots = Vec::<(PathBuf, String, String)>::new();
     unsafe { fluff_visit_catalogs(catalog_root, &mut roots as *mut _ as *mut c_void); }
@@ -55,7 +58,8 @@ pub fn load_catalog() -> Vec<App> {
             continue;
         };
         for component in blocks(&text, "component") {
-            if !component.contains("type=\"desktop")
+            let addon = attribute(component.split('>').next().unwrap_or_default(), "type").as_deref() == Some("addon");
+            if !addon && !component.contains("type=\"desktop")
                 && !component.contains("type='desktop")
                 && !component.contains("<launchable")
             {
@@ -66,6 +70,12 @@ pub fn load_catalog() -> Vec<App> {
                     .is_some_and(|id| unsafe { fluff_catalog_app_installed(id.as_ptr()) })) { continue; }
                 app.remote = remote.clone();
                 app.source_url = url.clone();
+                if addon {
+                    if !app.extends.is_empty() && app.flatpak_ref.starts_with("runtime/") {
+                        addons.push(app);
+                    }
+                    continue;
+                }
                 if let (Ok(remote), Ok(url), Ok(reference)) = (CString::new(remote.as_str()),
                         CString::new(url.as_str()), CString::new(app.flatpak_ref.as_str())) {
                     let size = unsafe { fluff_catalog_download_size(remote.as_ptr(), url.as_ptr(), reference.as_ptr()) };
@@ -82,8 +92,23 @@ pub fn load_catalog() -> Vec<App> {
       }
     }
     let mut result: Vec<_> = apps.into_values().collect();
+    for app in &mut result {
+        attach_addons(app, &addons);
+        for source in &mut app.sources { attach_addons(source, &addons); }
+    }
     result.sort_by_key(|app| app.name.to_lowercase());
     result
+}
+
+fn attach_addons(app: &mut App, addons: &[App]) {
+    let id = app.id.strip_suffix(".desktop").unwrap_or(&app.id);
+    app.addons = addons.iter().filter(|addon| addon.remote == app.remote
+        && addon.source_url == app.source_url
+        && addon.extends.iter().any(|parent| parent.strip_suffix(".desktop").unwrap_or(parent) == id))
+        .cloned().collect();
+    app.addons.sort_by_key(|addon| addon.name.to_lowercase());
+    let mut seen = HashSet::new();
+    app.addons.retain(|addon| seen.insert(addon.flatpak_ref.clone()));
 }
 
 fn collect_files(directory: &Path, depth: u8, files: &mut Vec<PathBuf>) {
@@ -189,6 +214,8 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         remote,
         source_url: String::new(),
         sources: Vec::new(),
+        extends: blocks(xml, "extends").into_iter().map(clean_markup).collect(),
+        addons: Vec::new(),
     })
 }
 
@@ -477,9 +504,9 @@ pub fn to_json(apps: &[App]) -> String {
             app.download_bytes.map(|value| value.to_string()).unwrap_or("null".into())
         ));
         output.pop();
-        output.push_str(&format!(",\"categories\":[{}],\"mimeTypes\":[{}]}}",
+        output.push_str(&format!(",\"categories\":[{}],\"mimeTypes\":[{}],\"addons\":{}}}",
             app.categories.iter().map(|v| escape_json(v)).collect::<Vec<_>>().join(","),
-            app.mime_types.iter().map(|v| escape_json(v)).collect::<Vec<_>>().join(",")));
+            app.mime_types.iter().map(|v| escape_json(v)).collect::<Vec<_>>().join(","), to_json(&app.addons)));
     }
     output.push(']');
     output
@@ -488,6 +515,20 @@ pub fn to_json(apps: &[App]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn addons_match_parent_and_source_without_entering_app_lists() {
+        let mut parent = App { id: "org.example.Parent.desktop".into(), remote: "stable".into(),
+            source_url: "https://example.org/repo".into(), ..App::default() };
+        let mut addon = parse_component("<component type='addon'><id>org.example.Parent.Plugin.One</id><name>Plugin One</name><extends>org.example.Parent</extends><bundle type='flatpak'>runtime/org.example.Parent.Plugin.One/x86_64/stable</bundle></component>", Path::new("/tmp/appstream.xml")).unwrap();
+        addon.remote = parent.remote.clone(); addon.source_url = parent.source_url.clone();
+        let other = App { remote: "other".into(), ..addon.clone() };
+        let wrong_url = App { source_url: "https://other.example/repo".into(), ..addon.clone() };
+        let wrong_parent = App { extends: vec!["org.example.Else".into()], ..addon.clone() };
+        attach_addons(&mut parent, &[addon.clone(), other, wrong_url, wrong_parent, addon]);
+        assert_eq!(parent.addons.len(), 1);
+        assert_eq!(parent.addons[0].name, "Plugin One");
+        assert!(to_json(&[parent]).contains("\"addons\":[{\"id\":\"org.example.Parent.Plugin.One\""));
+    }
     #[test]
     fn serializes_release_dates_and_unknown_sizes_without_inventing_values() {
         let prefix = "<component type='desktop-application'><id>org.example.Date</id><name>Date</name>";

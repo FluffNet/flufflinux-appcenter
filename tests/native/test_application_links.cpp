@@ -24,7 +24,8 @@ int main(int argc, char **argv) {
     qputenv("PATH", temporary.path().toUtf8() + ':' + qgetenv("PATH"));
     QGuiApplication app(argc, argv);
     FlatpakManager manager({QVariantMap{{"id", "org.example.MixedCase.desktop"}, {"name", "Example"},
-        {"flatpakRef", "app/org.example.MixedCase/x86_64/stable"}, {"remote", "fixture"}}});
+        {"flatpakRef", "app/org.example.MixedCase/x86_64/stable"}, {"remote", "fixture"}},
+        QVariantMap{{"id", "org.example.Collision"}}, QVariantMap{{"id", "org.example.COLLISION"}}});
     QString error; QVariantMap opened; int openings = 0;
     QObject::connect(&manager, &FlatpakManager::inputError, &app, [&](const QString &message) { error = message; });
     QObject::connect(&manager, &FlatpakManager::appOpened, &app, [&](const QVariantMap &value) { opened = value; ++openings; });
@@ -34,11 +35,14 @@ int main(int argc, char **argv) {
     until([&] { return openings == 1; });
     assert(opened.value("id") == "org.example.Installed");
     for (const auto &source : {"appstream:org.example.MixedCase", "appstream://org.example.MixedCase.desktop",
-                               "flatpak://org.example.MixedCase/", "appstream:org.example.%4DixedCase"}) {
+                               "flatpak://org.example.MixedCase/", "appstream:org.example.%4DixedCase",
+                               "appstream://org.example.mixedcase", "appstream://org.example.mixedcase.desktop"}) {
         opened.clear(); error.clear(); manager.openSource(source);
         assert(error.isEmpty() && opened.value("id") == "org.example.MixedCase.desktop");
     }
-    for (const auto &source : {"appstream:org.invalid.Missing", "appstream://org.example.MixedCase?bad=1",
+    opened.clear(); manager.openSource("appstream://org.example.installed");
+    assert(opened.value("id") == "org.example.Installed");
+    for (const auto &source : {"appstream:org.invalid.Missing", "appstream://org.example.collision", "appstream://org.example.MixedCase?bad=1",
                                "appstream://org.example.MixedCase#bad", "appstream:../file",
                                "appstream://user@org.example.MixedCase", "appstream:org.example.MixedCase/other"}) {
         opened.clear(); error.clear(); manager.openSource(source);

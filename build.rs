@@ -83,6 +83,7 @@ fn main() {
         PathBuf::from("src/flatpak_worker.cpp"),
         PathBuf::from("src/flatpak_sizes.cpp"),
         PathBuf::from("src/flatpak_permissions.cpp"),
+        PathBuf::from("src/flatpak_addons.cpp"),
         PathBuf::from("src/flatpak_updates.cpp"),
         PathBuf::from("src/flatpak_catalog.cpp"),
         PathBuf::from("src/catalog_stats.cpp"),
@@ -148,6 +149,8 @@ fn main() {
     println!("cargo:rerun-if-changed=src/window_preferences.h");
     println!("cargo:rerun-if-changed=src/ui_typography.h");
     println!("cargo:rerun-if-changed=src/flatpak_manager.h");
+    println!("cargo:rerun-if-changed=src/flatpak_addons.h");
+    println!("cargo:rerun-if-changed=src/flatpak_addons.cpp");
     println!("cargo:rerun-if-changed=src/flatpak_sources.h");
     println!("cargo:rerun-if-changed=src/flatpak_catalog.cpp");
     println!("cargo:rerun-if-changed=src/flatpak_manager.cpp");

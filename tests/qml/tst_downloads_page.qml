@@ -117,6 +117,16 @@ TestCase {
                 cases.push({tag: action + "-" + state, action: action, state: state})
         return cases
     }
+    function test_addon_details_open_parent_not_runtime() {
+        const parent = {id:"org.example.Parent", name:"Parent", installation:"user", installedRef:"app/org.example.Parent/x86_64/stable", screenshots:[]}
+        backend.installedApps = [parent]
+        backend.jobs = [Object.assign({}, job, {id:"org.example.Parent.Plugin", addon:true,
+            parent:{installation:parent.installation, installedRef:parent.installedRef}})]
+        compare(card().detailsApp.id, parent.id)
+        verify(!card().canOpen)
+        backend.installedApps = []
+        compare(card().detailsApp, null)
+    }
     function test_action_labels(data) {
         backend.jobs = [Object.assign({}, job, {action: data.action,
             active: data.state === "running" || data.state === "queued",

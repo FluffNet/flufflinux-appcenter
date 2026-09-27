@@ -666,6 +666,35 @@ web/token login are not yet implemented.
 The desktop entry accepts URLs with `%U`. A per-user socket forwards new files
 and links to the existing App Center window, keeping one session's queue.
 
+## KDE menu and app add-ons
+
+KDE's application-menu **Uninstall or Manage Add-Ons** action opens the app's
+`appstream://` link using the registered handler. App Center owns that handler
+after installation. Desktop URL launchers may lowercase the ID, so App Center
+first tries the exact ID and then one unique case-insensitive match. Ambiguous
+matches are rejected. This opens details only; it never immediately uninstalls.
+The route manages Flatpak applications, not pacman/system packages.
+
+App pages show **Add-Ons** beside **View App Permissions** when their selected
+source publishes AppStream add-on components extending that app. The dialog can
+preview them before app installation. Install the parent app first to make
+changes. App Center asks libflatpak which extensions match that exact installed
+parent version, architecture and source; it does not guess by an ID prefix or
+mix branches. Add-ons use the parent's user/system installation. Existing
+Flatpak authorization policies apply to system-level changes.
+
+Add-on installations use the normal queue, progress and background service.
+Their Queue details link returns to the parent app, not a fake runnable runtime.
+Removals require confirmation, stay outside Queue, and never delete sandbox data
+or stop the parent app. Worker-side validation rejects substituted refs/scopes,
+incompatible branches and a parent that changed since the dialog was loaded.
+Browser extensions and plugins absent from Flatpak AppStream metadata are not
+listed. Loading this dialog does not install anything or check for app updates.
+
+`sh tests/run_addons.sh` covers desktop links, the QML dialog, and real isolated
+Flatpak add-on installation/removal. `tests/integration/AddonsLive.qml` exercises
+the actual dialog against that fixture and captures dark/light screenshots.
+
 ## Background app queue
 
 Installed launches activate `flufflinux-appcenter.service` in the current user's

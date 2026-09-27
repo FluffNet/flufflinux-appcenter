@@ -99,7 +99,11 @@ Page {
                     readonly property var modelData: window.downloadQueue.jobs.find(job => job.index === jobIndex)
                         || {id: "", name: "", active: false, operations: []}
                     readonly property var installedApp: window.findInstalled(modelData)
-                    readonly property var detailsApp: !modelData.id ? null : installedApp
+                    readonly property var detailsApp: modelData.addon
+                        ? window.installedApps.find(item => modelData.parent
+                            && item.installedRef === modelData.parent.installedRef
+                            && item.installation === modelData.parent.installation) || null
+                        : !modelData.id ? null : installedApp
                         || window.catalog.find(function(app) {
                             return app.id.replace(/\.desktop$/, "") === modelData.id.replace(/\.desktop$/, "")
                         }) || Object.assign({summary: "", description: "", screenshots: [], developer: "", category: "", license: "", homepage: ""}, modelData)
@@ -122,7 +126,7 @@ Page {
                                 Layout.fillWidth: true
                                 hoverEnabled: true
                                 enabled: !!downloadCard.detailsApp
-                                Accessible.name: qsTr("View details for %1").arg(modelData.name)
+                                Accessible.name: (modelData.addon ? qsTr("View parent app details for %1") : qsTr("View details for %1")).arg(modelData.name)
                                 onClicked: window.openApp(downloadCard.detailsApp)
                                 background: FluffButtonBackground { idleColor: "transparent"; idleBorderColor: "transparent" }
                                 contentItem: RowLayout {

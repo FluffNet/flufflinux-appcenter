@@ -560,13 +560,24 @@ Page {
                     visible: text.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap
                 }
             }
-            FluffButton {
-                id: permissionsButton
-                objectName: "viewAppPermissionsButton"
-                Layout.alignment: Qt.AlignLeft; Layout.bottomMargin: 38
-                text: qsTr("View App Permissions")
-                icon.name: "object-locked"
-                onClicked: permissionsDialog.open()
+            Flow {
+                Layout.fillWidth: true; Layout.bottomMargin: 38
+                spacing: 12
+                FluffButton {
+                    id: permissionsButton
+                    objectName: "viewAppPermissionsButton"
+                    text: qsTr("View App Permissions")
+                    icon.name: "object-locked"
+                    onClicked: permissionsDialog.open()
+                }
+                FluffButton {
+                    objectName: "viewAppAddonsButton"
+                    visible: !!(app && app.addons && app.addons.length)
+                    text: qsTr("Add-Ons")
+                    icon.name: "plugins"
+                    contentItem: FluffButtonContent { monochromeIcon: true }
+                    onClicked: addonsDialog.open()
+                }
             }
         }
     }
@@ -581,6 +592,11 @@ Page {
             if (wasActive && page.StackView.status === StackView.Active)
                 page.forceActiveFocus(Qt.OtherFocusReason)
         }
+    }
+    AppAddonsDialog {
+        id: addonsDialog
+        app: page.app || ({})
+        backend: window.backend
     }
 
     Item {

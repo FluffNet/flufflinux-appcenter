@@ -20,6 +20,7 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(int iconRevision READ iconRevision NOTIFY installedChanged)
     Q_PROPERTY(QVariantMap installSizes READ installSizes NOTIFY installSizesChanged)
     Q_PROPERTY(QVariantMap appPermissions READ appPermissions NOTIFY appPermissionsChanged)
+    Q_PROPERTY(QVariantMap appAddons READ appAddons NOTIFY appAddonsChanged)
     Q_PROPERTY(QVariantMap updates READ updates NOTIFY updatesChanged)
     Q_PROPERTY(QVariantList catalog READ catalog NOTIFY catalogChanged)
     Q_PROPERTY(bool catalogSourcesUnavailable READ catalogSourcesUnavailable NOTIFY catalogChanged)
@@ -33,6 +34,10 @@ public:
     QVariantList jobs() const;
     QVariantMap installSizes() const { return m_installSizes; }
     QVariantMap appPermissions() const { return m_appPermissions; }
+    QVariantMap appAddons() const { return m_appAddons; }
+    Q_INVOKABLE int requestAppAddons(QVariantMap app);
+    Q_INVOKABLE void cancelAppAddons(int token = 0);
+    Q_INVOKABLE void changeAddon(QString reference, bool install);
     QVariantMap updates() const;
     Q_INVOKABLE void checkForUpdates();
     Q_INVOKABLE void cancelUpdateCheck();
@@ -77,6 +82,7 @@ signals:
     void inputError(QString message);
     void installSizesChanged();
     void appPermissionsChanged();
+    void appAddonsChanged();
     void updatesChanged();
     void catalogChanged();
     void repositoriesChanged();
@@ -116,6 +122,9 @@ private:
     QVariantMap m_appPermissions;
     QProcess *m_permissionsProcess = nullptr;
     int m_permissionsToken = 0;
+    QVariantMap m_appAddons;
+    QProcess *m_addonsProcess = nullptr;
+    int m_addonsToken = 0;
     InstallHistory m_installHistory;
     InstallHistory m_updateHistory{QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/update-dates.json"};
     QProcess m_updatesProcess;
