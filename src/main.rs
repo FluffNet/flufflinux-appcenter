@@ -82,6 +82,18 @@ fn c_path(path: &Path) -> Result<CString, String> {
         .map_err(|_| format!("path contains an invalid null byte: {}", path.display()))
 }
 
+fn launch_inputs(args: Vec<String>) -> Result<Vec<String>, String> {
+    // Preserve Discover's pinned-launcher update action, without checking for
+    // updates automatically. All other legacy options remain unsupported.
+    if args == ["--updates"] || args == ["--mode", "update"] || args == ["--mode=update"] {
+        return Ok(vec!["--updates".into()]);
+    }
+    if args.iter().any(|arg| arg.starts_with('-')) {
+        return Err("Usage: flufflinux-appcenter [--updates | FILE.flatpak|FILE.flatpakref|FILE.flatpakrepo|flatpak+https://URL …]".into());
+    }
+    Ok(args)
+}
+
 fn run() -> Result<i32, String> {
     let args: Vec<String> = env::args().skip(1).collect();
     if args == ["--catalog"] {
@@ -106,9 +118,7 @@ fn run() -> Result<i32, String> {
         let request = CString::new(args[1].as_str()).map_err(|e| e.to_string())?;
         return Ok(unsafe { fluff_transaction_worker(request.as_ptr()) });
     }
-    if args.iter().any(|arg| arg.starts_with('-')) {
-        return Err("Usage: flufflinux-appcenter [FILE.flatpak|FILE.flatpakref|FILE.flatpakrepo|flatpak+https://URL …]".into());
-    }
+    let args = launch_inputs(args)?;
     let main_qml = find_main_qml().ok_or("The App Center QML files could not be found.")?;
     let icon = find_icon().ok_or("The App Center icon could not be found.")?;
     let catalog = appstream::load_catalog();
@@ -153,6 +163,17 @@ fn main() -> ExitCode {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn discover_update_shortcuts_only_request_the_updates_page() {
+        for args in [vec!["--updates"], vec!["--mode", "update"], vec!["--mode=update"]] {
+            assert_eq!(launch_inputs(args.into_iter().map(String::from).collect()).unwrap(), ["--updates"]);
+        }
+        assert!(launch_inputs(vec!["--mode".into()]).is_err());
+        assert!(launch_inputs(vec!["--mode".into(), "remove".into()]).is_err());
+        assert!(launch_inputs(vec!["--updates".into(), "unexpected".into()]).is_err());
+        assert_eq!(launch_inputs(vec!["/tmp/App.flatpakref".into()]).unwrap(), ["/tmp/App.flatpakref"]);
+    }
 
     #[test]
     fn installed_binary_uses_its_own_prefix_not_the_build_checkout() {

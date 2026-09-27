@@ -1,0 +1,54 @@
+#!/usr/bin/env python3
+"""Read-only inspection of the built pacman archive; never installs a package."""
+from pathlib import Path
+import configparser
+import subprocess
+import sys
+import tempfile
+
+package = Path(sys.argv[1]).resolve(strict=True)
+metadata = subprocess.check_output(["bsdtar", "-xOf", package, ".PKGINFO"], text=True)
+values = {}
+for line in metadata.splitlines():
+    if " = " in line:
+        key, value = line.split(" = ", 1)
+        values.setdefault(key, []).append(value)
+assert values["pkgname"] == ["flufflinux-appcenter"]
+assert values["packager"] == ["FluffNet LLC"]
+for key in ("conflict", "replaces"):
+    assert set(values[key]) == {"discover", "flufflinux-discover"}, values
+assert "flufflinux-update" in values["depend"]
+assert values["backup"] == ["etc/flufflinux-appcenter/exclusions.conf"]
+with tempfile.TemporaryDirectory(prefix="appcenter-package-test-") as temporary:
+    root = Path(temporary)
+    subprocess.run(["bsdtar", "-xf", package, "-C", root], check=True)
+    assert not (root / "etc/xdg/mimeapps.list").exists(), "shared MIME defaults must not be package-owned"
+    assert not (root / "etc/xdg/autostart").exists(), "do not inherit Discover's notifier"
+    for name in ("plasma-discover", "discover", "flufflinux-discover"):
+        alias = root / "usr/bin" / name
+        assert alias.is_symlink()
+        assert alias.resolve() == root / "usr/bin/flufflinux-appcenter"
+    for name in ("flufflinuxplasmadiscover", "plasmadiscover"):
+        alias = root / "usr/share/icons/hicolor/scalable/apps" / (name + ".svg")
+        assert alias.is_symlink() and alias.is_file()
+        assert alias.resolve().name == "flufflinux-appcenter.svg"
+    applications = root / "usr/share/applications"
+    legacy = applications / "org.kde.discover.desktop"
+    assert legacy.is_symlink() and legacy.is_file()
+    visible = []
+    for desktop in applications.glob("*.desktop"):
+        subprocess.run(["desktop-file-validate", desktop], check=True)
+        content = configparser.ConfigParser(interpolation=None)
+        content.read(desktop)
+        entry = content["Desktop Entry"]
+        assert entry["Name"] == "App Center"
+        assert entry["Icon"] == "flufflinux-appcenter"
+        assert entry["Exec"] == "flufflinux-appcenter %U"
+        assert content["Desktop Action Updates"]["Exec"] == "flufflinux-appcenter --updates"
+        if entry.get("NoDisplay") != "true":
+            visible.append(desktop.name)
+    assert visible == ["org.kde.discover.desktop"], visible
+    assert (root / ".INSTALL").exists()
+    assert (root / "usr/lib/flufflinux-appcenter/register-flatpak-handler").stat().st_mode & 0o111
+    assert (root / "usr/share/licenses/flufflinux-appcenter/LICENSE").is_file()
+print("PASS: pacman identity/dependencies/replacements/config backup, executable and icon aliases, one visible legacy launcher, no notifier/shared MIME ownership")

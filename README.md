@@ -9,6 +9,48 @@ library only), QML, and the system Qt 6 and libflatpak libraries. There are no
 background update services, notifications, or tray components. Settings currently
 contains Flatpak source management.
 
+## Pacman package and Discover replacement
+
+On Fluff Linux, run `sh scripts/build-package.sh` as a normal user. This builds
+`flufflinux-appcenter-2026.9.0beta-1-x86_64.pkg.tar.zst` in a fresh directory under
+`build/`, runs Rust tests, and records **FluffNet LLC** as packager. Install the
+printed package with `sudo pacman -U /absolute/path/to/package.pkg.tar.zst`.
+The package conflicts with and replaces both `discover` and `flufflinux-discover`;
+`flufflinux-update` is a required dependency, alongside the native Qt/KDE/Flatpak
+runtime dependencies. It does not install a notifier or run App Center as root.
+Build dependencies must already be installed; the script does not use sudo.
+Existing unmanaged source installs need a file backup before package adoption;
+do not bypass conflicts with `--overwrite '*'`. Direct `make install` refuses to
+overwrite a package-managed software center at `/usr`; staging with `DESTDIR`
+remains available. Use pacman for subsequent installed-package upgrades/removal.
+
+The package keeps **`org.kde.discover.desktop`** as its visible desktop ID and
+Wayland window identity, so existing Discover pins launch and group with App
+Center. That old desktop file is a symlink to App Center's launcher, with App
+Center's name/icon. `flufflinux-appcenter.desktop` remains a hidden compatibility
+entry for existing file associations (not a second application-menu entry).
+`plasma-discover`, `discover`, and `flufflinux-discover` are executable symlinks.
+The old `flufflinuxplasmadiscover` and `plasmadiscover` icons are also symlinked to
+the new icon, including for copied desktop shortcuts still using those names.
+Locally customized shortcut names or absolute icon paths are not rewritten.
+The old `--mode update` action opens **App Updates**, without starting a check.
+The Flatpak handler desktop ID remains supported; Discover's notifier and its
+unsupported `appstream:` URL handler are not carried over.
+
+The build includes `/etc/flufflinux-appcenter/exclusions.conf` when present;
+use `EXCLUSIONS_FILE=data/exclusions.conf sh scripts/build-package.sh` for bundled
+defaults. Pacman tracks this as a backup configuration file, preserving edits
+on upgrade. Shared `/etc/xdg/mimeapps.list` is not package-owned: install/remove
+scripts merge only App Center's associations, preserving unrelated defaults.
+Archive checks: `python3 tests/integration/test_pacman_package.py PACKAGE`.
+Launcher dispatch: `python3 tests/integration/test_legacy_launch.py`.
+The optional installed-KDE pin regression is `tests/native/test_discover_pin.cpp`.
+Build it with Qt6Widgets/Qt6Qml flags, `-lKF6Service -ltaskmanager`, and include
+paths `/usr/include/KF6/{KService,KCoreAddons,KConfig,KConfigCore}`. Run it in the
+desktop session with the running window's reported desktop ID (`org.kde.discover`)
+as its argument. It checks KDE's real launcher icon/name, window-to-pin matching,
+and exactly one visible application-menu entry, without changing the panel.
+
 ## Home and catalog exclusions
 
 Home shows **Common Apps** above **All Apps**, sharing the main page's

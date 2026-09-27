@@ -52,7 +52,9 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     QGuiApplication::setApplicationDisplayName("App Center");
     QCoreApplication::setApplicationVersion(APPCENTER_DISPLAY_VERSION);
     QCoreApplication::setOrganizationName("FluffNet LLC");
-    QGuiApplication::setDesktopFileName("flufflinux-appcenter");
+    // Keep existing Plasma Discover pins associated with this window. The
+    // package owns this legacy desktop ID, with App Center's name and icon.
+    QGuiApplication::setDesktopFileName("org.kde.discover");
     application.setWindowIcon(QIcon(QString::fromUtf8(icon_path)));
     QJsonArray incoming;
     for (int i = 0; i < input_count && i < 16; ++i) incoming.append(QString::fromUtf8(inputs[i]));
@@ -101,7 +103,12 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
             windowPreferences->restore(window);
     }
     auto dispatch = [&](const QJsonArray &sources) {
-        for (int i = 0; i < sources.size() && i < 16; ++i) manager.openSource(sources[i].toString());
+        for (int i = 0; i < sources.size() && i < 16; ++i) {
+            const auto input = sources[i].toString();
+            if (input == "--updates")
+                QMetaObject::invokeMethod(engine.rootObjects().first(), "showUpdates");
+            else manager.openSource(input);
+        }
         if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
             // Raising an existing instance must not undo its maximized state.
             if (window->visibility() == QWindow::Minimized) {

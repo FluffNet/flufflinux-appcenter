@@ -6,9 +6,16 @@ Exec=flufflinux-appcenter %U
 Icon=flufflinux-appcenter
 Terminal=false
 Type=Application
+NoDisplay=false
 OnlyShowIn=KDE;
 Categories=Qt;KDE;System;PackageManager;
 Keywords=software;apps;applications;catalog;store;
 SingleMainWindow=true
 StartupNotify=true
+Actions=Updates;
 MimeType=application/vnd.flatpak;application/vnd.flatpak.ref;application/vnd.flatpak.repo;x-scheme-handler/flatpak;x-scheme-handler/flatpak+https;
+
+[Desktop Action Updates]
+Name=App Updates
+Icon=flufflinux-appcenter
+Exec=flufflinux-appcenter --updates
