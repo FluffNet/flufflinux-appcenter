@@ -4,6 +4,12 @@
 #include "network_status.h"
 #include "window_preferences.h"
 #include "ui_typography.h"
+#include "background_queue.h"
+#include <QDBusInterface>
+#include <QDBusReply>
+#include <QDBusObjectPath>
+#include <QElapsedTimer>
+#include <QThread>
 #include <QFile>
 #include <QApplication>
 #include <QIcon>
@@ -67,6 +73,30 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
         existing.waitForBytesWritten(2000);
         return 0;
     }
+    // Installed launches activate an on-demand user service. Closing a window
+    // or the launching terminal cannot kill its transaction workers.
+    if (!qEnvironmentVariableIsSet("FLUFF_APP_CENTER_SESSION_SERVICE")
+            && !qEnvironmentVariableIsSet("FLUFF_APP_CENTER_QML")
+            && QCoreApplication::applicationFilePath() == "/usr/bin/flufflinux-appcenter"
+            && QFile::exists("/usr/lib/systemd/user/flufflinux-appcenter.service")) {
+        QDBusInterface systemd("org.freedesktop.systemd1", "/org/freedesktop/systemd1",
+                              "org.freedesktop.systemd1.Manager", QDBusConnection::sessionBus());
+        const QDBusReply<QDBusObjectPath> started = systemd.call("StartUnit", "flufflinux-appcenter.service", "replace");
+        if (!started.isValid()) {
+            qCritical().noquote() << "Cannot start App Center's session service:" << started.error().message();
+            return 1;
+        }
+        QElapsedTimer deadline; deadline.start();
+        while (deadline.elapsed() < 15000) {
+            existing.abort(); existing.connectToServer(socketPath);
+            if (existing.waitForConnected(100)) {
+                existing.write(QJsonDocument(incoming).toJson(QJsonDocument::Compact) + '\n');
+                return existing.waitForBytesWritten(2000) ? 0 : 1;
+            }
+            QThread::msleep(50);
+        }
+        qCritical("App Center's session service did not become ready."); return 1;
+    }
     QLockFile lock(socketPath + ".lock");
     if (!lock.tryLock(1000)) { qCritical("Another App Center instance is starting."); return 1; }
     QLocalServer server;
@@ -84,6 +114,10 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     // Custom QML is used by read-only UI fixtures; it must not read/write the
     // desktop user's window preferences or override fixture geometry.
     const bool manageWindow = !qEnvironmentVariableIsSet("FLUFF_APP_CENTER_QML");
+    // Explicitly opt-in live fixtures exercise this exact controller using an
+    // isolated Flatpak installation, without touching user window settings.
+    const bool manageBackground = manageWindow || qEnvironmentVariableIntValue("FLUFF_APP_CENTER_BACKGROUND_TEST") == 1;
+    if (manageBackground) application.setQuitOnLastWindowClosed(false);
     CatalogPreferences catalogPreferences(manageWindow ? WindowPreferences::defaultPath() : QString());
     std::unique_ptr<WindowPreferences> windowPreferences;
     if (manageWindow) windowPreferences = std::make_unique<WindowPreferences>();
@@ -127,6 +161,11 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
             window->raise(); window->requestActivate();
         }
     };
+    std::unique_ptr<BackgroundQueue> background;
+    if (manageBackground) {
+        if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()))
+            background = std::make_unique<BackgroundQueue>(&manager, window, [&] { dispatch(QJsonArray{}); });
+    }
     QObject::connect(&server, &QLocalServer::newConnection, &engine, [&] {
         while (auto socket = server.nextPendingConnection()) {
             QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);

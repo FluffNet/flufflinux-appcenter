@@ -340,7 +340,7 @@ FlatpakManager::~FlatpakManager() {
     m_stopping = true;
     cancelAppPermissions();
     cancelAll();
-    // Normal UI close is prevented while busy. Cover both workers on forced shutdown.
+    // Closing the window keeps this manager alive. Cover forced/session shutdown.
     for (auto worker : {&m_installWorker, &m_removalWorker}) {
         worker->process.closeWriteChannel();
         if (!worker->process.waitForFinished(3000) && worker->process.state() != QProcess::NotRunning) {
@@ -718,7 +718,7 @@ void FlatpakManager::receive(WorkerState &worker) {
 QVariantMap FlatpakManager::downloadRateValues(const QVariantMap &job) {
     const auto rate = m_downloadRate.sample(m_downloadClock.elapsed(), job.value("receivedBytes").toULongLong(),
         job.value("phase") == "download" && !job.value("downloadComplete").toBool());
-    return {{"downloadSpeed", DownloadRate::display(rate)}};
+    return {{"downloadSpeed", DownloadRate::display(rate)}, {"downloadSpeedBytes", rate}};
 }
 void FlatpakManager::handleMessage(WorkerState &worker, const QJsonObject &message) {
     if (worker.current < 0) return;

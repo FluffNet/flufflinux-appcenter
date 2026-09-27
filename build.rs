@@ -10,6 +10,7 @@ const QT_PACKAGES: &[&str] = &[
     "Qt6Quick",
     "Qt6Network",
     "Qt6DBus",
+    "KF6CoreAddons",
     "flatpak",
     "ostree-1",
 ];
@@ -38,7 +39,9 @@ fn main() {
 
     let mut cflags_arguments = vec!["--cflags"];
     cflags_arguments.extend(QT_PACKAGES);
-    let cflags = command_output("pkg-config", &cflags_arguments);
+    let kde_prefix = command_output("pkg-config", &["--variable=prefix", "KF6CoreAddons"]);
+    let cflags = format!("{} -I{}/include/KF6/KJobWidgets -I{}/include/KF6/KStatusNotifierItem",
+        command_output("pkg-config", &cflags_arguments), kde_prefix.trim(), kde_prefix.trim());
 
     let moc =
         PathBuf::from(command_output("pkg-config", &["--variable=libexecdir", "Qt6Core"]).trim())
@@ -75,6 +78,7 @@ fn main() {
     let display_version = std::fs::read_to_string("VERSION").expect("VERSION is missing");
     for source in [
         PathBuf::from("src/qt_bridge.cpp"),
+        PathBuf::from("src/background_queue.cpp"),
         PathBuf::from("src/flatpak_manager.cpp"),
         PathBuf::from("src/flatpak_worker.cpp"),
         PathBuf::from("src/flatpak_sizes.cpp"),
@@ -115,6 +119,8 @@ fn main() {
     println!("cargo:rustc-link-search=native={}", output_dir.display());
     println!("cargo:rustc-link-lib=static=fluff_qt_bridge");
     println!("cargo:rustc-link-lib=dylib=stdc++");
+    println!("cargo:rustc-link-lib=dylib=KF6JobWidgets");
+    println!("cargo:rustc-link-lib=dylib=KF6StatusNotifierItem");
 
     let mut libs_arguments = vec!["--libs"];
     libs_arguments.extend(QT_PACKAGES);
@@ -129,6 +135,9 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=src/qt_bridge.cpp");
+    println!("cargo:rerun-if-changed=src/background_queue.cpp");
+    println!("cargo:rerun-if-changed=src/background_queue.h");
+    println!("cargo:rerun-if-changed=src/sleep_inhibitor.h");
     println!("cargo:rerun-if-changed=src/catalog_stats.h");
     println!("cargo:rerun-if-changed=src/catalog_stats.cpp");
     println!("cargo:rerun-if-changed=src/network_status.h");

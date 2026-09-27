@@ -6,18 +6,19 @@ the user-facing release name shown by About.
 
 A native Flatpak software center for Fluff Linux, built with Rust (standard
 library only), QML, and the system Qt 6 and libflatpak libraries. There are no
-background update services, notifications, or tray components. Settings currently
-contains Flatpak source management.
+automatic background update checks. An on-demand user service keeps active
+transactions running after the window is closed, with native KDE tray progress.
+Settings contains Flatpak source management.
 
 ## Pacman package and Discover replacement
 
 On Fluff Linux, run `sh scripts/build-package.sh` as a normal user. This builds
-`flufflinux-appcenter-2026.9.0beta-4-x86_64.pkg.tar.zst` in a fresh directory under
+`flufflinux-appcenter-2026.9.0beta-5-x86_64.pkg.tar.zst` in a fresh directory under
 `build/`, runs Rust tests, and records **FluffNet LLC** as packager. Install the
 printed package with `sudo pacman -U /absolute/path/to/package.pkg.tar.zst`.
 The package conflicts with and replaces both `discover` and `flufflinux-discover`;
 `flufflinux-update` is a required dependency, alongside the native Qt/KDE/Flatpak
-runtime dependencies. It does not install a notifier or run App Center as root.
+runtime dependencies. It does not autostart a notifier or run App Center as root.
 Build dependencies must already be installed; the script does not use sudo.
 Existing unmanaged source installs need a file backup before package adoption;
 do not bypass conflicts with `--overwrite '*'`. Direct `make install` refuses to
@@ -663,12 +664,51 @@ web/token login are not yet implemented.
 The desktop entry accepts URLs with `%U`. A per-user socket forwards new files
 and links to the existing App Center window, keeping one session's queue.
 
+## Background app queue
+
+Installed launches activate `flufflinux-appcenter.service` in the current user's
+systemd session. The service owns the window and existing unprivileged Flatpak
+workers; it is **not a root daemon**, an update checker, or a login autostart.
+Closing the window hides it while pending work finishes. Starting App Center
+again (including a Discover alias) reconnects to that same queue. An idle,
+closed service exits automatically after a brief notification-delivery grace
+period. Logging out, rebooting, or crashing is not a resumable-queue feature.
+
+Only a genuinely closed window enables the App Center tray item and KDE
+`KUiServerV2JobTracker` progress notifications. Minimizing does not. Reopening
+silently removes those progress views without cancelling transactions or
+reporting false success. The tray's Open action returns to App Center, including
+any pending confirmation; background work never auto-approves a new prompt.
+Native KDE jobs report the same overall percent, transfer size and speed as the
+in-window queue. Waiting jobs are not shown as actively downloading. Success,
+failure and cancellation use KDE's native completion semantics.
+
+Plasma owns notification positioning and fullscreen/Do Not Disturb suppression.
+No critical urgency, attention-requesting tray state or forced popup is used.
+The standard KDE suspend inhibitor is requested whenever an installation,
+update or confirmed removal is active/queued, whether the window is open or
+closed. It is released when that work ends, including failure/cancellation, and
+the D-Bus connection cleans it up on process exit. KDE's own power-management
+policy (including its short activation grace period and user overrides) still
+applies; screen locking and display blanking are not inhibited.
+
+Regression tests: `sh tests/run_background.sh` uses real manager/controller/KDE
+libraries with isolated fake workers, job-view service and power service under
+`dbus-run-session`. For actual screenshots on the disposable KDE VM,
+`APPCENTER_MUTATING_TESTS=1 python3 tests/integration/background_live.py` builds
+and installs a real test Flatpak from a rate-limited localhost repository in a
+fresh isolated installation. Add `--fullscreen` to verify KDE's inhibited state,
+or `--desktop` to temporarily show the desktop for clean screenshots and restore
+the other windows afterward.
+Both runs retain their test repositories, logs and actual Spectacle screenshots;
+they never change regular user/system Flatpaks.
+
 ## Supported platform and dependencies
 
 Fluff Linux (Arch-based), KDE Plasma 6, Wayland. No macOS or Windows builds.
 
 ```sh
-sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree polkit gzip make desktop-file-utils gtk-update-icon-cache kservice kirigami xdg-utils plasma-integration xdg-desktop-portal xdg-desktop-portal-kde
+sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree polkit gzip make desktop-file-utils gtk-update-icon-cache kservice kirigami xdg-utils plasma-integration xdg-desktop-portal xdg-desktop-portal-kde kcoreaddons kjobwidgets kstatusnotifieritem systemd
 cargo run
 ```
 

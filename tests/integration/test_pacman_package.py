@@ -18,12 +18,20 @@ assert values["packager"] == ["FluffNet LLC"]
 for key in ("conflict", "replaces"):
     assert set(values[key]) == {"discover", "flufflinux-discover"}, values
 assert "flufflinux-update" in values["depend"]
+assert "kjobwidgets>=6.18" in values["depend"]
+assert "kstatusnotifieritem" in values["depend"]
 assert values["backup"] == ["etc/flufflinux-appcenter/exclusions.conf"]
 with tempfile.TemporaryDirectory(prefix="appcenter-package-test-") as temporary:
     root = Path(temporary)
     subprocess.run(["bsdtar", "-xf", package, "-C", root], check=True)
     assert not (root / "etc/xdg/mimeapps.list").exists(), "shared MIME defaults must not be package-owned"
     assert not (root / "etc/xdg/autostart").exists(), "do not inherit Discover's notifier"
+    unit = (root / "usr/lib/systemd/user/flufflinux-appcenter.service").read_text()
+    assert "ExecStart=/usr/bin/flufflinux-appcenter" in unit
+    assert "FLUFF_APP_CENTER_SESSION_SERVICE=1" in unit
+    assert "PartOf=graphical-session.target" in unit
+    assert "Restart=no" in unit and "[Install]" not in unit
+    assert "User=root" not in unit
     assert not (root / "usr/bin/app-center").is_symlink()
     assert not (root / "usr/bin/app-center").exists()
     for name in ("plasma-discover", "discover", "flufflinux-discover"):

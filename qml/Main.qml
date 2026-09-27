@@ -135,9 +135,6 @@ ApplicationWindow {
         function onInputError(message) { inputError.text = message; errorDialog.open() }
         function onCatalogChanged() { window.catalog = window.backend.catalog }
     }
-    onClosing: function(close) {
-        if (backend && backend.busy) { close.accepted = false; closeDialog.open() }
-    }
     function showDownloads() {
         if (stack.currentItem.objectName !== "downloadsPage")
             stack.push(downloadsPage)
@@ -279,21 +276,6 @@ ApplicationWindow {
             onAccepted: errorDialog.accept()
         }
         contentItem: Label { id: inputError; wrapMode: Text.Wrap; textFormat: Text.PlainText }
-    }
-    Dialog {
-        id: closeDialog
-        anchors.centerIn: parent; width: Math.min(window.width - 48, 520)
-        title: qsTr("An operation is still running")
-        modal: true; standardButtons: Dialog.Ok
-        footer: DialogButtonBox {
-            standardButtons: Dialog.Ok
-            delegate: FluffButton {}
-            onAccepted: closeDialog.accept()
-        }
-        contentItem: ColumnLayout {
-            Label { Layout.fillWidth: true; wrapMode: Text.WordWrap; text: qsTr("Please wait for completion, or cancel the operations before closing App Center. Finished installations stay in this session’s queue history.") }
-            FluffButton { text: qsTr("Cancel operations"); onClicked: { backend.cancelAll(); closeDialog.close() } }
-        }
     }
     DropArea {
         anchors.fill: parent
