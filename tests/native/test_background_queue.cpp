@@ -64,6 +64,13 @@ static void send(const QJsonObject &event) { std::cout << QJsonDocument(event).t
 
 int main(int argc, char **argv) {
     if (argc == 2 && QByteArray(argv[1]) == "--catalog") { std::cout << "[]"; return 0; }
+    if (argc == 3 && QByteArray(argv[1]) == "--updates-worker") {
+        const QString ref = "app/org.example.Update/x86_64/stable";
+        send({{"type", "updates"}, {"updates", QJsonArray{QJsonObject{
+            {"key", "user:" + ref}, {"id", "org.example.Update"}, {"name", "Update test"},
+            {"flatpakRef", ref}, {"installation", "user"}, {"plan", QJsonArray{}}}}}});
+        return 0;
+    }
     if (argc == 3 && QByteArray(argv[1]) == "--transaction-worker") {
         QCoreApplication worker(argc, argv);
         const auto request = QJsonDocument::fromJson(argv[2]).object();
@@ -121,6 +128,7 @@ int main(int argc, char **argv) {
     assert(background.closed() && !window.isVisible() && background.trackedJobs() == 1);
     assert(desktop.views.first().value("totalBytes").toULongLong() == 1048576);
     assert(desktop.views.first().value("percent").toUInt() == 45);
+    waitFor([&] { return desktop.views.first().value("title") == "Installing 1/2: org.example.A"; });
     const auto firstElapsed = desktop.views.first().value("elapsedTime").toLongLong();
     assert(firstElapsed >= 150);
     assert(524288 * 1000 / firstElapsed > 0); // Plasma's average bytes/second.
@@ -157,6 +165,7 @@ int main(int argc, char **argv) {
     waitFor([&] { return !manager.review().isEmpty(); }); // Hidden reviews are never auto-approved.
     manager.answerReview(manager.review().value("token").toInt(), true);
     waitFor([&] { return background.trackedJobs() == 1 && desktop.inhibits == 4; });
+    waitFor([&] { return desktop.views.size() == 1 && desktop.views.first().value("title") == "Removing Remove"; });
     write(temp.filePath("org.example.Remove"), "ok");
     waitFor([&] { return desktop.releases == 4 && !manager.busy(); });
     window.show();
@@ -178,18 +187,27 @@ int main(int argc, char **argv) {
     write(temp.filePath("org.example.Batch1"), "ok");
     waitFor([&] { return batchJob(2).value("receivedBytes").toInt() > 0; });
     assert(batchJob(2).value("queuePosition").toInt() == 2 && batchJob(2).value("queueTotal").toInt() == 5);
+    waitFor([&] { return desktop.views.size() == 1 && desktop.views.first().value("title") == "Installing 2/5: org.example.Batch2"; });
+    const auto runningView = desktop.views.firstKey();
+    const int createdBeforeAppend = desktop.created;
+    install("org.example.Batch6");
+    assert(batchJob(2).value("queuePosition").toInt() == 2 && batchJob(2).value("queueTotal").toInt() == 6);
+    assert(batchJob(6).value("queued").toBool() && batchJob(6).value("queuePosition").toInt() == 6);
+    waitFor([&] { return desktop.views.value(runningView).value("title") == "Installing 2/6: org.example.Batch2"; });
+    assert(desktop.created == createdBeforeAppend); // Update in place, never restart the notification/job.
     manager.clearDownloadHistory();
-    assert(batchJob(2).value("queuePosition").toInt() == 2 && batchJob(2).value("queueTotal").toInt() == 5);
+    assert(batchJob(2).value("queuePosition").toInt() == 2 && batchJob(2).value("queueTotal").toInt() == 6);
     manager.cancelJob(batchJob(5).value("index").toInt());
-    assert(batchJob(2).value("queuePosition").toInt() == 2 && batchJob(2).value("queueTotal").toInt() == 4);
+    assert(batchJob(2).value("queuePosition").toInt() == 2 && batchJob(2).value("queueTotal").toInt() == 5);
     for (int i = 2; i <= 4; ++i) write(temp.filePath(QString("org.example.Batch%1").arg(i)), "ok");
+    write(temp.filePath("org.example.Batch6"), "ok");
     waitFor([&] { return !manager.busy() && !background.inhibiting(); });
     waitFor([&] { return desktop.summaries.size() == 2; });
-    assert(desktop.summaries.last().count(" - Installed") == 4);
+    assert(desktop.summaries.last().count(" - Installed") == 5);
     assert(desktop.summaries.last().contains("org.example.Batch5 - Cancelled"));
     assert(desktop.summaries.last().contains("Test &lt;b&gt;&amp; Four - Installed"));
     const auto summaryLines = desktop.summaries.last().split('\n');
-    assert(summaryLines.size() == 5);
+    assert(summaryLines.size() == 6);
     for (int i = 0; i < summaryLines.size(); ++i)
         assert(summaryLines[i].startsWith(QString::number(i + 1) + ". "));
     background.synchronize(); QCoreApplication::processEvents(); assert(desktop.summaries.size() == 2);
@@ -198,6 +216,14 @@ int main(int argc, char **argv) {
     write(temp.filePath("org.example.Open1"), "ok"); write(temp.filePath("org.example.Open2"), "ok");
     waitFor([&] { return !manager.busy() && !background.inhibiting(); });
     window.close(); QCoreApplication::processEvents(); assert(desktop.summaries.size() == 2);
+    window.show();
+    manager.checkForUpdates();
+    waitFor([&] { return manager.updates().value("state") == "ready"; });
+    manager.installSelectedUpdates(); window.close();
+    waitFor([&] { return desktop.views.size() == 1 && desktop.views.first().value("title") == "Updating Update test"; });
+    write(temp.filePath("org.example.Update"), "ok");
+    waitFor([&] { return !manager.busy() && desktop.views.isEmpty(); });
+    assert(desktop.results.last() == 0);
     window.show();
     std::cout << "PASS: close/reopen/minimize, real manager queue, one running vs queued view, exact progress and continuous average-speed timer, success/failure/cancel/crash, hidden removal confirmation, suspend inhibit/release, batch 2/5 and history/cancellation accounting, escaped once-only closed-window summary\n";
 }

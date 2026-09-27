@@ -110,6 +110,34 @@ TestCase {
         mouseClick(clear)
         compare(findChild(stack().currentItem, "downloadJobs").count, 0)
     }
+    function test_action_labels_data() {
+        const cases = []
+        for (const action of ["install", "update"])
+            for (const state of ["running", "queued", "complete", "failed"])
+                cases.push({tag: action + "-" + state, action: action, state: state})
+        return cases
+    }
+    function test_action_labels(data) {
+        backend.jobs = [Object.assign({}, job, {action: data.action,
+            active: data.state === "running" || data.state === "queued",
+            queued: data.state === "queued", failed: data.state === "failed"})]
+        compare(findChild(card(), "downloadJobAction").text,
+                data.action === "update" ? "Action: Update" : "Action: Install")
+        verify(findChild(card(), "downloadJobAction").visible)
+    }
+    function test_adding_to_live_queue_updates_count_without_replacing_card() {
+        const running = Object.assign({}, job, {queuePosition: 2, queueTotal: 5})
+        backend.jobs = [running]
+        const originalCard = card()
+        compare(findChild(originalCard, "queuePositionLabel").text, "App 2/5")
+        backend.jobs = [Object.assign({}, running, {queueTotal: 6}),
+            Object.assign({}, job, {id: "org.example.Added", index: 9, name: "Added app", queued: true,
+                queuePosition: 6, queueTotal: 6, progress: 0})]
+        compare(card(), originalCard)
+        compare(findChild(card(), "queuePositionLabel").text, "App 2/6")
+        compare(findChild(stack().currentItem, "downloadJobs").count, 2)
+        compare(findChild(card(), "downloadBytesLabel").text, "128.00 MiB / 512.00 MiB (2.30 MiB/s)")
+    }
     function test_clear_history_icon_and_header_alignment_data() {
         return [{tag: "wide", width: 1180}, {tag: "narrow", width: 720}]
     }

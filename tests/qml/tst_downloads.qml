@@ -25,6 +25,7 @@ TestCase {
         const row = findChild(stack.currentItem, "downloadJobs").itemAt(0)
         const icon = findChild(row, "downloadAppIcon")
         const title = findChild(row, "downloadAppName")
+        const textColumn = findChild(row, "downloadAppText")
         tryCompare(icon, "status", Image.Ready)
         compare(icon.source.toString(), main.iconSource(artwork))
         compare(icon.width, 56)
@@ -32,8 +33,10 @@ TestCase {
         compare(icon.fillMode, Image.PreserveAspectFit)
         const iconPosition = icon.mapToItem(row, 0, 0)
         const titlePosition = title.mapToItem(row, 0, 0)
+        const textPosition = textColumn.mapToItem(row, 0, 0)
         verify(iconPosition.x + icon.width < titlePosition.x, "Icon must sit beside, not over, the title")
-        verify(Math.abs(iconPosition.y + icon.height / 2 - titlePosition.y - title.height / 2) < 1)
+        verify(Math.abs(iconPosition.y + icon.height / 2 - textPosition.y - textColumn.height / 2) < 1,
+               "Icon must be centered beside the title, publisher and action group")
         // Invalid local artwork gets a themed fallback, then a new source
         // recovers automatically rather than keeping the previous error.
         queue.jobs = [Object.assign(job("Missing", 0, data.active, data.failed), {icon: "file:///nonexistent/appcenter-test-icon.png"})]

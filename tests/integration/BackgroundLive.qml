@@ -11,6 +11,7 @@ AppCenter.Main {
     property bool fullscreenTest: false
     property bool batchTest: false
     property bool reopenTest: false
+    property bool appendTest: false
     property int reopenStage: 0
     property int retainedJobIndex: -1
     property bool secondTransferLogged: false
@@ -26,7 +27,8 @@ AppCenter.Main {
             const jobs = main.backend.jobs.filter(job => job.id.startsWith("org.flufflinux.BackgroundTest"))
             const failed = jobs.find(job => job.failed)
             if (failed) { console.error("BACKGROUND_FAIL: " + failed.error); Qt.exit(4); return }
-            const second = jobs.find(job => job.active && job.receivedBytes > 0 && job.queuePosition === 2 && job.queueTotal === 5)
+            const second = jobs.find(job => job.active && job.receivedBytes > 0 && job.queuePosition === 2
+                && (job.queueTotal === 5 || (main.appendTest && job.queueTotal === 6)))
             if (second && !main.secondTransferLogged) {
                 main.secondTransferLogged = true
                 console.info("BACKGROUND_TRANSFER_2_OF_5: " + JSON.stringify(second))
@@ -36,10 +38,20 @@ AppCenter.Main {
                     main.retainedJobIndex = second.index
                     main.reopenStage = 1
                     main.showNormal(); main.requestActivate(); main.showDownloads()
-                    console.info("BACKGROUND_REOPEN: " + JSON.stringify(jobs))
+                    if (main.appendTest) {
+                        const added = main.catalog.find(app => app.id.replace(/\.desktop$/, "") === "org.flufflinux.BackgroundTest.Item6")
+                        if (!added) { console.error("BACKGROUND_FAIL: sixth app missing"); Qt.exit(9); return }
+                        main.backend.installApp(added)
+                        const running = main.backend.jobs.find(job => job.index === main.retainedJobIndex)
+                        if (running.queuePosition !== 2 || running.queueTotal !== 6) {
+                            console.error("BACKGROUND_FAIL: append did not change 2/5 to 2/6"); Qt.exit(10); return
+                        }
+                    }
+                    console.info("BACKGROUND_REOPEN: " + JSON.stringify(main.backend.jobs))
                 } else if (main.reopenStage === 1 && second.receivedBytes >= 16 * 1024 * 1024) {
-                    if (second.index !== main.retainedJobIndex || jobs.length !== 5
-                            || jobs.filter(job => job.queued).length !== 3) {
+                    const total = main.appendTest ? 6 : 5
+                    if (second.index !== main.retainedJobIndex || jobs.length !== total
+                            || jobs.filter(job => job.queued).length !== total - 2) {
                         console.error("BACKGROUND_FAIL: queue was not retained on reopen"); Qt.exit(7); return
                     }
                     main.reopenStage = 2; main.close()
@@ -75,7 +87,7 @@ AppCenter.Main {
                     console.error("BACKGROUND_FAIL: fixture already installed"); Qt.exit(2); return
                 }
                 const apps = main.batchTest ? main.catalog.filter(app => app.id.startsWith("org.flufflinux.BackgroundTest.Item"))
-                    .sort((a, b) => a.id.localeCompare(b.id)) : [main.testApp]
+                    .sort((a, b) => a.id.localeCompare(b.id)).slice(0, 5) : [main.testApp]
                 if (main.batchTest && apps.length !== 5) { console.error("BACKGROUND_FAIL: expected five apps"); Qt.exit(6); return }
                 main.testApp = apps[0]
                 apps.forEach(app => main.backend.installApp(app))

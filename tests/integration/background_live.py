@@ -6,6 +6,7 @@ Leaves the fixture, journal and actual KDE screenshots in the printed folder.
 Run inside the KDE session (e.g. systemd-run --user --wait --pipe).
 Use --details for a longer transfer, allowing inspection of the expanded graph.
 Use --reopen to verify the same five-app queue survives a close/open/close cycle.
+Use --append to add app 6 while app 2 is running and capture both 2/6 displays.
 """
 import functools
 import gzip
@@ -49,10 +50,13 @@ def main():
     print("FIXTURE", root, flush=True)
     (root / "runtime").mkdir(mode=0o700)
     (root / "config").mkdir()
-    reopen = "--reopen" in sys.argv
+    append = "--append" in sys.argv
+    reopen = "--reopen" in sys.argv or append
     batch = "--batch" in sys.argv or reopen
-    apps = [APP + f".Item{i}" for i in range(1, 6)] if batch else [APP]
-    if reopen:
+    apps = [APP + f".Item{i}" for i in range(1, 7 if append else 6)] if batch else [APP]
+    if append:
+        qml = "BackgroundAppend.qml"
+    elif reopen:
         qml = "BackgroundReopen.qml"
     elif batch:
         qml = "BackgroundBatchFullscreen.qml" if "--fullscreen" in sys.argv else "BackgroundBatch.qml"

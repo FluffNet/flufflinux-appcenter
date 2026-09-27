@@ -1,7 +1,35 @@
 # Background queue validation - 2026-09-27
 
 Tested on the Fluff Linux KDE 6 Wayland VM. Public version remains
-`2026.09 (Beta)`; pacman package revision is `2026.9.0beta-6`.
+`2026.09 (Beta)`; pacman package revision is `2026.9.0beta-7`.
+
+## Action labels and extending a running queue
+
+- Queue cards now show `Action: Install` or `Action: Update` under the publisher,
+  including queued, running, completed and failed entries. Removals remain
+  outside Queue and its badge, as requested.
+- Native manager/KDE tracker regression tests verify Installing, Updating and
+  Removing titles. While app 2 runs, adding app 6 updates the original native
+  notification from `2/5` to `2/6`, without creating another notification or
+  restarting the job. Clearing history preserves that count; cancelling a
+  queued entry reduces the denominator.
+- The QML regression verifies that the same card survives `2/5` to `2/6`, its
+  transfer measurements remain unchanged, and the sixth queued card is added.
+  Icon alignment now checks the complete title/publisher/action text group.
+- A real isolated `--append` run started five Flatpak installations, reopened
+  App Center during app 2, added app 6, then closed App Center again. Actual
+  screenshots show `App 2/6` in Queue and `Installing 2/6: Test App 2` in KDE.
+  All six installed successfully, one numbered six-app summary appeared, and
+  the sleep inhibitor was released. Regular Flatpak installations were untouched.
+- The live fixture is retained at
+  `/home/mai/appcenter-capture.8BaprY/appcenter-background-live-7sqgtetn`.
+- Final regression: 24 QML suites / 655 cases passed with zero failures, including
+  all eight install/update action-state combinations. The native background
+  suite, 26 Rust application tests, 2 source-style tests and package archive
+  validation also passed.
+- Revision 7 was installed and reopened through the normal user service.
+  Package integrity reports 82 files with zero altered files. The exclusions
+  checksum and four regular Flatpak installations remain unchanged.
 
 ## Average speed, filter contrast and text follow-up
 

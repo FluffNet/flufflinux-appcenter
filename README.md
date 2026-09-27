@@ -539,8 +539,10 @@ for Discord and AAT, and leaves AAT's page open.
   local metadata shows unavailable sizes, never a fake zero. Installation still
   resolves the current plan normally, so actual transfers can differ from the
   repository's published estimates.
-- Queue (formerly Downloads) keeps this session's app installations, overall progress, and
-  errors, with each app's icon beside its name (and a themed fallback when
+- Queue (formerly Downloads) keeps this session's app installations and updates,
+  overall progress and errors. Each card identifies its action as Install or
+  Update, including queued, completed and failed entries. Each app's icon is
+  beside its name (with a themed fallback when
   artwork is unavailable). Cancelled jobs disappear immediately from both Queue and the app page.
   Source additions and file/source preparation never appear, including failures;
   their errors use the source/input dialog instead. Opening a local Flatpak only
@@ -684,6 +686,11 @@ in-window queue. Multi-app batches show the current item's position, such as
 `Installing 2/5: Telegram`, alongside its own progress bar. The same batch
 position is shown above in-app progress bars. Old session history is not counted,
 clearing history does not reset the position, and cancelled items leave the total.
+Adding an installation while the queue is running updates the total immediately
+in both places, for example from `2/5` to `2/6`, without restarting the active
+transaction or replacing its native notification. Native notifications identify
+all three actions as Installing, Updating or Removing. Removals stay outside the
+Queue page and badge; their in-app progress remains in Installed and app details.
 Waiting jobs are not shown as actively downloading. Success,
 failure and cancellation use KDE's native completion semantics. A closed-window
 multi-app batch produces one final KDE summary listing each app as installed,
@@ -707,8 +714,10 @@ and installs a real test Flatpak from a rate-limited localhost repository in a
 fresh isolated installation. Add `--fullscreen` to verify KDE's inhibited state,
 or `--desktop` to temporarily show the desktop for clean screenshots and restore
 the other windows afterward. `--batch` installs five isolated apps and captures
-the second app's real `2/5` progress.
-Both runs retain their test repositories, logs and actual Spectacle screenshots;
+the second app's real `2/5` progress. `--reopen` tests the same queue surviving a
+close/open/close cycle. `--append` adds a sixth app during the second transfer,
+captures `2/6` in Queue and KDE, and verifies all six apps finish.
+These runs retain their test repositories, logs and actual Spectacle screenshots;
 they never change regular user/system Flatpaks.
 
 ## Supported platform and dependencies

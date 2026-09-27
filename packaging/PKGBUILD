@@ -1,7 +1,7 @@
 # Generated source archive/checksum is supplied by scripts/build-package.sh.
 pkgname=flufflinux-appcenter
 pkgver=2026.9.0beta
-pkgrel=6
+pkgrel=7
 pkgdesc='Native Flatpak App Center for Fluff Linux'
 arch=('x86_64')
 url='https://github.com/FluffNet/flufflinux-appcenter'

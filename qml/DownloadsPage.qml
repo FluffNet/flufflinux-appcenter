@@ -136,9 +136,18 @@ Page {
                                         icon: modelData.icon || ""
                                     }
                                     ColumnLayout {
+                                        objectName: "downloadAppText"
                                         Layout.fillWidth: true; spacing: 5
                                         Label { objectName: "downloadAppName"; text: modelData.name; textFormat: Text.PlainText; wrapMode: Text.Wrap; font.pixelSize: 20; font.bold: true; color: window.textColor; Layout.fillWidth: true }
                                         AppPublisher { objectName: "downloadAppPublisher"; app: downloadCard.detailsApp; Layout.fillWidth: true }
+                                        Label {
+                                            objectName: "downloadJobAction"
+                                            Layout.fillWidth: true
+                                            text: modelData.action === "uninstall" ? qsTr("Action: Remove")
+                                                : modelData.action === "update" ? qsTr("Action: Update") : qsTr("Action: Install")
+                                            color: window.textColor
+                                            wrapMode: Text.Wrap
+                                        }
                                     }
                                 }
                                 HoverHandler { cursorShape: detailsButton.enabled ? Qt.PointingHandCursor : Qt.ArrowCursor }
