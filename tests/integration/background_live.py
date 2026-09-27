@@ -4,6 +4,8 @@
 Uses a new isolated Flatpak installation and a localhost-only test repository.
 Leaves the fixture, journal and actual KDE screenshots in the printed folder.
 Run inside the KDE session (e.g. systemd-run --user --wait --pipe).
+Use --details for a longer transfer, allowing inspection of the expanded graph.
+Use --reopen to verify the same five-app queue survives a close/open/close cycle.
 """
 import functools
 import gzip
@@ -47,9 +49,12 @@ def main():
     print("FIXTURE", root, flush=True)
     (root / "runtime").mkdir(mode=0o700)
     (root / "config").mkdir()
-    batch = "--batch" in sys.argv
+    reopen = "--reopen" in sys.argv
+    batch = "--batch" in sys.argv or reopen
     apps = [APP + f".Item{i}" for i in range(1, 6)] if batch else [APP]
-    if batch:
+    if reopen:
+        qml = "BackgroundReopen.qml"
+    elif batch:
         qml = "BackgroundBatchFullscreen.qml" if "--fullscreen" in sys.argv else "BackgroundBatch.qml"
     else:
         qml = "BackgroundFullscreen.qml" if "--fullscreen" in sys.argv else "BackgroundLive.qml"
@@ -75,7 +80,7 @@ def main():
         (payload / "bin/fixture").chmod(0o755)
         if not runtime:
             number = apps.index(app_id) + 1
-            size = 32 if not batch or number == 2 else 1
+            size = (96 if "--details" in sys.argv or reopen else 32) if not batch or number == 2 else 1
             name = f"Test App {number}" if batch else "App Center Test App"
             (payload / "test-payload.bin").write_bytes(os.urandom(size * 1024 * 1024))
             metadata = f'''<component type="desktop-application"><id>{app_id}</id><name>{name}</name>
@@ -110,11 +115,19 @@ def main():
     started = time.monotonic()
     captured = False
     showing_desktop = None
+    cycle_captures = set()
     try:
         while time.monotonic() - started < 180:
             log = run("journalctl", "--user", "-u", unit, "-o", "cat", "--no-pager")
             if "BACKGROUND_FAIL" in log:
                 raise AssertionError(log)
+            for marker, filename in [("BACKGROUND_REOPEN:", "background-reopened.png"),
+                                     ("BACKGROUND_RECLOSE:", "background-reclosed.png")]:
+                if reopen and marker in log and marker not in cycle_captures:
+                    time.sleep(.5)
+                    run("spectacle", "-b", "-n", "-f", "-o", str(root / filename))
+                    cycle_captures.add(marker)
+                    print("QUEUE_CYCLE_CAPTURE", filename, flush=True)
             marker = "BACKGROUND_TRANSFER_2_OF_5" if batch else "BACKGROUND_TRANSFER"
             if marker in log and not captured:
                 if "--desktop" in sys.argv and "--fullscreen" not in sys.argv:
@@ -139,6 +152,8 @@ def main():
                 (root / "journal.txt").write_text(log)
                 installed = run("flatpak", "list", "--user", "--app", "--columns=application", env=env).splitlines()
                 assert all(app_id in installed for app_id in apps), installed
+                if reopen:
+                    assert len(cycle_captures) == 2, cycle_captures
                 inhibitors = run("qdbus6", "--literal", "org.kde.Solid.PowerManagement", "/org/kde/Solid/PowerManagement/PolicyAgent",
                                  "org.kde.Solid.PowerManagement.PolicyAgent.ListInhibitions")
                 assert "App Center" not in inhibitors, inhibitors

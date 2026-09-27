@@ -10,6 +10,9 @@ AppCenter.Main {
     property int stage: 0
     property bool fullscreenTest: false
     property bool batchTest: false
+    property bool reopenTest: false
+    property int reopenStage: 0
+    property int retainedJobIndex: -1
     property bool secondTransferLogged: false
     property var testApp: ({id: "org.flufflinux.BackgroundTest", name: "App Center Test App", remote: "background-test",
                             developer: "FluffNet LLC", summary: "Isolated background installation test"})
@@ -28,7 +31,25 @@ AppCenter.Main {
                 main.secondTransferLogged = true
                 console.info("BACKGROUND_TRANSFER_2_OF_5: " + JSON.stringify(second))
             }
+            if (main.reopenTest && second) {
+                if (main.reopenStage === 0 && second.receivedBytes >= 8 * 1024 * 1024) {
+                    main.retainedJobIndex = second.index
+                    main.reopenStage = 1
+                    main.showNormal(); main.requestActivate(); main.showDownloads()
+                    console.info("BACKGROUND_REOPEN: " + JSON.stringify(jobs))
+                } else if (main.reopenStage === 1 && second.receivedBytes >= 16 * 1024 * 1024) {
+                    if (second.index !== main.retainedJobIndex || jobs.length !== 5
+                            || jobs.filter(job => job.queued).length !== 3) {
+                        console.error("BACKGROUND_FAIL: queue was not retained on reopen"); Qt.exit(7); return
+                    }
+                    main.reopenStage = 2; main.close()
+                    console.info("BACKGROUND_RECLOSE: " + JSON.stringify(jobs))
+                }
+            }
             if (!jobs.length || jobs.some(job => job.active)) return
+            if (main.reopenTest && main.reopenStage !== 2) {
+                console.error("BACKGROUND_FAIL: reopen cycle did not run"); Qt.exit(8); return
+            }
             console.info("BACKGROUND_COMPLETE: " + JSON.stringify(jobs)); main.stage = 3
         }
     }

@@ -139,7 +139,7 @@ Page {
                 Layout.row: page.compact ? 1 : 0; Layout.column: page.compact ? 0 : 1
                 Layout.columnSpan: page.compact ? 2 : 1
                 Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
-                text: qsTr("%1 selected — Total size: %2").arg(page.selected.length).arg(page.sizeText(page.selectedBytes))
+                text: qsTr("%1 selected - Total size: %2").arg(page.selected.length).arg(page.sizeText(page.selectedBytes))
                 HoverHandler { id: downloadSummaryHover }
                 ToolTip.visible: downloadSummaryHover.hovered
                 ToolTip.text: qsTr("Required components update with selected apps. Shared components are counted once; cached data may reduce the download.")

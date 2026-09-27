@@ -20,7 +20,14 @@ public:
         setProperty("desktopFileName", "org.kde.discover");
         setProperty("immediateProgressReporting", true);
     }
-    void start() override {}
+    void start() override { startElapsedTimer(); }
+    void detach(KUiServerV2JobTracker *tracker) {
+        // Discard only the notification. Keep this job's timer running while
+        // the window is open, so reopening/closing never resets the average.
+        setError(KilledJobError);
+        tracker->unregisterJob(this);
+        setError(NoError);
+    }
     void update(const QVariantMap &job) {
         const auto name = job.value("name", job.value("id")).toString();
         const auto action = job.value("action").toString();
@@ -106,10 +113,10 @@ bool BackgroundQueue::eventFilter(QObject *object, QEvent *event) {
 }
 
 void BackgroundQueue::detachJobs() {
-    const auto jobs = m_jobs; m_jobs.clear();
+    const auto registered = m_registeredJobs; m_registeredJobs.clear();
     // KDE discards cancelled proxy views. This does NOT cancel the underlying
     // worker, and does not produce a false "finished" notification on reopen.
-    for (auto job : jobs) job->finish(KJob::KilledJobError);
+    for (auto index : registered) m_jobs[index]->detach(m_tracker.get());
 }
 
 void BackgroundQueue::reportBatch() {
@@ -122,7 +129,8 @@ void BackgroundQueue::reportBatch() {
             : job.value("failed").toBool() ? tr("Failed")
             : action == "uninstall" ? tr("Removed") : action == "update" ? tr("Updated") : tr("Installed");
         // Notification bodies accept markup; app metadata must remain text.
-        lines << tr("• %1 — %2").arg(job.value("name", job.value("id")).toString(), result).toHtmlEscaped();
+        lines << tr("%1. %2 - %3").arg(lines.size() + 1)
+            .arg(job.value("name", job.value("id")).toString(), result).toHtmlEscaped();
     }
     auto message = QDBusMessage::createMethodCall("org.freedesktop.Notifications", "/org/freedesktop/Notifications",
                                                  "org.freedesktop.Notifications", "Notify");
@@ -164,6 +172,33 @@ void BackgroundQueue::synchronize() {
         if (it->value("active").toBool()) batchFinished = false;
     }
     m_power->setActive(transactions);
+    // Lifetime follows the actual operation, not the notification. In
+    // particular, time spent downloading before Close belongs in the average.
+    for (auto it = m_jobs.begin(); it != m_jobs.end();) {
+        const auto job = byIndex.value(it.key());
+        if (job.isEmpty() || !job.value("active").toBool()) {
+            const bool registered = m_registeredJobs.remove(it.key());
+            auto proxy = it.value(); it = m_jobs.erase(it);
+            if (!registered || job.isEmpty() || job.value("cancelled").toBool() || m_batchJobs.size() > 1)
+                proxy->finish(KJob::KilledJobError);
+            else proxy->complete(job);
+        } else ++it;
+    }
+    for (auto it = byIndex.cbegin(); it != byIndex.cend(); ++it) {
+        const auto &job = it.value();
+        if (!job.value("active").toBool() || job.value("queued").toBool()) continue;
+        if (!m_jobs.contains(it.key())) {
+            const int index = it.key();
+            auto proxy = new BackgroundJob(this, [this, index] { m_manager->cancelJob(index); });
+            proxy->start();
+            m_jobs.insert(index, proxy);
+        }
+        if (m_closed && !m_registeredJobs.contains(it.key())) {
+            m_registeredJobs.insert(it.key());
+            m_tracker->registerJob(m_jobs[it.key()]);
+        }
+        m_jobs[it.key()]->update(job);
+    }
     if (!m_closed) { if (batchFinished) m_batchReported = true; return; }
     if (m_manager->busy()) m_idle.stop();
     else if (!m_idle.isActive()) m_idle.start();
@@ -184,27 +219,8 @@ void BackgroundQueue::synchronize() {
     if (m_tray) {
         m_tray->setToolTip("flufflinux-appcenter", tr("App Center"), m_manager->review().isEmpty()
             ? tr("%n app operation(s) in progress", nullptr, count)
-            : tr("Confirmation needed — open App Center to continue"));
+            : tr("Confirmation needed - open App Center to continue"));
         if (!count) m_tray.reset();
-    }
-    for (auto it = m_jobs.begin(); it != m_jobs.end();) {
-        const auto job = byIndex.value(it.key());
-        if (job.isEmpty() || !job.value("active").toBool()) {
-            auto proxy = it.value(); it = m_jobs.erase(it);
-            if (job.isEmpty() || job.value("cancelled").toBool() || m_batchJobs.size() > 1)
-                proxy->finish(KJob::KilledJobError);
-            else proxy->complete(job);
-        } else ++it;
-    }
-    for (auto it = byIndex.cbegin(); it != byIndex.cend(); ++it) {
-        const auto &job = it.value();
-        if (!job.value("active").toBool() || job.value("queued").toBool()) continue;
-        if (!m_jobs.contains(it.key())) {
-            const int index = it.key();
-            auto proxy = new BackgroundJob(this, [this, index] { m_manager->cancelJob(index); });
-            m_jobs.insert(index, proxy); m_tracker->registerJob(proxy);
-        }
-        m_jobs[it.key()]->update(job);
     }
     if (batchFinished) {
         m_batchReported = true;

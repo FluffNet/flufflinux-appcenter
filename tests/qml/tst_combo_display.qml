@@ -51,7 +51,7 @@ TestCase {
         main.palette.window = data.dark ? "#202326" : "#eff0f1"
         main.palette.windowText = data.dark ? "white" : "#202326"
         const sort = findChild(page(), "installedSort")
-        compare(sort.currentIndex, 0); compare(sort.displayText, "Name: A–Z")
+        compare(sort.currentIndex, 0); compare(sort.displayText, "Name: A-Z")
         for (let i = 0; i < sort.count; ++i) {
             page().installedSortIndex = i
             compare(sort.displayText, page().installedSortOptions[i]); assertPainted(sort)
@@ -88,5 +88,60 @@ TestCase {
         tryCompare(filter.popup, "visible", false)
         tryCompare(filter, "activeFocus", false)
         compare(main.searchCategoryFilter, "Development"); assertPainted(filter)
+    }
+    function test_popup_contrast_data() {
+        const rows = []
+        for (const dark of [false, true])
+            for (const kind of ["installed", "catalog", "filter"])
+                rows.push({tag: kind + (dark ? "-dark" : "-light"), dark: dark, kind: kind})
+        return rows
+    }
+    function test_popup_contrast(data) {
+        main.palette.window = data.dark ? "#202326" : "#eff0f1"
+        main.palette.windowText = data.dark ? "white" : "#202326"
+        if (data.kind !== "installed") main.selectedCategory = "All Apps"
+        if (data.kind === "filter") main.searchText = "test"
+        const control = findChild(page(), data.kind === "installed" ? "installedSort"
+            : data.kind === "catalog" ? "catalogSort" : "searchCategoryFilter")
+        tryCompare(control, "visible", true)
+        waitForPolish(main.contentItem); waitForRendering(control)
+        mouseClick(control); tryCompare(control.popup, "opened", true)
+        const list = control.popup.contentItem
+        for (let index = 0; index < control.count; ++index) {
+            list.positionViewAtIndex(index, ListView.Contain)
+            tryVerify(() => list.itemAtIndex(index) !== null)
+            const row = list.itemAtIndex(index)
+            mouseMove(row, row.width / 2, row.height / 2)
+            tryCompare(control, "highlightedIndex", index)
+            waitForPolish(list); waitForRendering(row)
+            // Verify both the rendered label color and real pixels. A white
+            // label on a white hover surface used to be completely invisible.
+            compare(row.contentItem.color, main.textColor)
+            let shot = null
+            verify(row.grabToImage(result => shot = result))
+            tryVerify(() => shot !== null)
+            sampled.source = shot.url; tryCompare(sampled, "status", Image.Ready)
+            tryCompare(reader, "available", true)
+            const ctx = reader.getContext("2d")
+            ctx.clearRect(0, 0, reader.width, reader.height)
+            ctx.drawImage(sampled, 0, 0, row.width, row.height)
+            const pixels = ctx.getImageData(12, 8, Math.floor(row.width - 24), Math.floor(row.height - 16)).data
+            let ink = 0
+            const bg = row.background.color
+            for (let i = 0; i < pixels.length; i += 4)
+                if (Math.abs(pixels[i] / 255 - bg.r) + Math.abs(pixels[i + 1] / 255 - bg.g)
+                    + Math.abs(pixels[i + 2] / 255 - bg.b) > 0.8) ++ink
+            verify(ink > 25, data.tag + " invisible popup label: " + row.text)
+        }
+        if (data.kind === "installed") {
+            let shot = null
+            verify(list.parent.grabToImage(result => shot = result))
+            tryVerify(() => shot !== null)
+            verify(shot.saveToFile(Qt.resolvedUrl("../../target/sort-hover-" + (data.dark ? "dark" : "light") + ".png")))
+        }
+        keyClick(Qt.Key_Up)
+        compare(list.itemAtIndex(control.highlightedIndex).contentItem.color, main.textColor)
+        keyClick(Qt.Key_Escape); tryCompare(control.popup, "visible", false)
+        sampled.source = ""
     }
 }

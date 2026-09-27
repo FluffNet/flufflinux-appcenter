@@ -139,8 +139,8 @@ tooltip as the final overflow fallback. Home, category, search and Installed
 headings omit the application count.
 
 The sorting control is available on **Home and every catalog category**, with
-A–Z/Z–A, most/least popular, and newest/oldest published release. Home defaults to
-most popular. Each category starts at A–Z; its temporary choice resets when switching
+A-Z/Z-A, most/least popular, and newest/oldest published release. Home defaults to
+most popular. Each category starts at A-Z; its temporary choice resets when switching
 categories and is never written to the config. Returning from app details resumes
 the current category visit. Recommendations, search relevance and Installed sorting
 are independent. Unknown values go last in both
@@ -160,7 +160,7 @@ popularity explanation is omitted; loading/offline status remains available.
 Popularity uses Flathub's public `installs_last_month` count (last 30 days), loaded
 when Home or a category is shown with a popularity sort and cached for 24 hours. No installed-app
 list is sent. Failed requests retain saved statistics; without saved data, the
-page explicitly falls back to A–Z. Download sizes and release dates come from
+page explicitly falls back to A-Z. Download sizes and release dates come from
 local Flatpak/AppStream metadata, not per-app network queries. Download sizes
 exclude shared runtimes. None of these actions checks for app updates.
 
@@ -262,10 +262,10 @@ Missing, disabled and unreachable origins are listed as skipped, not selectable
 updates. A partial check does not claim every app is up to date. Source changes
 invalidate prior update candidates and require another explicit check.
 
-Apps and runtimes are listed A–Z (apps first), selected by default. Each row
+Apps and runtimes are listed A-Z (apps first), selected by default. Each row
 shows the installed and available version, source/branch, and download size
 including required components, labeled **Size**. The selection summary reads
-**N selected — Total size: …**. The selected total counts shared
+**N selected - Total size: …**. The selected total counts shared
 components once. Actual transfers can be smaller because of cached data,
 language subsets and deltas: initial sizes come from Flatpak's transfer estimate,
 then both the row and selected total use resolved live transfer sizes as pulls
@@ -610,7 +610,7 @@ for Discord and AAT, and leaves AAT's page open.
   apps/scopes/branches and active work alone. Failed or declined removal keeps
   the existing history.
 - Installed lists user and system applications, with version and installed size.
-  Its sorting menu offers name A–Z/Z–A, installation date newest/oldest, and size
+  Its sorting menu offers name A-Z/Z-A, installation date newest/oldest, and size
   largest/smallest. Sizes sort by exact deployed bytes, not rounded display text;
   unknown sizes/dates sort last in either direction. Filtering keeps the selected
   order, and empty catalog/Installed results say “No results.” Real loading errors
@@ -932,7 +932,7 @@ Sort and search-filter dropdowns own their label, arrow and background together.
 KDE normally paints the non-editable label and arrow in its native background;
 overriding only the background made both disappear. The shared control preserves
 standard ComboBox selection, keyboard and accessibility behavior, and defaults
-Installed sorting to Name: A–Z. The previous KDE keyboard-menu test failure is
+Installed sorting to Name: A-Z. The previous KDE keyboard-menu test failure is
 also resolved. `tst_combo_display.qml` checks actual painted label/arrow pixels
 for every sort and category choice in dark/light themes, plus keyboard and mouse
 selection. `TextDropdownSmoke.qml` captures both selected controls and the exact

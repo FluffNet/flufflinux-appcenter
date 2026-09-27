@@ -112,18 +112,26 @@ int main(int argc, char **argv) {
     install("org.example.A"); install("org.example.B");
     waitFor([&] { return desktop.inhibits == 1 && manager.jobs()[0].toMap().value("receivedBytes").toInt() == 524288; });
     assert(background.inhibiting() && background.trackedJobs() == 0 && desktop.created == 0);
+    QElapsedTimer operationTime; operationTime.start();
+    // Simulate downloading with the window open before creating a native view.
+    while (operationTime.elapsed() < 150) { QCoreApplication::processEvents(); QThread::msleep(5); }
     window.showMinimized(); QCoreApplication::processEvents(); assert(!background.closed());
     window.showNormal(); window.close();
     waitFor([&] { return desktop.views.size() == 1 && desktop.views.first().value("processedBytes").toULongLong() == 524288; });
     assert(background.closed() && !window.isVisible() && background.trackedJobs() == 1);
     assert(desktop.views.first().value("totalBytes").toULongLong() == 1048576);
     assert(desktop.views.first().value("percent").toUInt() == 45);
+    const auto firstElapsed = desktop.views.first().value("elapsedTime").toLongLong();
+    assert(firstElapsed >= 150);
+    assert(524288 * 1000 / firstElapsed > 0); // Plasma's average bytes/second.
     assert(manager.jobs()[0].toMap().value("queuePosition").toInt() == 1);
     assert(manager.jobs()[1].toMap().value("queuePosition").toInt() == 2);
     assert(manager.jobs()[1].toMap().value("queueTotal").toInt() == 2);
     window.show(); waitFor([&] { return desktop.views.isEmpty(); });
     assert(!background.closed() && manager.busy() && desktop.results.last() == 1 && background.inhibiting());
+    while (operationTime.elapsed() < firstElapsed + 150) { QCoreApplication::processEvents(); QThread::msleep(5); }
     window.close(); waitFor([&] { return desktop.views.size() == 1; });
+    assert(desktop.views.first().value("elapsedTime").toLongLong() >= firstElapsed + 150);
     write(temp.filePath("org.example.A"), "fail");
     waitFor([&] { return desktop.results.size() == 2 && desktop.views.size() == 1; });
     assert(desktop.results.last() == 1 && background.inhibiting() && desktop.summaries.isEmpty());
@@ -131,7 +139,7 @@ int main(int argc, char **argv) {
     waitFor([&] { return desktop.results.size() == 3 && desktop.releases == 1 && !manager.busy(); });
     waitFor([&] { return desktop.summaries.size() == 1; });
     assert(desktop.results.last() == 1 && !background.inhibiting());
-    assert(desktop.summaries.last().contains("org.example.A — Failed") && desktop.summaries.last().contains("org.example.B — Installed"));
+    assert(desktop.summaries.last() == "1. org.example.A - Failed\n2. org.example.B - Installed");
     window.show(); install("org.example.Cancel"); window.close();
     waitFor([&] { return desktop.views.size() == 1 && desktop.inhibits == 2
         && desktop.views.first().value("processedBytes").toULongLong() == 524288; });
@@ -177,9 +185,13 @@ int main(int argc, char **argv) {
     for (int i = 2; i <= 4; ++i) write(temp.filePath(QString("org.example.Batch%1").arg(i)), "ok");
     waitFor([&] { return !manager.busy() && !background.inhibiting(); });
     waitFor([&] { return desktop.summaries.size() == 2; });
-    assert(desktop.summaries.last().count(" — Installed") == 4);
-    assert(desktop.summaries.last().contains("org.example.Batch5 — Cancelled"));
-    assert(desktop.summaries.last().contains("Test &lt;b&gt;&amp; Four — Installed"));
+    assert(desktop.summaries.last().count(" - Installed") == 4);
+    assert(desktop.summaries.last().contains("org.example.Batch5 - Cancelled"));
+    assert(desktop.summaries.last().contains("Test &lt;b&gt;&amp; Four - Installed"));
+    const auto summaryLines = desktop.summaries.last().split('\n');
+    assert(summaryLines.size() == 5);
+    for (int i = 0; i < summaryLines.size(); ++i)
+        assert(summaryLines[i].startsWith(QString::number(i + 1) + ". "));
     background.synchronize(); QCoreApplication::processEvents(); assert(desktop.summaries.size() == 2);
     window.show();
     install("org.example.Open1"); install("org.example.Open2");
@@ -187,5 +199,5 @@ int main(int argc, char **argv) {
     waitFor([&] { return !manager.busy() && !background.inhibiting(); });
     window.close(); QCoreApplication::processEvents(); assert(desktop.summaries.size() == 2);
     window.show();
-    std::cout << "PASS: close/reopen/minimize, real manager queue, one running vs queued view, exact progress, success/failure/cancel/crash, hidden removal confirmation, suspend inhibit/release, batch 2/5 and history/cancellation accounting, escaped once-only closed-window summary\n";
+    std::cout << "PASS: close/reopen/minimize, real manager queue, one running vs queued view, exact progress and continuous average-speed timer, success/failure/cancel/crash, hidden removal confirmation, suspend inhibit/release, batch 2/5 and history/cancellation accounting, escaped once-only closed-window summary\n";
 }

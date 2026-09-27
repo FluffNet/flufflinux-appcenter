@@ -201,7 +201,7 @@ TestCase {
         const button = findChild(page(), "installUpdatesButton")
         compare(button.text, "Update All Apps")
         compare(page().selected.length, 2); compare(page().selectedBytes, 400)
-        compare(findChild(page(), "updatesDownloadSummary").text, "2 selected — Total size: 400 B")
+        compare(findChild(page(), "updatesDownloadSummary").text, "2 selected - Total size: 400 B")
         const alpha = findChild(page(), "selectUpdate-user:Alpha")
         mouseClick(alpha); compare(page().selected.length, 1); compare(page().selectedBytes, 300)
         compare(button.text, "Update selected apps")
@@ -358,7 +358,7 @@ TestCase {
             {ref:"shared", commit:"b", downloadBytes:200, receivedBytes:0, downloadProgress:1}]
         backend.jobs = [{key:"user:Alpha", action:"update", active:true, operations:operations}]
         compare(page().selectedBytes, 160) // 60 actual + 100 for Beta; cached shared runtime is zero.
-        compare(summary.text, "2 selected — Total size: 160 B")
+        compare(summary.text, "2 selected - Total size: 160 B")
         backend.jobs = [{key:"user:Alpha", action:"update", active:true, queued:true, operations:operations}]
         compare(page().selectedBytes, 400, "Queued values must not replace the plan")
         backend.jobs = [{key:"user:Alpha", action:"update", active:true, operations:
@@ -370,7 +370,7 @@ TestCase {
             [{ref:"shared", commit:"b", downloadBytes:200, receivedBytes:0, downloadProgress:1}]}]
         compare(page().selectedBytes, 280, "A later cache hit must not erase the shared bytes already received")
         backend.selectAllUpdates(false)
-        compare(summary.text, "0 selected — Total size: 0 B")
+        compare(summary.text, "0 selected - Total size: 0 B")
     }
     function test_download_size_labels_data() {
         return [{tag:"zero", bytes:0, text:"0 B"}, {tag:"small", bytes:1024, text:"1.00 KiB"},
@@ -468,10 +468,10 @@ TestCase {
         open(); ready()
         const dialog = findChild(page(), "appPermissionsDialog")
         dialog.app = row("Alpha", "user")
-        dialog.changes = {groups:[{id:"files", title:"File Access", icon:"folder", description:"", added:["Downloads — read and write"], removed:["Downloads — read only"]}]}
+        dialog.changes = {groups:[{id:"files", title:"File Access", icon:"folder", description:"", added:["Downloads - read and write"], removed:["Downloads - read only"]}]}
         dialog.open(); tryCompare(dialog, "opened", true)
         compare(findChild(dialog, "permissionsTitle").text, "Permission Changes - <b>Alpha</b>")
-        compare(dialog.groups[0].details, ["Added: Downloads — read and write", "Removed: Downloads — read only"])
+        compare(dialog.groups[0].details, ["Added: Downloads - read and write", "Removed: Downloads - read only"])
         mouseClick(findChild(dialog, "closePermissionsButton")); tryCompare(dialog, "visible", false)
     }
 }

@@ -1,7 +1,39 @@
-# Background queue validation — 2026-09-27
+# Background queue validation - 2026-09-27
 
 Tested on the Fluff Linux KDE 6 Wayland VM. Public version remains
-`2026.09 (Beta)`; pacman package revision is `2026.9.0beta-5`.
+`2026.09 (Beta)`; pacman package revision is `2026.9.0beta-6`.
+
+## Average speed, filter contrast and text follow-up
+
+- Fixed the native job's missing elapsed timer. It starts with the actual
+  operation, before the window closes, and survives reopening/closing the UI.
+  Only the notification is detached while the window is visible.
+- Native regression tests assert positive elapsed time and continuity across
+  reopening, in addition to the existing cancellation and queue tests below.
+- A real expanded KDE notification showed current speed 798.8 KiB/s and
+  average speed 795.0 KiB/s during an isolated transfer. The five-app run
+  completed successfully and released its sleep inhibitor.
+- Fixed light-theme popup text disappearing on hover by using matching themed
+  foreground and hover colors. Tests exercise every option in Installed,
+  catalog sorting and category filters, with mouse and keyboard, in both themes.
+  Pixel checks verify that the hovered text is actually painted and readable.
+- All authored typographic dashes were replaced with ASCII hyphens, including
+  comments, documentation and test fixtures. A Rust source-tree guard now runs
+  during package checks to reject non-ASCII dashes.
+- Completion summaries use numbered lines, such as `1. App name - Installed`.
+  Native tests check numbering, exact separators and escaped app names.
+- The real `--reopen` fixture restored all five entries while app 2 was
+  downloading, with three still queued and the original job identity unchanged.
+  Screenshots confirmed no native progress notification while open and its
+  return after closing again. The expanded average remained 795.5 KiB/s.
+  All five apps then completed with one numbered, ASCII-hyphen summary.
+- Final checks: 24 QML suites / 646 cases, 26 Rust application tests plus
+  2 source-style tests, native queue tests and real isolated update integration
+  passed. The installed package has 82 files with zero altered files; the
+  exclusions checksum and four regular Flatpak installations are unchanged.
+- Temporary storage reached its quota during a screenshot retry. Subsequent
+  live fixtures and package checks used a fresh folder on the VM's main disk;
+  this was a test-harness storage issue, not an App Center transaction failure.
 
 ## Behavior
 
@@ -78,12 +110,12 @@ is installed afterward. Regular user/system Flatpaks are not modified.
 
 Successful VM fixtures are retained for inspection/reuse:
 
-- `/tmp/appcenter-background-live-vjqa7bv9` — normal install.
-- `/tmp/appcenter-background-live-lrvu8v72` — fullscreen install.
-- `/tmp/appcenter-background-live-t8h0ldpa` — final progress/completion captures.
-- `/tmp/appcenter-background-live-sbdpfcyn` — five-app queue, 2/5 and completion.
-- `/tmp/appcenter-background-live-wf3kqyhr` — final five-app summary list.
-- `/tmp/appcenter-background-live-fu62cb_w` — five-app fullscreen summary test.
+- `/tmp/appcenter-background-live-vjqa7bv9` - normal install.
+- `/tmp/appcenter-background-live-lrvu8v72` - fullscreen install.
+- `/tmp/appcenter-background-live-t8h0ldpa` - final progress/completion captures.
+- `/tmp/appcenter-background-live-sbdpfcyn` - five-app queue, 2/5 and completion.
+- `/tmp/appcenter-background-live-wf3kqyhr` - final five-app summary list.
+- `/tmp/appcenter-background-live-fu62cb_w` - five-app fullscreen summary test.
 
 ## Installed service/legacy launch verification
 

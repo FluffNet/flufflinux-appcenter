@@ -1,4 +1,4 @@
-# Network availability validation — 2026-09-24
+# Network availability validation - 2026-09-24
 
 Tested on the KDE 6 Wayland VM, Qt 6.11.2, at 100% and 150% scaling.
 

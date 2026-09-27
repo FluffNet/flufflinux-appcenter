@@ -1,8 +1,8 @@
-# Mouse controls validation — 2026-09-26–27
+# Mouse controls validation - 2026-09-26-27
 
 Environment: Fluff Linux KDE/Wayland VM, Qt 6.11.2, KDE desktop controls.
 
-## Zoomed screenshot drag isolation — 2026-09-27
+## Zoomed screenshot drag isolation - 2026-09-27
 
 - Reproduced the actual background-grab failure using timestamped mouse events
   after a timed page drag. The picture starts panning, loses its active handler,

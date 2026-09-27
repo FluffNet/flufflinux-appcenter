@@ -41,7 +41,7 @@ inline QVariantMap parse(const QByteArray &data, bool installed = false) {
             const bool denied = value.startsWith('!');
             if (denied) value.remove(0, 1);
             auto label = labels.value(value, value);
-            result.append(denied ? tr("%1 — denied").arg(label) : label);
+            result.append(denied ? tr("%1 - denied").arg(label) : label);
         }
         return result;
     };
@@ -66,7 +66,7 @@ inline QVariantMap parse(const QByteArray &data, bool installed = false) {
         labeled(list("Context", "devices"), {{"all", tr("All devices")}, {"dri", tr("Graphics acceleration")},
             {"kvm", tr("Virtualization")}, {"shm", tr("Shared device memory")}, {"input", tr("Input devices")}, {"usb", tr("USB devices")}}));
     add("display", tr("Display Access"), "video-display", tr("Connections to the desktop display system."),
-        labeled(display, {{"wayland", tr("Wayland")}, {"x11", tr("X11 — access to other X11 windows and input")},
+        labeled(display, {{"wayland", tr("Wayland")}, {"x11", tr("X11 - access to other X11 windows and input")},
             {"fallback-x11", tr("X11 when Wayland is unavailable")}}));
     add("ipc", tr("Shared Memory Access"), "preferences-system", tr("Inter-process communication shared with the host session."),
         labeled(ipc, {{"ipc", tr("Host IPC namespace")}}));
@@ -83,7 +83,7 @@ inline QVariantMap parse(const QByteArray &data, bool installed = false) {
             {"host-root", tr("Root filesystem")}, {"xdg-desktop", tr("Desktop")}, {"xdg-documents", tr("Documents")},
             {"xdg-download", tr("Downloads")}, {"xdg-music", tr("Music")}, {"xdg-pictures", tr("Pictures")},
             {"xdg-videos", tr("Videos")}, {"xdg-public-share", tr("Public folder")}, {"xdg-templates", tr("Templates")}};
-        files.append(tr("%1 — %2").arg(names.value(path, path), mode));
+        files.append(tr("%1 - %2").arg(names.value(path, path), mode));
     }
     add("files", tr("File Access"), "folder", tr("Locations available outside the app’s private storage. Denied entries are exceptions to broader access."), files);
     add("persistent", tr("Persistent Storage"), "document-save", tr("Sandbox home locations saved in this app’s private storage, not access to your real home folder."), labeled(list("Context", "persistent"), {}));
@@ -96,7 +96,7 @@ inline QVariantMap parse(const QByteArray &data, bool installed = false) {
             g_autofree char *value = g_key_file_get_string(key, group, names[i], nullptr);
             const auto policy = QString::fromUtf8(value ? value : "");
             const QMap<QString, QString> modes{{"talk", tr("communicate")}, {"own", tr("own service name")}, {"see", tr("see service name")}, {"none", tr("denied")}};
-            details.append(tr("%1 — %2").arg(QString::fromUtf8(names[i]), modes.value(policy, policy)));
+            details.append(tr("%1 - %2").arg(QString::fromUtf8(names[i]), modes.value(policy, policy)));
         }
         add(id, title, "network-connect", description, details);
     };
@@ -108,8 +108,8 @@ inline QVariantMap parse(const QByteArray &data, bool installed = false) {
     add("sockets", tr("Other Socket Access"), "network-connect", tr("Other host connections requested by the app."),
         labeled(otherSockets, {{"ssh-auth", tr("SSH authentication agent")}, {"gpg-agent", tr("GPG agent")}, {"pcsc", tr("Smart cards")}, {"cups", tr("Printing service")}, {"inherit-wayland-socket", tr("Inherited Wayland connection")}}));
     QStringList usb;
-    for (const auto &value : list("USB Devices", "enumerable-devices")) usb.append(tr("%1 — visible to the USB portal").arg(value));
-    for (const auto &value : list("USB Devices", "hidden-devices")) usb.append(tr("%1 — hidden from the USB portal").arg(value));
+    for (const auto &value : list("USB Devices", "enumerable-devices")) usb.append(tr("%1 - visible to the USB portal").arg(value));
+    for (const auto &value : list("USB Devices", "hidden-devices")) usb.append(tr("%1 - hidden from the USB portal").arg(value));
     add("usb", tr("USB Device Portal"), "drive-removable-media-usb", tr("Which USB devices can be listed through the portal. Device access still requires portal authorization."), usb);
     // Preserve unrecognized/future context and policy entries instead of
     // silently presenting an incomplete list as 'no permissions'. Never show

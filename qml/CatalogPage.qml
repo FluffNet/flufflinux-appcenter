@@ -29,7 +29,7 @@ Page {
     readonly property var catalogSortKeys: ["name-asc", "name-desc", "popularity-desc", "popularity-asc",
         "release-desc", "release-asc"]
     readonly property var catalogSortOptions: [
-        qsTr("Name: A–Z"), qsTr("Name: Z–A"),
+        qsTr("Name: A-Z"), qsTr("Name: Z-A"),
         qsTr("Most popular: First"), qsTr("Least popular: First"),
         qsTr("Released: Newest first"), qsTr("Released: Oldest first")
     ]
@@ -39,7 +39,7 @@ Page {
             const state = window.catalogStats ? window.catalogStats.state : "unavailable"
             const cached = Object.keys(popularityCounts).length > 0
             if (state === "loading") return cached ? qsTr("Refreshing Flathub popularity; using saved counts…") : qsTr("Loading Flathub popularity…")
-            if (state === "unavailable" || state === "idle") return cached ? qsTr("Offline — using saved Flathub popularity.") : qsTr("Popularity unavailable — showing Name: A–Z.")
+            if (state === "unavailable" || state === "idle") return cached ? qsTr("Offline - using saved Flathub popularity.") : qsTr("Popularity unavailable - showing Name: A-Z.")
             return ""
         }
         return qsTr("Latest published release date. Unknown dates appear last.")
@@ -135,7 +135,7 @@ Page {
     }
     property int installedSortIndex: 0
     readonly property var installedSortOptions: [
-        qsTr("Name: A–Z"), qsTr("Name: Z–A"),
+        qsTr("Name: A-Z"), qsTr("Name: Z-A"),
         qsTr("Installed: Newest first"), qsTr("Installed: Oldest first"),
         qsTr("Size: Largest first"), qsTr("Size: Smallest first")
     ]

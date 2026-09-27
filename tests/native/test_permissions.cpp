@@ -43,16 +43,16 @@ SECRET_TOKEN=must-not-be-displayed
     assert(groups[1].toMap()["id"] == "audio");
     assert(groups[2].toMap()["id"] == "devices");
     const auto files = group(result, "files")["details"].toStringList();
-    assert(files.contains("Downloads — read only"));
-    assert(files.contains("Documents — read and write"));
-    assert(files.contains("/tmp/foo — read, write and create"));
-    assert(files.contains("/secret — denied"));
+    assert(files.contains("Downloads - read only"));
+    assert(files.contains("Documents - read and write"));
+    assert(files.contains("/tmp/foo - read, write and create"));
+    assert(files.contains("/secret - denied"));
     const auto bus = group(result, "session-bus")["details"].toStringList();
     assert(bus.contains("Unrestricted access to this bus"));
-    assert(bus.contains("hidden.service — denied"));
-    assert(bus.indexOf("a.service — own service name") < bus.indexOf("z.service — communicate"));
+    assert(bus.contains("hidden.service - denied"));
+    assert(bus.indexOf("a.service - own service name") < bus.indexOf("z.service - communicate"));
     assert(group(result, "features")["details"].toStringList().contains("future-feature"));
-    assert(group(result, "devices")["details"].toStringList().contains("Input devices — denied"));
+    assert(group(result, "devices")["details"].toStringList().contains("Input devices - denied"));
     assert(group(result, "other")["details"].toStringList().contains("test / access: !bar"));
     assert(!QJsonDocument::fromVariant(result).toJson().contains("must-not-be-displayed"));
     const auto minimal = AppPermissions::parse("[Application]\nname=org.example.Minimal\n");
@@ -63,7 +63,7 @@ SECRET_TOKEN=must-not-be-displayed
     assert(AppPermissions::parse("[Application]\nname=test\n[Context]\nsockets=\\q;").value("state") == "error");
     assert(AppPermissions::parse(QByteArray(1024 * 1024 + 1, 'x')).value("state") == "error");
     const auto escaped = AppPermissions::parse("[Application]\nname=test\n[Context]\nfilesystems=/semi\\;colon:ro;\nshared=!network;\n");
-    assert(group(escaped, "files")["details"].toStringList().contains("/semi;colon — read only"));
-    assert(group(escaped, "network")["details"].toStringList().contains("Network connections — denied"));
+    assert(group(escaped, "files")["details"].toStringList().contains("/semi;colon - read only"));
+    assert(group(escaped, "network")["details"].toStringList().contains("Network connections - denied"));
     std::cout << "Permission parser checks passed\n";
 }

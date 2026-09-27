@@ -1,11 +1,11 @@
-# Home/catalog validation — 2026-09-24
+# Home/catalog validation - 2026-09-24
 
 Tested on the KDE 6 Wayland VM with Qt 6.11.2 and Flatpak 1.18.2.
 
 - Rust: 16 tests passed; optimized Linux build passed.
 - Baseline QML regression before the spacing refinement: 530 passed across 20 suites, including the final seven-test
   style rerun after making heading glyph rendering explicit. No failures remain.
-  The search/sidebar regression now expects A–Z when opening a category instead
+  The search/sidebar regression now expects A-Z when opening a category instead
   of the old input-catalog order; search relevance assertions are unchanged.
 - Category suite: 75 passed at both 100% and 150% scaling, including all six
   orders in all eleven categories, unknown values, live/offline popularity,

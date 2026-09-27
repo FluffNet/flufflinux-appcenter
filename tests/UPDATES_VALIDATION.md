@@ -1,14 +1,14 @@
-# Updates validation — 2026-09-23–25
+# Updates validation - 2026-09-23-25
 
 Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
 
-## Theme-aware update icons and size wording — 2026-09-25
+## Theme-aware update icons and size wording - 2026-09-25
 
 - The App Updates sidebar icon uses Kirigami's explicit foreground/mask rendering
   instead of a pre-colored theme pixmap. Check, update, cancel and permission-change
   buttons opt into the same theme-aware rendering. Other button artwork, including
   colored destructive icons, is unchanged. Disabled icons retain their dimming.
-- Per-row labels say Size; the summary says N selected — Total size: ….
+- Per-row labels say Size; the summary says N selected - Total size: ….
   Downloaded/total bytes, speeds and the underlying size calculation are unchanged.
 - At each of 100% and 150%: Updates 43, Style 7, Network 47, Downloads Page 18,
   Transactions 43 and Focus 90 passed: **496 QML checks, zero failures**.
@@ -24,7 +24,7 @@ Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
   Prior files are preserved at `/tmp/appcenter-before-update-icons.KBbz6e` on
   the VM. The application binary, exclusions and authorization rules were unchanged.
 
-## Shared live update progress — 2026-09-25
+## Shared live update progress - 2026-09-25
 
 - Update rows now use the existing InstallationProgress component, not a second
   progress-bar implementation: received/total bytes, measured speed, overall
@@ -57,7 +57,7 @@ Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
   `6492665a844ba6a42654a6ab18f7fbd7700c4510f6a84a493393cf4103a898c6`.
   The executable, exclusions file and authorization policy were unchanged.
 
-## Update presentation and conditional history — 2026-09-25
+## Update presentation and conditional history - 2026-09-25
 
 - Unchanged permissions no longer occupy a row. Changed and unavailable
   comparisons retain their warnings; View Permission Changes still opens.
@@ -81,7 +81,7 @@ Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
   details with/without dates, and compact layout. Data is explicitly simulated;
   the real backend remains idle and no Flatpak apps or history are mutated.
 
-## Actual page-edge alignment and Home section spacing — 2026-09-24
+## Actual page-edge alignment and Home section spacing - 2026-09-24
 
 - Compensated for KDE's header content padding: the menu button now has an 8px
   gap to the actual page/window edge, overlapping the scrollbar column above it.
@@ -98,7 +98,7 @@ Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
   It verifies the edge gap, dropdown alignment and Common Apps section spacing;
   the real app-update backend stays idle.
 
-## Header edge spacing — 2026-09-24
+## Header edge spacing - 2026-09-24
 
 - Reduced the menu's right margin from 24px to 12px; Search follows the button,
   keeping the same width and 10px inter-control gap. Theme insets may add space
@@ -109,7 +109,7 @@ Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
 - Native KDE/Wayland normal and compact screenshots passed geometry assertions
   and visual inspection. The real update backend stayed idle throughout.
 
-## Search/menu order and update history cleanup — 2026-09-24
+## Search/menu order and update history cleanup - 2026-09-24
 
 - Removed Last checked from the App Updates page, including after a completed
   check. Apps were last updated remains visible; backend bookkeeping is unchanged.
@@ -124,7 +124,7 @@ Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
   screenshots with a recorded update date and no Last checked line. Search/menu
   geometry is asserted; the real backend stays idle. No Flatpak apps were updated.
 
-## Centered checking indicator — 2026-09-24
+## Centered checking indicator - 2026-09-24
 
 - Spinner and Checking for app updates text are centered together in the main
   results area, below the header/history. Cancel remains in the header.
@@ -138,7 +138,7 @@ Test environment: Fluff Linux KDE/Wayland VM, Flatpak 1.18.2, Qt 6.11.2.
   simulated pending check and assert the real backend remains idle. No app
   updates, source changes or actual update checks were performed.
 
-## App Updates wording — 2026-09-24
+## App Updates wording - 2026-09-24
 
 - Sidebar, heading and check button explicitly say App Updates. Offline advice,
   empty/result statuses, worker status and errors consistently refer to app updates.
@@ -219,7 +219,7 @@ The installed policy allows signed app updates in an active desktop session, but
 source configuration requires administrator authentication. SSH/inactive sessions
 are different. No authorization rules were changed.
 
-## Authorized deployment and source restoration — 2026-09-24
+## Authorized deployment and source restoration - 2026-09-24
 
 - After explicit approval to use the saved VM login and administrator credentials,
   installed the tested `c1e0e89` binary and matching Updates page. The previous
@@ -250,7 +250,7 @@ are different. No authorization rules were changed.
   Builder commits were unchanged, as was the App Center settings checksum.
   The live App Center service was restarted successfully.
 
-## Actual passwordless system update — 2026-09-24
+## Actual passwordless system update - 2026-09-24
 
 The user's subsequent Firefox update exposed a gap in the earlier authorization
 check: the worker passed an explicit commit to `flatpak_transaction_add_update`.

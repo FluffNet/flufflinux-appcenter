@@ -26,7 +26,7 @@ TestCase {
     function names() { return page().visibleApps.map(app => app.name).join(",") }
     function initTestCase() {
         compare(page().catalogSortIndex, 2, "Home defaults to popularity")
-        compare(page().installedSortIndex, 0, "Installed still defaults to A–Z")
+        compare(page().installedSortIndex, 0, "Installed still defaults to A-Z")
         verify(stats.requests >= 1, "Home requests popularity presentation data")
     }
     function init() {
@@ -167,7 +167,7 @@ TestCase {
         verify(findChild(page(), "catalogSortDescription").text.indexOf("unavailable") >= 0)
         page().catalogSortIndex = 1
         main.selectedCategory = "Utilities"
-        compare(names(), "Alpha,Beta,Unknown,Zero", "Categories start with their own A–Z order")
+        compare(names(), "Alpha,Beta,Unknown,Zero", "Categories start with their own A-Z order")
         verify(findChild(page(), "catalogSort").visible)
         main.selectedCategory = "All Apps"; main.searchText = "beta"
         compare(names(), "Beta")

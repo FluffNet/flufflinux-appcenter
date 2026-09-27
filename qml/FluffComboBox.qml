@@ -23,7 +23,11 @@ Basic.ComboBox {
     palette.window: window.raisedSurfaceColor
     palette.text: window.textColor
     palette.highlight: window.accentColor
-    palette.highlightedText: "white"
+    // Basic's popup highlight is a light/neutral surface, not the accent.
+    // Keep its text and surface paired in both KDE color schemes.
+    palette.highlightedText: window.textColor
+    palette.light: window.hoverColor
+    palette.midlight: window.hoverColor
     contentItem: Label {
         objectName: "comboDisplayLabel"
         text: control.displayText

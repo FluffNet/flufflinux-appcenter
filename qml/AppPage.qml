@@ -1138,7 +1138,7 @@ Page {
                         objectName: "previewZoomOutButton"
                         Layout.preferredWidth: 44
                         Layout.preferredHeight: 44
-                        text: "−"
+                        text: "-"
                         font.pixelSize: 24
                         enabled: page.previewZoom > 1.001
                         Accessible.name: "Zoom out"

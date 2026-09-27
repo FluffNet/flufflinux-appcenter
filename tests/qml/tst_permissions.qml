@@ -81,7 +81,7 @@ TestCase {
         open()
         const groups = []
         for (let i = 0; i < 20; ++i) groups.push({id:"group" + i, title:"Permission " + i, icon:"folder",
-            description:"A clear description of this permission.", details:["org.example." + "VeryLongServiceName".repeat(12), "Home folder — read only"]})
+            description:"A clear description of this permission.", details:["org.example." + "VeryLongServiceName".repeat(12), "Home folder - read only"]})
         backend.appPermissions = {state:"ready", groups:groups, installed:false}
         const scroll = findChild(dialog(), "permissionsScroll")
         const bar = findChild(dialog(), "permissionsPageScrollBar")

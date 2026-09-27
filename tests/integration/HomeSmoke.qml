@@ -38,7 +38,7 @@ AppCenter.Main {
             main.check(main.backend.updates.state === "idle", "Home must never check for updates")
             if (main.stage === 0) {
                 main.check(page.catalogSortIndex === 2, "Home must default to popularity")
-                main.check(page.installedSortIndex === 0, "Installed must still default to A–Z")
+                main.check(page.installedSortIndex === 0, "Installed must still default to A-Z")
                 main.check(!probe.findChild(page, "catalogCountLabel"), "no Home app count")
                 stack.background = main.snapshotBackground.createObject(stack)
                 main.check(page.recommendedApps.length === 10, "all ten available common apps")
@@ -108,7 +108,7 @@ AppCenter.Main {
             } else if (main.stage === 9) {
                 main.check(!probe.findChild(page, "catalogCountLabel"), "no category app count")
                 const sort = probe.findChild(page, "catalogSort")
-                main.check(sort.visible && sort.currentIndex === 0, "category defaults to A–Z")
+                main.check(sort.visible && sort.currentIndex === 0, "category defaults to A-Z")
                 const count = main.catalog.filter(app => app.category === "Internet").length
                 for (let order = 0; order < page.catalogSortOptions.length; ++order) {
                     page.setCatalogSort(order)
@@ -129,7 +129,7 @@ AppCenter.Main {
                 page.openCategory("Games")
                 main.check(page.categorySortIndex === 0, "switching category resets temporary order")
                 page.openCategory("Internet")
-                main.check(page.categorySortIndex === 0, "returning category stays A–Z")
+                main.check(page.categorySortIndex === 0, "returning category stays A-Z")
                 page.openCategory("All Apps")
                 main.check(page.catalogSortIndex === 2, "Home keeps its preference")
                 page.openCategory("Installed"); main.stage = 14

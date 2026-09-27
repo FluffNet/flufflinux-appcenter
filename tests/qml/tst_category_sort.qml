@@ -91,7 +91,7 @@ TestCase {
     function test_category_popularity_loads_and_keeps_recommendations() {
         main.catalog = catalog("Utilities").concat([app("com.discordapp.Discord", "Discord", "Utilities", "")])
         selectCategory("Utilities")
-        compare(stats.requests, 0, "A–Z categories need no popularity request")
+        compare(stats.requests, 0, "A-Z categories need no popularity request")
         page().setCatalogSort(2)
         compare(stats.requests, 1)
         verify(page().visibleApps.some(app => app.id === "com.discordapp.Discord"))
