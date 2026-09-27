@@ -32,7 +32,7 @@ install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter
 	mkdir -p "$(DESTDIR)$(PREFIX)/bin" "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml"
 	mkdir -p "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps" "$(DESTDIR)$(PREFIX)/share/applications"
 	install -m755 target/release/flufflinux-appcenter "$(DESTDIR)$(PREFIX)/bin/flufflinux-appcenter"
-	for alias in plasma-discover discover flufflinux-discover; do ln -sfn flufflinux-appcenter "$(DESTDIR)$(PREFIX)/bin/$$alias"; done
+	for alias in app-center plasma-discover discover flufflinux-discover; do ln -sfn flufflinux-appcenter "$(DESTDIR)$(PREFIX)/bin/$$alias"; done
 	mkdir -p "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter" "$(DESTDIR)$(PREFIX)/share/polkit-1/actions"
 	install -m755 target/release/flufflinux-appcenter-source-helper "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter/source-helper"
 	install -m755 scripts/register-flatpak-handler.sh "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter/register-flatpak-handler"
@@ -49,6 +49,7 @@ install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter
 	sed 's/^NoDisplay=false$$/NoDisplay=true/' data/flufflinux-appcenter.desktop > "$(DESTDIR)$(PREFIX)/share/applications/flufflinux-appcenter.desktop"
 	chmod 644 "$(DESTDIR)$(PREFIX)/share/applications/flufflinux-appcenter.desktop"
 	ln -sfn flufflinux-appcenter.desktop "$(DESTDIR)$(PREFIX)/share/applications/org.kde.discover.flatpak.desktop"
+	ln -sfn flufflinux-appcenter.desktop "$(DESTDIR)$(PREFIX)/share/applications/org.kde.discover.urlhandler.desktop"
 	mkdir -p "$(DESTDIR)$(SYSCONFDIR)/flufflinux-appcenter"
 	@if [ -n "$(DESTDIR)" ] || [ ! -e "$(DESTDIR)$(SYSCONFDIR)/flufflinux-appcenter/exclusions.conf" ]; then install -m644 "$(EXCLUSIONS_FILE)" "$(DESTDIR)$(SYSCONFDIR)/flufflinux-appcenter/exclusions.conf"; fi
 	@if [ "$(REGISTER_MIME)" = 1 ]; then sh scripts/register-flatpak-handler.sh "$(DESTDIR)$(SYSCONFDIR)/xdg/mimeapps.list"; fi
@@ -57,12 +58,12 @@ install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter
 # Run as the desktop user after installation, not via sudo. Respect other MIME
 # defaults: only these Flatpak file types and URI schemes are associated.
 set-default-handler:
-	xdg-mime default flufflinux-appcenter.desktop application/vnd.flatpak application/vnd.flatpak.ref application/vnd.flatpak.repo x-scheme-handler/flatpak x-scheme-handler/flatpak+https
+	xdg-mime default flufflinux-appcenter.desktop application/vnd.flatpak application/vnd.flatpak.ref application/vnd.flatpak.repo x-scheme-handler/flatpak x-scheme-handler/flatpak+https x-scheme-handler/appstream
 
 uninstall:
 	sh scripts/register-flatpak-handler.sh "$(DESTDIR)$(SYSCONFDIR)/xdg/mimeapps.list" remove
 	rm -f "$(DESTDIR)$(PREFIX)/bin/flufflinux-appcenter"
-	for alias in plasma-discover discover flufflinux-discover; do rm -f "$(DESTDIR)$(PREFIX)/bin/$$alias"; done
+	for alias in app-center plasma-discover discover flufflinux-discover; do rm -f "$(DESTDIR)$(PREFIX)/bin/$$alias"; done
 	rm -f "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter/source-helper"
 	rm -f "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter/register-flatpak-handler"
 	rm -f "$(DESTDIR)$(PREFIX)/share/polkit-1/actions/com.flufflinux.appcenter.policy"
@@ -70,6 +71,7 @@ uninstall:
 	rm -f "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/flufflinux-appcenter.svg"
 	rm -f "$(DESTDIR)$(PREFIX)/share/applications/flufflinux-appcenter.desktop"
 	rm -f "$(DESTDIR)$(PREFIX)/share/applications/org.kde.discover.desktop" "$(DESTDIR)$(PREFIX)/share/applications/org.kde.discover.flatpak.desktop"
+	rm -f "$(DESTDIR)$(PREFIX)/share/applications/org.kde.discover.urlhandler.desktop"
 	for alias in flufflinuxplasmadiscover plasmadiscover; do rm -f "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/$$alias.svg"; done
 
 clean:

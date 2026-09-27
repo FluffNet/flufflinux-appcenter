@@ -12,7 +12,7 @@ ColumnLayout {
         Label {
             objectName: "catalogTitleLabel"
             Layout.fillWidth: true
-            text: catalogPage.installedView ? qsTr("Installed") : window.searchText ? qsTr("Search results") : window.selectedCategory
+            text: catalogPage.installedView ? qsTr("Installed") : window.searchText ? qsTr("Search results") : catalogPage.cliFilterTitle || window.selectedCategory
             color: window.textColor; renderType: Text.QtRendering
             font.pixelSize: 32; font.weight: Font.DemiBold
             elide: Text.ElideRight

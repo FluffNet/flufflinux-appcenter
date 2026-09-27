@@ -12,7 +12,10 @@ Page {
     background: Control { focusPolicy: Qt.ClickFocus }
     readonly property bool installedView: window.selectedCategory === "Installed"
     readonly property bool updatesView: window.selectedCategory === "Updates"
-    readonly property bool homeView: window.selectedCategory === "All Apps" && !window.searchText
+    property string cliMimeType: ""
+    property string cliCategory: ""
+    readonly property string cliFilterTitle: cliMimeType ? qsTr("Apps for %1").arg(cliMimeType) : cliCategory
+    readonly property bool homeView: window.selectedCategory === "All Apps" && !window.searchText && !cliMimeType && !cliCategory
     readonly property bool catalogView: !installedView && !updatesView && !window.searchText
     readonly property bool networkBlocked: window.networkOffline && !installedView && !updatesView
     readonly property bool sourcesBlocked: window.catalogSourcesUnavailable === true && !installedView && !updatesView
@@ -196,6 +199,8 @@ Page {
                     && (page.compactSearchText(app.searchSummary).indexOf(compactQuery) >= 0
                         || page.compactSearchText(app.searchDescription).indexOf(compactQuery) >= 0)
             return categoryMatches
+                    && (!page.cliCategory || (app.categories || []).some(value => String(value).toLowerCase() === page.cliCategory.toLowerCase()))
+                    && (!page.cliMimeType || (app.mimeTypes || []).some(value => String(value).toLowerCase() === page.cliMimeType))
                     && recommendedToOmit.indexOf(page.catalogId(app)) < 0
                     && (!query || app.searchHaystack.indexOf(query) >= 0
                         || compactNameMatches || compactDescriptionMatches)
@@ -219,11 +224,32 @@ Page {
 
     function openCategory(category) {
         if (category === "Updates" && window.networkOffline) return
+        cliMimeType = ""
+        cliCategory = ""
         searchTimer.stop()
         searchField.clear()
         window.searchText = ""
         window.searchCategoryFilter = "All Apps"
         window.selectedCategory = category
+    }
+
+    function openCliFilter(kind, value) {
+        openCategory("All Apps")
+        if (kind === "search") {
+            searchField.text = value
+            window.searchText = value
+            if (searchField.enabled) searchField.forceActiveFocus()
+        } else if (kind === "mime") {
+            cliMimeType = value.toLowerCase()
+        } else if (kind === "category") {
+            const aliases = { "audiovideo": "Audio & Video", "game": "Games", "network": "Internet", "utility": "Utilities" }
+            const name = aliases[value.toLowerCase()] || value
+            const category = categories.find(item => item.name.toLowerCase() === name.toLowerCase()
+                                                   || item.label.toLowerCase() === name.toLowerCase())
+            if (category) openCategory(category.name)
+            else cliCategory = value
+        }
+        catalogGrid.positionViewAtBeginning()
     }
 
     function categoryWidthForLabels(labels) {
@@ -364,6 +390,8 @@ Page {
                     if (enabled) forceActiveFocus()
                 }
                 onTextEdited: {
+                    page.cliMimeType = ""
+                    page.cliCategory = ""
                     if (text.length > 0 && !page.installedView)
                         window.selectedCategory = "All Apps"
                     else
@@ -371,6 +399,8 @@ Page {
                     searchTimer.restart()
                 }
                 Keys.onEscapePressed: {
+                    page.cliMimeType = ""
+                    page.cliCategory = ""
                     clear()
                     searchTimer.stop()
                     window.searchText = ""

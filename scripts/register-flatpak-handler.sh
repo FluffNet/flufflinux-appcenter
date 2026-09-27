@@ -14,7 +14,7 @@ if [ ! -f "$input" ]; then input=/dev/null; fi
 awk -v mode="$mode" '
 BEGIN {
     app = "flufflinux-appcenter.desktop"
-    split("application/vnd.flatpak application/vnd.flatpak.ref application/vnd.flatpak.repo x-scheme-handler/flatpak x-scheme-handler/flatpak+https", types, " ")
+    split("application/vnd.flatpak application/vnd.flatpak.ref application/vnd.flatpak.repo x-scheme-handler/flatpak x-scheme-handler/flatpak+https x-scheme-handler/appstream", types, " ")
     for (i in types) wanted[types[i]] = 1
 }
 function missing( key) {

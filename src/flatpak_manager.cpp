@@ -30,6 +30,12 @@ bool active(const QVariantMap &job) { return job.value("active").toBool(); }
 
 FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : QObject(parent) {
     m_catalog = catalog;
+    connect(this, &FlatpakManager::catalogChanged, this, &FlatpakManager::drainApplicationLinks);
+    connect(this, &FlatpakManager::installedChanged, this, &FlatpakManager::drainApplicationLinks);
+    connect(&m_catalogProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+        [this] { QTimer::singleShot(0, this, &FlatpakManager::drainApplicationLinks); });
+    connect(&m_catalogProcess, &QProcess::errorOccurred, this,
+        [this] { QTimer::singleShot(0, this, &FlatpakManager::drainApplicationLinks); });
     connect(this, &FlatpakManager::installedChanged, this, &FlatpakManager::updatesChanged);
     m_updatesTimeout.setSingleShot(true);
     m_updatesTimeout.setParent(this); m_updatesTimeout.setObjectName("updateCheckTimeout");
@@ -624,6 +630,12 @@ void FlatpakManager::uninstallApp(QVariantMap app) {
     }
     emit inputError(tr("That app is no longer installed. The list has been refreshed.")); refreshInstalled();
 }
+void FlatpakManager::drainApplicationLinks() {
+    if (sourcesBusy() || m_catalogProcess.state() != QProcess::NotRunning || m_loading) return;
+    const auto pending = m_pendingApplicationLinks;
+    m_pendingApplicationLinks.clear();
+    for (const auto &source : pending) openSource(source);
+}
 void FlatpakManager::openSource(QString source) {
     source = source.trimmed();
     if (source.isEmpty() || source.size() > 8192) { emit inputError(tr("Invalid Flatpak link or filename.")); return; }
@@ -635,13 +647,32 @@ void FlatpakManager::openSource(QString source) {
         return;
     }
     const QUrl url(source);
-    if (url.scheme() == "flatpak") {
-        // flatpak:org.example.App and flatpak://org.example.App preserve ID case.
-        const auto id = source.mid(source.indexOf(':') + 1).remove(QRegularExpression("^//"));
-        emit appOpened(metadata(id)); return;
+    if (url.scheme() == "flatpak" || url.scheme() == "appstream") {
+        // Do not use QUrl::host(): host names are lowercased, but app IDs are not.
+        auto id = QUrl::fromPercentEncoding(source.mid(source.indexOf(':') + 1).toUtf8());
+        if (id.startsWith("//")) id.remove(0, 2);
+        if (id.endsWith('/')) id.chop(1);
+        static const QRegularExpression validId("^[A-Za-z0-9_][A-Za-z0-9_.-]*\\.[A-Za-z0-9_.-]+$");
+        if (!validId.match(id).hasMatch() || url.hasQuery() || url.hasFragment()) {
+            emit inputError(tr("Use an appstream: or flatpak: link containing an application ID only.")); return;
+        }
+        if (m_catalogProcess.state() != QProcess::NotRunning || m_loading) {
+            if (m_pendingApplicationLinks.size() < 16) m_pendingApplicationLinks.append(source);
+            else emit inputError(tr("Too many applications are waiting for the catalog to load."));
+            return;
+        }
+        const auto normalized = normalizedId(id);
+        for (const auto &entry : m_installed) {
+            const auto app = entry.toMap();
+            if (app.value("id").toString() == id || normalizedId(app.value("id").toString()) == normalized) {
+                emit appOpened(app); return;
+            }
+        }
+        if (m_metadata.contains(normalized)) { emit appOpened(metadata(normalized)); return; }
+        emit inputError(tr("The application %1 was not found in the available sources or installed apps.").arg(id)); return;
     }
     if (!url.scheme().isEmpty() && !url.isLocalFile() && url.scheme() != "https" && url.scheme() != "flatpak+https") {
-        emit inputError(tr("Use a local .flatpak, .flatpakref or .flatpakrepo file, or an HTTPS Flatpak link.")); return;
+        emit inputError(tr("Use an appstream: app link, a local Flatpak file, or an HTTPS Flatpak link.")); return;
     }
     if (url.isLocalFile() || url.scheme().isEmpty()) {
         const QFileInfo file(url.isLocalFile() ? url.toLocalFile() : source);

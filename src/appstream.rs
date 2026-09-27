@@ -25,6 +25,8 @@ pub struct App {
     pub description: String,
     pub icon: String,
     pub category: String,
+    pub categories: Vec<String>,
+    pub mime_types: Vec<String>,
     pub developer: String,
     pub license: String,
     pub homepage: String,
@@ -144,6 +146,10 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         .map(clean_markup)
         .collect();
     let category = display_category(&categories).to_string();
+    let mut seen_mime = HashSet::new();
+    let mime_types = blocks(xml, "mediatype").into_iter().chain(blocks(xml, "mimetype"))
+        .map(|value| clean_markup(value).to_ascii_lowercase())
+        .filter(|value| value.contains('/') && seen_mime.insert(value.clone())).collect();
     let developer = base_text(xml, "developer_name")
         .or_else(|| base_text(xml, "developer-name"))
         .or_else(|| element(xml, "developer").and_then(|value| base_text(value, "name")))
@@ -169,6 +175,8 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         description,
         icon,
         category,
+        categories,
+        mime_types,
         developer,
         license,
         homepage,
@@ -216,6 +224,8 @@ fn merge(current: &mut App, incoming: &App) {
     fill!(description);
     fill!(icon);
     fill!(category);
+    fill!(categories);
+    fill!(mime_types);
     fill!(developer);
     fill!(license);
     fill!(homepage);
@@ -417,7 +427,7 @@ fn clean_markup(value: &str) -> String {
     decoded.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-fn escape_json(value: &str) -> String {
+pub(crate) fn escape_json(value: &str) -> String {
     let mut result = String::with_capacity(value.len() + 2);
     result.push('"');
     for c in value.chars() {
@@ -466,6 +476,10 @@ pub fn to_json(apps: &[App]) -> String {
             escape_json(&app.release_date), app.release_timestamp.map(|value| value.to_string()).unwrap_or("null".into()),
             app.download_bytes.map(|value| value.to_string()).unwrap_or("null".into())
         ));
+        output.pop();
+        output.push_str(&format!(",\"categories\":[{}],\"mimeTypes\":[{}]}}",
+            app.categories.iter().map(|v| escape_json(v)).collect::<Vec<_>>().join(","),
+            app.mime_types.iter().map(|v| escape_json(v)).collect::<Vec<_>>().join(",")));
     }
     output.push(']');
     output
@@ -572,6 +586,22 @@ mod tests {
         let app = parse_component(xml, Path::new("/tmp/appstream.xml")).unwrap();
         assert_eq!(app.name, "Test & App");
         assert_eq!(app.category, "Utilities");
+    }
+
+    #[test]
+    fn retains_raw_categories_and_declared_mime_types() {
+        let xml = r#"<component type="desktop-application"><id>org.example.Viewer</id><name>PDF</name><categories><category>Office</category><category>Viewer</category></categories><provides><mediatype>application/pdf</mediatype><mediatype>image/png</mediatype></provides><mimetypes><mimetype>APPLICATION/PDF</mimetype><mimetype>image/jpeg</mimetype></mimetypes></component>"#;
+        let app = parse_component(xml, Path::new("/tmp/appstream.xml")).unwrap();
+        assert_eq!(app.categories, ["Office", "Viewer"]);
+        assert_eq!(app.mime_types, ["application/pdf", "image/png", "image/jpeg"]);
+        let json = to_json(&[app.clone()]);
+        assert!(json.contains("\"categories\":[\"Office\",\"Viewer\"]"));
+        assert!(json.contains("\"mimeTypes\":[\"application/pdf\",\"image/png\",\"image/jpeg\"]"));
+        let mut missing = App { id: app.id.clone(), name: "PDF editor".into(), ..App::default() };
+        assert!(missing.mime_types.is_empty(), "Never infer MIME support from an app's name");
+        merge(&mut missing, &app);
+        assert_eq!(missing.categories, app.categories);
+        assert_eq!(missing.mime_types, app.mime_types);
     }
 
     #[test]

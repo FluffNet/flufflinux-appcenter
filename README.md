@@ -12,7 +12,7 @@ contains Flatpak source management.
 ## Pacman package and Discover replacement
 
 On Fluff Linux, run `sh scripts/build-package.sh` as a normal user. This builds
-`flufflinux-appcenter-2026.9.0beta-1-x86_64.pkg.tar.zst` in a fresh directory under
+`flufflinux-appcenter-2026.9.0beta-2-x86_64.pkg.tar.zst` in a fresh directory under
 `build/`, runs Rust tests, and records **FluffNet LLC** as packager. Install the
 printed package with `sudo pacman -U /absolute/path/to/package.pkg.tar.zst`.
 The package conflicts with and replaces both `discover` and `flufflinux-discover`;
@@ -29,13 +29,13 @@ Wayland window identity, so existing Discover pins launch and group with App
 Center. That old desktop file is a symlink to App Center's launcher, with App
 Center's name/icon. `flufflinux-appcenter.desktop` remains a hidden compatibility
 entry for existing file associations (not a second application-menu entry).
-`plasma-discover`, `discover`, and `flufflinux-discover` are executable symlinks.
+`app-center`, `plasma-discover`, `discover`, and `flufflinux-discover` are executable symlinks.
 The old `flufflinuxplasmadiscover` and `plasmadiscover` icons are also symlinked to
 the new icon, including for copied desktop shortcuts still using those names.
 Locally customized shortcut names or absolute icon paths are not rewritten.
 The old `--mode update` action opens **App Updates**, without starting a check.
-The Flatpak handler desktop ID remains supported; Discover's notifier and its
-unsupported `appstream:` URL handler are not carried over.
+Both old Flatpak and `appstream:` URL handler desktop IDs remain supported.
+Discover's notifier is not carried over.
 
 The build includes `/etc/flufflinux-appcenter/exclusions.conf` when present;
 use `EXCLUSIONS_FILE=data/exclusions.conf sh scripts/build-package.sh` for bundled
@@ -50,6 +50,51 @@ paths `/usr/include/KF6/{KService,KCoreAddons,KConfig,KConfigCore}`. Run it in t
 desktop session with the running window's reported desktop ID (`org.kde.discover`)
 as its argument. It checks KDE's real launcher icon/name, window-to-pin matching,
 and exactly one visible application-menu entry, without changing the panel.
+
+## Command-line compatibility
+
+All five executable names use the same parser and single-instance dispatcher.
+For example, these open the same global search, including in an existing window:
+
+```sh
+app-center --search "telegram"
+plasma-discover --search "telegram"
+```
+
+Discover's public navigation and input options are supported:
+
+- `--search TEXT`: global search (quote text containing spaces).
+- `--application ID` or `--application appstream://ID`: open app details.
+- `--category NAME`: sidebar names or raw AppStream categories such as `Game`,
+  `Office`, `Viewer` and `InstantMessaging` (case-insensitive category matching).
+- `--mime application/pdf`: apps declaring that exact MIME type in AppStream;
+  names/descriptions are not used to guess support.
+- `--mode Browsing|Installed|Search|Update|Sources|About`: case-insensitive;
+  `--updates` is also supported. Update opens App Updates without checking.
+- `--local-filename FILE`, or positional files/URLs: existing Flatpak input
+  handling. Relative paths resolve in the caller's directory before forwarding.
+- `--listmodes`, `--listbackends`, `-h`/`--help`/`--help-all`, `-v`/`--version`,
+  `--author`, `--license`: terminal output without initializing the GUI.
+- `--desktopfile NAME`: override a new window's desktop-entry base name;
+  the default remains `org.kde.discover` to preserve taskbar pins.
+
+Options also accept `--name=value`; `--` ends option parsing. Multiple initial
+destinations follow Discover's priority: application, MIME, category, mode;
+then search, local filename and positional inputs. App IDs are case-sensitive,
+with an optional `.desktop` suffix. Unknown apps show an error rather than a
+fabricated catalog card. Input links never directly install an app.
+
+Two Discover-only operations are explicitly rejected, not silently ignored:
+`--headless-update` (updates remain manually reviewed in App Updates), and
+`--test FILE.qml` (Discover's private QML test environment is not available).
+Generic Qt debugging flags are not emulated; use Qt environment variables such
+as `QT_QPA_PLATFORM` and `QT_QUICK_CONTROLS_STYLE`. App Center is a Flatpak GUI,
+not a replacement for the `flatpak` or `pacman` terminal administration tools.
+
+Tests: `python3 tests/integration/test_cli.py`,
+`tests/qml/tst_cli_navigation.qml`, `tests/native/test_application_links.cpp`,
+and the existing legacy-launch/package/handler suites. CLI tests use isolated
+config/cache/socket directories and never update or install apps.
 
 ## Home and catalog exclusions
 
@@ -589,6 +634,7 @@ Supported inputs:
 - Local `.flatpak` bundles, `.flatpakref` references and `.flatpakrepo` sources.
 - HTTPS references, including `flatpak+https://…` browser links.
 - `flatpak:org.example.App` and `flatpak://org.example.App` IDs.
+- `appstream:org.example.App` and `appstream://org.example.App` IDs.
 
 Files and links open the app page with sizes and an Install button; merely
 opening a file/link does not install the app. Local bundles and new third-party sources
@@ -626,7 +672,7 @@ make set-default-handler
 Run the last command **without sudo**, as the desktop user. It changes defaults
 only for Flatpak files and supported Flatpak link schemes.
 
-`make install` also merges those five associations into
+`make install` also merges those six associations into
 `/etc/xdg/mimeapps.list` as system-wide defaults, preserving unrelated entries
 and existing alternatives. Explicit per-user choices take precedence. The last
 command above selects App Center for the current user as well.

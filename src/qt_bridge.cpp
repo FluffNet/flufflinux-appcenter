@@ -36,7 +36,7 @@ public:
 };
 
 extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, const char *icon_path,
-                              int input_count, const char *const *inputs) {
+                              int input_count, const char *const *inputs, const char *desktop_file) {
     if (geteuid() == 0) { qCritical("Run App Center as your regular desktop user, not root."); return 1; }
     int argc = 1;
     char name[] = "flufflinux-appcenter";
@@ -54,10 +54,11 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     QCoreApplication::setOrganizationName("FluffNet LLC");
     // Keep existing Plasma Discover pins associated with this window. The
     // package owns this legacy desktop ID, with App Center's name and icon.
-    QGuiApplication::setDesktopFileName("org.kde.discover");
+    QGuiApplication::setDesktopFileName(QString::fromUtf8(desktop_file));
     application.setWindowIcon(QIcon(QString::fromUtf8(icon_path)));
     QJsonArray incoming;
-    for (int i = 0; i < input_count && i < 16; ++i) incoming.append(QString::fromUtf8(inputs[i]));
+    for (int i = 0; i < input_count && i < 16; ++i)
+        incoming.append(QJsonDocument::fromJson(inputs[i]).object());
     const auto socketPath = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + "/flufflinux-appcenter.socket";
     QLocalSocket existing;
     existing.connectToServer(socketPath);
@@ -104,10 +105,17 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     }
     auto dispatch = [&](const QJsonArray &sources) {
         for (int i = 0; i < sources.size() && i < 16; ++i) {
-            const auto input = sources[i].toString();
-            if (input == "--updates")
+            // Accept the previous release's IPC format during an in-place
+            // upgrade, but new requests explicitly distinguish files/actions.
+            const auto action = sources[i].isObject() ? sources[i].toObject()
+                : QJsonObject{{"type", sources[i].toString() == "--updates" ? "mode" : "source"},
+                              {"value", sources[i].toString() == "--updates" ? "Update" : sources[i].toString()}};
+            const auto type = action.value("type").toString(), value = action.value("value").toString();
+            if (type == "mode" && value == "Update")
                 QMetaObject::invokeMethod(engine.rootObjects().first(), "showUpdates");
-            else manager.openSource(input);
+            else if (type == "source") manager.openSource(value);
+            else if (QStringList{"mode", "search", "category", "mime"}.contains(type))
+                QMetaObject::invokeMethod(engine.rootObjects().first(), "handleCliAction", Q_ARG(QVariant, action.toVariantMap()));
         }
         if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
             // Raising an existing instance must not undo its maximized state.

@@ -150,8 +150,24 @@ ApplicationWindow {
     function showAbout() { aboutDialog.open() }
     function showUpdates() {
         if (networkOffline) return
+        aboutDialog.close()
         stack.get(0).openCategory("Updates")
         showCatalog()
+    }
+    function handleCliAction(action) {
+        const kind = String(action.type || ""), value = String(action.value || "")
+        if (kind !== "mode" || value !== "About") aboutDialog.close()
+        if (kind === "mode") {
+            if (value === "Sources") { showSettings(); return }
+            if (value === "About") { showAbout(); return }
+            if (value === "Update") { showUpdates(); return }
+            showCatalog()
+            if (value === "Search") stack.get(0).openCliFilter("search", "")
+            else stack.get(0).openCategory(value === "Installed" ? "Installed" : "All Apps")
+        } else if (kind === "search" || kind === "category" || kind === "mime") {
+            showCatalog()
+            stack.get(0).openCliFilter(kind, value)
+        }
     }
     function selectSource(source) {
         selectedApp = Object.assign({}, source, { sources: selectedApp.sources || [] })

@@ -24,7 +24,7 @@ with tempfile.TemporaryDirectory(prefix="appcenter-package-test-") as temporary:
     subprocess.run(["bsdtar", "-xf", package, "-C", root], check=True)
     assert not (root / "etc/xdg/mimeapps.list").exists(), "shared MIME defaults must not be package-owned"
     assert not (root / "etc/xdg/autostart").exists(), "do not inherit Discover's notifier"
-    for name in ("plasma-discover", "discover", "flufflinux-discover"):
+    for name in ("app-center", "plasma-discover", "discover", "flufflinux-discover"):
         alias = root / "usr/bin" / name
         assert alias.is_symlink()
         assert alias.resolve() == root / "usr/bin/flufflinux-appcenter"
@@ -35,6 +35,7 @@ with tempfile.TemporaryDirectory(prefix="appcenter-package-test-") as temporary:
     applications = root / "usr/share/applications"
     legacy = applications / "org.kde.discover.desktop"
     assert legacy.is_symlink() and legacy.is_file()
+    assert (applications / "org.kde.discover.urlhandler.desktop").is_symlink()
     visible = []
     for desktop in applications.glob("*.desktop"):
         subprocess.run(["desktop-file-validate", desktop], check=True)
@@ -44,6 +45,7 @@ with tempfile.TemporaryDirectory(prefix="appcenter-package-test-") as temporary:
         assert entry["Name"] == "App Center"
         assert entry["Icon"] == "flufflinux-appcenter"
         assert entry["Exec"] == "flufflinux-appcenter %U"
+        assert "x-scheme-handler/appstream" in entry["MimeType"].split(";")
         assert content["Desktop Action Updates"]["Exec"] == "flufflinux-appcenter --updates"
         if entry.get("NoDisplay") != "true":
             visible.append(desktop.name)
