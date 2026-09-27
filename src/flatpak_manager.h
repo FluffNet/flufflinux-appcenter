@@ -110,6 +110,7 @@ private:
     void drainApplicationLinks();
     QStringList m_pendingApplicationLinks;
     QVariantList m_jobs, m_requests, m_installed, m_pendingReviews;
+    quint64 m_queueBatch = 0;
     QVariantMap m_review;
     QVariantMap m_installSizes, m_sizeApp;
     QVariantMap m_appPermissions;

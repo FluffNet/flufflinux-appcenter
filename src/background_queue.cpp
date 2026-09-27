@@ -6,6 +6,8 @@
 #include <KStatusNotifierItem>
 #include <QApplication>
 #include <QCloseEvent>
+#include <QDBusConnection>
+#include <QDBusMessage>
 #include <QMenu>
 #include <QWindow>
 #include <cmath>
@@ -22,8 +24,11 @@ public:
     void update(const QVariantMap &job) {
         const auto name = job.value("name", job.value("id")).toString();
         const auto action = job.value("action").toString();
-        const auto title = action == "uninstall" ? tr("Removing %1").arg(name)
-            : action == "update" ? tr("Updating %1").arg(name) : tr("Installing %1").arg(name);
+        const auto numberedName = job.value("queueTotal").toInt() > 1
+            ? tr("%1/%2: %3").arg(job.value("queuePosition").toInt()).arg(job.value("queueTotal").toInt()).arg(name)
+            : name;
+        const auto title = action == "uninstall" ? tr("Removing %1").arg(numberedName)
+            : action == "update" ? tr("Updating %1").arg(numberedName) : tr("Installing %1").arg(numberedName);
         Q_EMIT description(this, title, {}, {});
         const bool downloading = job.value("hasDownload").toBool() && !job.value("downloadComplete").toBool()
             && job.value("phase") == "download";
@@ -42,7 +47,10 @@ public:
     }
     void complete(const QVariantMap &job) {
         if (job.value("failed").toBool()) { finish(UserDefinedError, job.value("error").toString()); return; }
-        const auto name = job.value("name", job.value("id")).toString();
+        const auto appName = job.value("name", job.value("id")).toString();
+        const auto name = job.value("queueTotal").toInt() > 1
+            ? tr("%1/%2: %3").arg(job.value("queuePosition").toInt()).arg(job.value("queueTotal").toInt()).arg(appName)
+            : appName;
         const auto action = job.value("action").toString();
         Q_EMIT description(this, action == "uninstall" ? tr("%1 removed").arg(name)
             : action == "update" ? tr("%1 updated").arg(name) : tr("%1 installed").arg(name), {}, {});
@@ -104,20 +112,59 @@ void BackgroundQueue::detachJobs() {
     for (auto job : jobs) job->finish(KJob::KilledJobError);
 }
 
+void BackgroundQueue::reportBatch() {
+    QStringList lines;
+    bool failed = false;
+    for (const auto &job : m_batchJobs) {
+        failed |= job.value("failed").toBool();
+        const auto action = job.value("action").toString();
+        const auto result = job.value("cancelled").toBool() ? tr("Cancelled")
+            : job.value("failed").toBool() ? tr("Failed")
+            : action == "uninstall" ? tr("Removed") : action == "update" ? tr("Updated") : tr("Installed");
+        // Notification bodies accept markup; app metadata must remain text.
+        lines << tr("• %1 — %2").arg(job.value("name", job.value("id")).toString(), result).toHtmlEscaped();
+    }
+    auto message = QDBusMessage::createMethodCall("org.freedesktop.Notifications", "/org/freedesktop/Notifications",
+                                                 "org.freedesktop.Notifications", "Notify");
+    message << QStringLiteral("App Center") << uint(0) << QStringLiteral("flufflinux-appcenter")
+            << (failed ? tr("App queue finished with errors") : tr("App queue complete"))
+            << lines.join('\n') << QStringList{}
+            << QVariantMap{{"desktop-entry", "org.kde.discover"}, {"urgency", uchar(1)}} << int(-1);
+    // Ordinary native notification: Plasma controls history, expiry and DND.
+    // No action depends on keeping the now-idle session service alive.
+    QDBusConnection::sessionBus().asyncCall(message);
+}
+
 void BackgroundQueue::synchronize() {
     const auto jobs = m_manager->jobs();
     bool transactions = false;
     int count = 0;
+    quint64 batch = 0;
     QMap<int, QVariantMap> byIndex;
     for (const auto &entry : jobs) {
         const auto job = entry.toMap();
         byIndex.insert(job.value("index").toInt(), job);
         if (!job.value("active").toBool()) continue;
+        batch = qMax(batch, job.value("queueBatch").toULongLong());
         ++count;
         if (job.value("action") != "uninstall" || job.value("removalConfirmed").toBool()) transactions = true;
     }
+    if (batch && batch != m_batchId) {
+        m_batchId = batch; m_batchJobs.clear(); m_batchReported = false;
+    }
+    for (auto it = byIndex.cbegin(); it != byIndex.cend(); ++it)
+        if (m_batchId && it.value().value("queueBatch").toULongLong() == m_batchId)
+            m_batchJobs[it.key()] = it.value();
+    bool batchFinished = !m_batchReported && !m_batchJobs.isEmpty();
+    for (auto it = m_batchJobs.begin(); it != m_batchJobs.end(); ++it) {
+        if (it->value("active").toBool() && !byIndex.contains(it.key())) {
+            // Cancelled jobs leave the public model, but belong in the summary.
+            (*it)["active"] = false; (*it)["cancelled"] = true;
+        }
+        if (it->value("active").toBool()) batchFinished = false;
+    }
     m_power->setActive(transactions);
-    if (!m_closed) return;
+    if (!m_closed) { if (batchFinished) m_batchReported = true; return; }
     if (m_manager->busy()) m_idle.stop();
     else if (!m_idle.isActive()) m_idle.start();
 
@@ -144,7 +191,8 @@ void BackgroundQueue::synchronize() {
         const auto job = byIndex.value(it.key());
         if (job.isEmpty() || !job.value("active").toBool()) {
             auto proxy = it.value(); it = m_jobs.erase(it);
-            if (job.isEmpty() || job.value("cancelled").toBool()) proxy->finish(KJob::KilledJobError);
+            if (job.isEmpty() || job.value("cancelled").toBool() || m_batchJobs.size() > 1)
+                proxy->finish(KJob::KilledJobError);
             else proxy->complete(job);
         } else ++it;
     }
@@ -157,5 +205,9 @@ void BackgroundQueue::synchronize() {
             m_jobs.insert(index, proxy); m_tracker->registerJob(proxy);
         }
         m_jobs[it.key()]->update(job);
+    }
+    if (batchFinished) {
+        m_batchReported = true;
+        if (m_batchJobs.size() > 1) reportBatch();
     }
 }

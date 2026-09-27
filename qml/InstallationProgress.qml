@@ -11,6 +11,14 @@ ColumnLayout {
     visible: !!job && job.active === true && job.queued !== true
              && (!removing || job.removalConfirmed === true)
     spacing: 8
+    Label {
+        objectName: "queuePositionLabel"
+        Layout.fillWidth: true
+        visible: !!progress.job && progress.job.queueTotal > 1
+        text: visible ? qsTr("App %1/%2").arg(progress.job.queuePosition).arg(progress.job.queueTotal) : ""
+        font.bold: true
+        color: window.textColor
+    }
     RowLayout {
         Layout.fillWidth: true
         visible: progress.planned && !progress.removing

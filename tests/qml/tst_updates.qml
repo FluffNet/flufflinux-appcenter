@@ -314,12 +314,14 @@ TestCase {
         const percentage = findChild(progress, "overallPercentageLabel")
         const status = findChild(card, "updateJobStatus")
         const size = findChild(card, "updateDownloadSize")
-        const job = {index:0, key:"user:Alpha", action:"update", active:true, queued:false,
+        const job = {index:0, key:"user:Alpha", action:"update", active:true, queued:false, queuePosition:2, queueTotal:5,
             progress:0.5, hasDownload:true, downloadComplete:false, phase:"download",
             downloadedSize:"128.00 MiB", downloadTotalSize:"512.00 MiB", downloadSpeed:"2.30 MiB/s",
             status:"Dependency: shared\nDownloading…", operations:[{ref:"Alpha", commit:"a", downloadBytes:100}]}
         backend.jobs = [job]; waitForPolish(page()); wait(30)
         verify(progress.visible && bar.visible && !bar.indeterminate)
+        compare(findChild(progress, "queuePositionLabel").text, "App 2/5")
+        verify(findChild(progress, "queuePositionLabel").visible)
         compare(bar.value, 0.5); verify(!bar.activeStep)
         compare(bytes.text, "128.00 MiB / 512.00 MiB (2.30 MiB/s)"); verify(bytes.visible)
         compare(bytes.color, main.textColor); compare(percentage.text, "50%")

@@ -680,8 +680,15 @@ silently removes those progress views without cancelling transactions or
 reporting false success. The tray's Open action returns to App Center, including
 any pending confirmation; background work never auto-approves a new prompt.
 Native KDE jobs report the same overall percent, transfer size and speed as the
-in-window queue. Waiting jobs are not shown as actively downloading. Success,
-failure and cancellation use KDE's native completion semantics.
+in-window queue. Multi-app batches show the current item's position, such as
+`Installing 2/5: Telegram`, alongside its own progress bar. The same batch
+position is shown above in-app progress bars. Old session history is not counted,
+clearing history does not reset the position, and cancelled items leave the total.
+Waiting jobs are not shown as actively downloading. Success,
+failure and cancellation use KDE's native completion semantics. A closed-window
+multi-app batch produces one final KDE summary listing each app as installed,
+updated, removed, failed or cancelled, instead of stacking per-app completions.
+The summary is suppressed if the batch finishes with App Center open.
 
 Plasma owns notification positioning and fullscreen/Do Not Disturb suppression.
 No critical urgency, attention-requesting tray state or forced popup is used.
@@ -699,7 +706,8 @@ libraries with isolated fake workers, job-view service and power service under
 and installs a real test Flatpak from a rate-limited localhost repository in a
 fresh isolated installation. Add `--fullscreen` to verify KDE's inhibited state,
 or `--desktop` to temporarily show the desktop for clean screenshots and restore
-the other windows afterward.
+the other windows afterward. `--batch` installs five isolated apps and captures
+the second app's real `2/5` progress.
 Both runs retain their test repositories, logs and actual Spectacle screenshots;
 they never change regular user/system Flatpaks.
 

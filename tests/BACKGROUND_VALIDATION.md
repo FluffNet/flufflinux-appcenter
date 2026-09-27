@@ -16,6 +16,13 @@ Tested on the Fluff Linux KDE 6 Wayland VM. Public version remains
   reopens the window, including any outstanding confirmation.
 - Reopening removes notification proxies without cancelling the real work or
   emitting a false success. Hidden confirmations are never auto-approved.
+- Multi-app jobs display their batch position (for example, `2/5`) alongside
+  individual progress, both inside App Center and in the native notification.
+  Completed history from previous batches is excluded; clearing finished history
+  preserves the current position, and cancelling queued work adjusts the total.
+- Multi-app completion is one native notification listing each app's outcome,
+  including failures and cancellations. Intermediate completion popups are
+  suppressed. An open-window completion does not send a background summary.
 - KDE's suspend inhibitor is requested for installs, updates and confirmed
   removals, then released on completion, failure or cancellation. KDE's own
   short activation grace period and user overrides remain in force. Display
@@ -31,7 +38,10 @@ Tested on the Fluff Linux KDE 6 Wayland VM. Public version remains
   against isolated worker, notification and power-service fixtures. Covers
   close/reopen/minimize, queued vs running jobs, byte/percentage reporting,
   success, failure, cancellation acknowledgment, worker crash, hidden removal
-  confirmation and suspend-inhibitor lifetime.
+  confirmation and suspend-inhibitor lifetime. An additional five-item batch
+  verifies 2/5, clearing history, cancellation accounting and fresh-batch reset.
+  Summary checks cover mixed outcomes, once-only reporting, escaped app names,
+  and suppression while open (including closing after completion).
 - CLI integration and isolated real Flatpak update integration passed.
 - Package inspection passed: dependencies, static user service, Discover
   executable/desktop/icon aliases, conflicts/replacements and config backup.
@@ -53,6 +63,14 @@ is installed afterward. Regular user/system Flatpaks are not modified.
   popup over it. The transaction still finished, and its inhibitor was released.
 - An additional normal run captured progress/completion after temporarily using
   KDE's Show Desktop action; the previous desktop state was restored afterward.
+- A five-app real transaction run also passed. Its screenshot shows
+  `Installing 2/5: Test App 2` with actual bytes/speed/progress. All five apps
+  completed in the isolated installation, and the sleep inhibitor was released.
+- The final five-app summary run passed and captured one KDE notification with
+  all five names and their Installed results, without stacked per-app popups.
+- The five-app fullscreen summary run also passed: KDE suppression remained
+  active, no completion summary appeared over the fullscreen test window, and
+  the real installation and inhibitor release completed normally.
 - Early harness attempts exposed PowerDevil's delayed activation and QML timers
   pausing with all windows hidden. The harness now waits for the KDE grace period
   and observes the real manager's completion signal. Failed harness-run notices
@@ -63,6 +81,9 @@ Successful VM fixtures are retained for inspection/reuse:
 - `/tmp/appcenter-background-live-vjqa7bv9` — normal install.
 - `/tmp/appcenter-background-live-lrvu8v72` — fullscreen install.
 - `/tmp/appcenter-background-live-t8h0ldpa` — final progress/completion captures.
+- `/tmp/appcenter-background-live-sbdpfcyn` — five-app queue, 2/5 and completion.
+- `/tmp/appcenter-background-live-wf3kqyhr` — final five-app summary list.
+- `/tmp/appcenter-background-live-fu62cb_w` — five-app fullscreen summary test.
 
 ## Installed service/legacy launch verification
 

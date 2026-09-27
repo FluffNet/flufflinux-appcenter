@@ -25,6 +25,7 @@ public:
     int created = 0, inhibits = 0, releases = 0;
     QMap<QString, QVariantMap> views;
     QList<uint> results;
+    QList<QString> summaries;
     QString introspect(const QString &) const override { return {}; }
     bool handleMessage(const QDBusMessage &message, const QDBusConnection &bus) override {
         const auto args = message.arguments();
@@ -38,6 +39,9 @@ public:
         } else if (message.member() == "terminate") {
             results << args[0].toUInt(); views.remove(message.path());
             bus.send(message.createReply());
+        } else if (message.member() == "Notify") {
+            summaries << args[4].toString();
+            bus.send(message.createReply(QVariant::fromValue(uint(summaries.size()))));
         } else if (message.member() == "Inhibit") {
             ++inhibits; bus.send(message.createReply(QVariant::fromValue(uint(inhibits))));
         } else if (message.member() == "UnInhibit") {
@@ -97,8 +101,10 @@ int main(int argc, char **argv) {
     Desktop desktop; auto bus = QDBusConnection::sessionBus();
     assert(bus.registerService("org.kde.JobViewServer"));
     assert(bus.registerService("org.freedesktop.PowerManagement.Inhibit"));
+    assert(bus.registerService("org.freedesktop.Notifications"));
     assert(bus.registerVirtualObject("/JobViewServer", &desktop, QDBusConnection::SubPath));
     assert(bus.registerVirtualObject("/org/freedesktop/PowerManagement/Inhibit", &desktop));
+    assert(bus.registerVirtualObject("/org/freedesktop/Notifications", &desktop));
     FlatpakManager manager({}); QWindow window; window.show();
     BackgroundQueue background(&manager, &window, [&] { window.show(); });
     waitFor([&] { return !manager.installedLoading(); });
@@ -112,15 +118,20 @@ int main(int argc, char **argv) {
     assert(background.closed() && !window.isVisible() && background.trackedJobs() == 1);
     assert(desktop.views.first().value("totalBytes").toULongLong() == 1048576);
     assert(desktop.views.first().value("percent").toUInt() == 45);
+    assert(manager.jobs()[0].toMap().value("queuePosition").toInt() == 1);
+    assert(manager.jobs()[1].toMap().value("queuePosition").toInt() == 2);
+    assert(manager.jobs()[1].toMap().value("queueTotal").toInt() == 2);
     window.show(); waitFor([&] { return desktop.views.isEmpty(); });
     assert(!background.closed() && manager.busy() && desktop.results.last() == 1 && background.inhibiting());
     window.close(); waitFor([&] { return desktop.views.size() == 1; });
     write(temp.filePath("org.example.A"), "fail");
     waitFor([&] { return desktop.results.size() == 2 && desktop.views.size() == 1; });
-    assert(desktop.results.last() >= 100 && background.inhibiting());
+    assert(desktop.results.last() == 1 && background.inhibiting() && desktop.summaries.isEmpty());
     write(temp.filePath("org.example.B"), "ok");
     waitFor([&] { return desktop.results.size() == 3 && desktop.releases == 1 && !manager.busy(); });
-    assert(desktop.results.last() == 0 && !background.inhibiting());
+    waitFor([&] { return desktop.summaries.size() == 1; });
+    assert(desktop.results.last() == 1 && !background.inhibiting());
+    assert(desktop.summaries.last().contains("org.example.A — Failed") && desktop.summaries.last().contains("org.example.B — Installed"));
     window.show(); install("org.example.Cancel"); window.close();
     waitFor([&] { return desktop.views.size() == 1 && desktop.inhibits == 2
         && desktop.views.first().value("processedBytes").toULongLong() == 524288; });
@@ -142,5 +153,39 @@ int main(int argc, char **argv) {
     waitFor([&] { return desktop.releases == 4 && !manager.busy(); });
     window.show();
     assert(!background.inhibiting() && background.trackedJobs() == 0);
-    std::cout << "PASS: close/reopen/minimize, real manager queue, one running vs queued view, exact progress, success/failure/cancel/crash, hidden removal confirmation, suspend inhibit/release\n";
+    for (int i = 1; i <= 5; ++i) {
+        if (i == 4) manager.installApp({{"id", "org.example.Batch4"}, {"name", "Test <b>& Four"}});
+        else install(QString("org.example.Batch%1").arg(i));
+    }
+    window.close();
+    auto batchJob = [&](int number) {
+        for (const auto &entry : manager.jobs()) {
+            const auto job = entry.toMap();
+            if (job.value("id") == QString("org.example.Batch%1").arg(number)) return job;
+        }
+        return QVariantMap{};
+    };
+    waitFor([&] { return batchJob(1).value("receivedBytes").toInt() > 0; });
+    assert(batchJob(1).value("queuePosition").toInt() == 1 && batchJob(1).value("queueTotal").toInt() == 5);
+    write(temp.filePath("org.example.Batch1"), "ok");
+    waitFor([&] { return batchJob(2).value("receivedBytes").toInt() > 0; });
+    assert(batchJob(2).value("queuePosition").toInt() == 2 && batchJob(2).value("queueTotal").toInt() == 5);
+    manager.clearDownloadHistory();
+    assert(batchJob(2).value("queuePosition").toInt() == 2 && batchJob(2).value("queueTotal").toInt() == 5);
+    manager.cancelJob(batchJob(5).value("index").toInt());
+    assert(batchJob(2).value("queuePosition").toInt() == 2 && batchJob(2).value("queueTotal").toInt() == 4);
+    for (int i = 2; i <= 4; ++i) write(temp.filePath(QString("org.example.Batch%1").arg(i)), "ok");
+    waitFor([&] { return !manager.busy() && !background.inhibiting(); });
+    waitFor([&] { return desktop.summaries.size() == 2; });
+    assert(desktop.summaries.last().count(" — Installed") == 4);
+    assert(desktop.summaries.last().contains("org.example.Batch5 — Cancelled"));
+    assert(desktop.summaries.last().contains("Test &lt;b&gt;&amp; Four — Installed"));
+    background.synchronize(); QCoreApplication::processEvents(); assert(desktop.summaries.size() == 2);
+    window.show();
+    install("org.example.Open1"); install("org.example.Open2");
+    write(temp.filePath("org.example.Open1"), "ok"); write(temp.filePath("org.example.Open2"), "ok");
+    waitFor([&] { return !manager.busy() && !background.inhibiting(); });
+    window.close(); QCoreApplication::processEvents(); assert(desktop.summaries.size() == 2);
+    window.show();
+    std::cout << "PASS: close/reopen/minimize, real manager queue, one running vs queued view, exact progress, success/failure/cancel/crash, hidden removal confirmation, suspend inhibit/release, batch 2/5 and history/cancellation accounting, escaped once-only closed-window summary\n";
 }

@@ -9,6 +9,8 @@ AppCenter.Main {
     catalogStats: null
     property int stage: 0
     property bool fullscreenTest: false
+    property bool batchTest: false
+    property bool secondTransferLogged: false
     property var testApp: ({id: "org.flufflinux.BackgroundTest", name: "App Center Test App", remote: "background-test",
                             developer: "FluffNet LLC", summary: "Isolated background installation test"})
     Connections {
@@ -18,10 +20,16 @@ AppCenter.Main {
             // QML animation timers pause when every window is hidden. The
             // native manager signal still arrives, just like the tray tracker.
             if (main.stage !== 2) return
-            const job = main.backend.jobs.find(job => job.id.replace(/\.desktop$/, "") === "org.flufflinux.BackgroundTest")
-            if (!job || job.active) return
-            if (job.failed) { console.error("BACKGROUND_FAIL: " + job.error); Qt.exit(4); return }
-            console.info("BACKGROUND_COMPLETE: " + JSON.stringify(job)); main.stage = 3
+            const jobs = main.backend.jobs.filter(job => job.id.startsWith("org.flufflinux.BackgroundTest"))
+            const failed = jobs.find(job => job.failed)
+            if (failed) { console.error("BACKGROUND_FAIL: " + failed.error); Qt.exit(4); return }
+            const second = jobs.find(job => job.active && job.receivedBytes > 0 && job.queuePosition === 2 && job.queueTotal === 5)
+            if (second && !main.secondTransferLogged) {
+                main.secondTransferLogged = true
+                console.info("BACKGROUND_TRANSFER_2_OF_5: " + JSON.stringify(second))
+            }
+            if (!jobs.length || jobs.some(job => job.active)) return
+            console.info("BACKGROUND_COMPLETE: " + JSON.stringify(jobs)); main.stage = 3
         }
     }
     Window {
@@ -45,7 +53,12 @@ AppCenter.Main {
                 if (main.backend.installedApps.some(app => app.id === main.testApp.id)) {
                     console.error("BACKGROUND_FAIL: fixture already installed"); Qt.exit(2); return
                 }
-                main.backend.installApp(main.testApp); main.showDownloads(); main.stage = 1
+                const apps = main.batchTest ? main.catalog.filter(app => app.id.startsWith("org.flufflinux.BackgroundTest.Item"))
+                    .sort((a, b) => a.id.localeCompare(b.id)) : [main.testApp]
+                if (main.batchTest && apps.length !== 5) { console.error("BACKGROUND_FAIL: expected five apps"); Qt.exit(6); return }
+                main.testApp = apps[0]
+                apps.forEach(app => main.backend.installApp(app))
+                main.showDownloads(); main.stage = 1
             }
             if (main.backend.review.token) {
                 console.error("BACKGROUND_FAIL: unexpected confirmation"); Qt.exit(3); return
@@ -55,10 +68,6 @@ AppCenter.Main {
             if (main.stage === 1 && job.receivedBytes > 0) {
                 console.info("BACKGROUND_TRANSFER: " + JSON.stringify(job))
                 main.close(); main.stage = 2
-            }
-            if (main.stage === 2 && !job.active) {
-                if (job.failed) { console.error("BACKGROUND_FAIL: " + job.error); Qt.exit(4); return }
-                console.info("BACKGROUND_COMPLETE: " + JSON.stringify(job)); main.stage = 3
             }
         }
     }

@@ -4,6 +4,7 @@
 #include <QPointer>
 #include <QTimer>
 #include <QMap>
+#include <QVariantMap>
 #include <functional>
 #include <memory>
 
@@ -29,6 +30,7 @@ protected:
     bool eventFilter(QObject *object, QEvent *event) override;
 private:
     void detachJobs();
+    void reportBatch();
     FlatpakManager *m_manager;
     QPointer<QWindow> m_window;
     std::function<void()> m_showWindow;
@@ -36,6 +38,9 @@ private:
     std::unique_ptr<SleepInhibitor> m_power;
     std::unique_ptr<KStatusNotifierItem> m_tray;
     QMap<int, BackgroundJob *> m_jobs;
+    QMap<int, QVariantMap> m_batchJobs;
+    quint64 m_batchId = 0;
+    bool m_batchReported = true;
     QTimer m_idle;
     bool m_closed = false;
 };

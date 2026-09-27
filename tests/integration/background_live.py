@@ -47,14 +47,20 @@ def main():
     print("FIXTURE", root, flush=True)
     (root / "runtime").mkdir(mode=0o700)
     (root / "config").mkdir()
+    batch = "--batch" in sys.argv
+    apps = [APP + f".Item{i}" for i in range(1, 6)] if batch else [APP]
+    if batch:
+        qml = "BackgroundBatchFullscreen.qml" if "--fullscreen" in sys.argv else "BackgroundBatch.qml"
+    else:
+        qml = "BackgroundFullscreen.qml" if "--fullscreen" in sys.argv else "BackgroundLive.qml"
     env = dict(os.environ, FLATPAK_USER_DIR=str(root / "user"), FLATPAK_SYSTEM_DIR=str(root / "system"),
                FLATPAK_CONFIG_DIR=str(root / "config"), XDG_DATA_HOME=str(root / "data"),
                XDG_CACHE_HOME=str(root / "cache"), XDG_CONFIG_HOME=str(root / "settings"),
                XDG_RUNTIME_DIR=str(root / "runtime"), WAYLAND_DISPLAY="/run/user/1000/wayland-0",
-               FLUFF_APP_CENTER_QML=str(ROOT / "tests/integration" / ("BackgroundFullscreen.qml" if "--fullscreen" in sys.argv else "BackgroundLive.qml")),
+               FLUFF_APP_CENTER_QML=str(ROOT / "tests/integration" / qml),
                FLUFF_APP_CENTER_BACKGROUND_TEST="1", QT_FORCE_STDERR_LOGGING="1")
     arch = run("flatpak", "--default-arch")
-    for app_id in (RUNTIME, APP):
+    for app_id in [RUNTIME, *apps]:
         runtime = app_id == RUNTIME
         build = root / app_id
         payload = build / ("usr" if runtime else "files")
@@ -68,19 +74,22 @@ def main():
         (payload / "bin/fixture").write_text("#!/bin/sh\nexit 0\n")
         (payload / "bin/fixture").chmod(0o755)
         if not runtime:
-            (payload / "test-payload.bin").write_bytes(os.urandom(32 * 1024 * 1024))
-            metadata = f'''<component type="desktop-application"><id>{APP}</id><name>App Center Test App</name>
+            number = apps.index(app_id) + 1
+            size = 32 if not batch or number == 2 else 1
+            name = f"Test App {number}" if batch else "App Center Test App"
+            (payload / "test-payload.bin").write_bytes(os.urandom(size * 1024 * 1024))
+            metadata = f'''<component type="desktop-application"><id>{app_id}</id><name>{name}</name>
 <summary>Isolated background installation test</summary><metadata_license>CC0-1.0</metadata_license>
 <project_license>MIT</project_license><developer_name>FluffNet LLC</developer_name>
 <description><p>Real Flatpak background transaction test.</p></description>
 <releases><release version="1.0" date="2026-09-27"/></releases><content_rating type="oars-1.1"/>
-<launchable type="desktop-id">{APP}.desktop</launchable></component>'''
+<launchable type="desktop-id">{app_id}.desktop</launchable></component>'''
             (payload / "share/metainfo").mkdir(parents=True)
-            (payload / f"share/metainfo/{APP}.metainfo.xml").write_text(metadata)
+            (payload / f"share/metainfo/{app_id}.metainfo.xml").write_text(metadata)
             (payload / "share/applications").mkdir(parents=True)
-            (payload / f"share/applications/{APP}.desktop").write_text("[Desktop Entry]\nType=Application\nName=App Center Test App\nExec=fixture\n")
+            (payload / f"share/applications/{app_id}.desktop").write_text(f"[Desktop Entry]\nType=Application\nName={name}\nExec=fixture\n")
             (payload / "share/app-info/xmls").mkdir(parents=True)
-            with gzip.open(payload / f"share/app-info/xmls/{APP}.xml.gz", "wb") as stream:
+            with gzip.open(payload / f"share/app-info/xmls/{app_id}.xml.gz", "wb") as stream:
                 stream.write(("<components>" + metadata + "</components>").encode())
         run("flatpak", "build-export", *(["--runtime"] if runtime else []), str(root / "repo"), str(build), "stable", env=env)
     run("flatpak", "build-update-repo", str(root / "repo"), env=env)
@@ -106,7 +115,8 @@ def main():
             log = run("journalctl", "--user", "-u", unit, "-o", "cat", "--no-pager")
             if "BACKGROUND_FAIL" in log:
                 raise AssertionError(log)
-            if "BACKGROUND_TRANSFER" in log and not captured:
+            marker = "BACKGROUND_TRANSFER_2_OF_5" if batch else "BACKGROUND_TRANSFER"
+            if marker in log and not captured:
                 if "--desktop" in sys.argv and "--fullscreen" not in sys.argv:
                     # Reversible presentation-only step for clean screenshots;
                     # never close or modify the user's other windows/files.
@@ -127,7 +137,8 @@ def main():
                 time.sleep(.5)
                 run("spectacle", "-b", "-n", "-f", "-o", str(root / "background-complete.png"))
                 (root / "journal.txt").write_text(log)
-                assert APP in run("flatpak", "list", "--user", "--app", "--columns=application", env=env)
+                installed = run("flatpak", "list", "--user", "--app", "--columns=application", env=env).splitlines()
+                assert all(app_id in installed for app_id in apps), installed
                 inhibitors = run("qdbus6", "--literal", "org.kde.Solid.PowerManagement", "/org/kde/Solid/PowerManagement/PolicyAgent",
                                  "org.kde.Solid.PowerManagement.PolicyAgent.ListInhibitions")
                 assert "App Center" not in inhibitors, inhibitors

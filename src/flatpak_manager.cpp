@@ -14,6 +14,7 @@
 #include <QJsonArray>
 #include <QJsonObject>
 #include <QLocale>
+#include <QMap>
 #include <QPixmapCache>
 #include <QRegularExpression>
 #include <QStandardPaths>
@@ -354,11 +355,22 @@ FlatpakManager::~FlatpakManager() {
 }
 QVariantList FlatpakManager::jobs() const {
     QVariantList visible;
+    QMap<quint64, int> totals, positions;
+    for (const auto &entry : m_jobs) {
+        const auto job = entry.toMap();
+        if (!job.value("cancelled").toBool() && !job.value("prepareOnly").toBool())
+            ++totals[job.value("queueBatch").toULongLong()];
+    }
     // Keep internal indices stable for the worker/queue, but cancellations
     // are not session history and must not reach any of the UI consumers.
     for (const auto &entry : m_jobs) {
         auto job = entry.toMap();
-        if (job.value("hidden").toBool() || job.value("cancelled").toBool()) continue;
+        if (job.value("cancelled").toBool() || job.value("prepareOnly").toBool()) continue;
+        const auto batch = job.value("queueBatch").toULongLong();
+        job["queuePosition"] = ++positions[batch];
+        job["queueTotal"] = totals[batch];
+        // Clearing finished history must not turn item 2/5 back into 1/4.
+        if (job.value("hidden").toBool()) continue;
         // Use catalog artwork before installation too, and retain it in the
         // session history. Unknown external apps fall back to their theme ID.
         job["icon"] = metadata(normalizedId(job.value("id").toString())).value("icon");
@@ -586,6 +598,14 @@ void FlatpakManager::enqueue(QVariantMap request) {
                 && (request.value("action") != "update" || job.value("action") != "update"
                     || job.value("key") == request.value("key")))
             || (id.isEmpty() && job.value("source") == request.value("source")))) return;
+    }
+    if (!request.value("prepareOnly").toBool()) {
+        const bool continuingBatch = std::any_of(m_jobs.cbegin(), m_jobs.cend(), [](const QVariant &entry) {
+            const auto job = entry.toMap();
+            return active(job) && !job.value("prepareOnly").toBool();
+        });
+        if (!continuingBatch) ++m_queueBatch;
+        request["queueBatch"] = QVariant::fromValue(m_queueBatch);
     }
     request["active"] = true; request["failed"] = false; request["progress"] = 0; request["queued"] = true;
     if (request.value("action") == "uninstall") request["removalConfirmed"] = false;
