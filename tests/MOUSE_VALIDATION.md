@@ -1,6 +1,33 @@
-# Mouse controls validation — 2026-09-26
+# Mouse controls validation — 2026-09-26–27
 
 Environment: Fluff Linux KDE/Wayland VM, Qt 6.11.2, KDE desktop controls.
+
+## Zoomed screenshot drag isolation — 2026-09-27
+
+- Reproduced the actual background-grab failure using timestamped mouse events
+  after a timed page drag. The picture starts panning, loses its active handler,
+  then the background scrolls while the modal viewer stays visible. The original
+  zero-timestamp test events bypassed the timed grab path and missed this bug.
+- The permanent regression fails on the original code: at 200% zoom the image
+  loses the drag. Original-code checks also fail for existing page flicking,
+  smooth wheel animation and thumbnail-strip flicking continuing behind it.
+- The viewer now suspends the underlying page and thumbnail scroll inputs for
+  its entire visible lifetime. Opening it cancels existing kinetic/smooth/middle
+  scrolling before the opening animation, without resetting either position.
+  Scrolling is restored after the viewer closes.
+- Regression coverage includes 144 timed drags per run: normal/compact windows,
+  125%/200%/400% zoom, center/edge starts, four directions, mouse and held-touchpad
+  devices. Repeated clicks, release behavior, five background-motion scenarios
+  and ordinary wheel scrolling after closing are checked separately.
+- Fixed code: the full native gesture suite passed all 28 checks at 100% and
+  150% offscreen scaling and again in KDE/Wayland (84 total; 432 matrix drags).
+  App Page 23, Mouse Navigation 8, Middle Scroll 10, Wheel Scroll 6, Catalogue
+  Navigation 8 and Focus 90 passed at each scale: 290 additional QML checks.
+  No failures, type/reference errors or binding loops in the fixed-code runs.
+- Installed only `AppPage.qml` and restarted the live app successfully. The
+  installed file matches the tested version; the prior file is preserved at
+  `/tmp/appcenter-before-preview-drag.RtooCw/AppPage.qml` on the VM. The executable,
+  exclusions and authorization policy are unchanged; no Flatpak apps were changed.
 
 ## Behavior
 

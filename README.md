@@ -624,6 +624,10 @@ dragging from mice and touchpads, including Wayland mouse-button events still
 identified as TouchPad. Touchpad horizontal scrolling does not pan a zoomed photo
 or change screenshots; browsing by swipe remains available when fitted. Mouse-wheel
 zoom and touch-screen pinch/drag behavior are unchanged.
+While the screenshot viewer is visible, the underlying app page and thumbnail
+strip cannot take a drag or wheel gesture. Opening the viewer stops any existing
+flick, smooth-wheel animation or middle-click autoscroll without resetting the
+background position. Closing it restores normal scrolling.
 
 ## Tests
 
@@ -749,6 +753,13 @@ focus points. It does not inject system input or start Flatpak operations:
 c++ -std=c++17 -fPIC tests/native/test_pointer_gestures.cpp -Itarget -o target/test-pointer-gestures $(pkg-config --cflags --libs Qt6QuickTest Qt6Quick Qt6Qml Qt6Gui)
 QT_QPA_PLATFORM=offscreen target/test-pointer-gestures -input tests/native/gestures
 ```
+
+Native mouse events carry real elapsed timestamps. `tst_preview_drag.qml` first
+scrolls the background page, then checks every step of the image drag at 125%,
+200% and 400% zoom, normal/compact sizes, and center/edge positions. It checks
+both mouse and held-touchpad input, repeat clicks, pending background motion and
+restored scrolling after dismissal. Zero-timestamp events previously hid Qt's
+timed background grab stealing; these tests must retain their event timing.
 
 The hover suite covers every category, selected/unselected states, Back, app
 actions, Queue controls, search/sort controls, confirmation buttons and

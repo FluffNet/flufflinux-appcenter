@@ -289,10 +289,16 @@ Page {
         contentWidth: width
         contentHeight: detailsLayout.implicitHeight + 40
         boundsBehavior: Flickable.StopAtBounds
+        // A modal popup alone does not prevent Qt's Flickable from stealing
+        // the image DragHandler's grab after the drag threshold is crossed.
+        interactive: !screenshotPreview.visible
         ScrollBar.vertical: ScrollBar {}
         NaturalWheelScroll {
+            id: detailsWheelScroll
             objectName: "detailsNaturalScroll"
             scrollTarget: detailsFlickable
+            enabled: detailsFlickable.interactive
+            middleMouseScroll.enabled: detailsFlickable.interactive
             middleScrollIdleZ: -1 // Let the nested screenshot strip handle horizontal scrolling first.
         }
         ColumnLayout {
@@ -386,18 +392,24 @@ Page {
                 visible: count > 0
                 orientation: ListView.Horizontal
                 flickableDirection: Flickable.HorizontalFlick
+                interactive: !screenshotPreview.visible
                 spacing: 16
                 clip: true
                 model: app ? app.screenshots : []
                 boundsBehavior: Flickable.DragAndOvershootBounds
                 flickDeceleration: 2500
-                MiddleMouseScroll { scrollTarget: screenshotList; horizontal: true; vertical: false }
+                MiddleMouseScroll {
+                    id: screenshotMiddleScroll
+                    scrollTarget: screenshotList; horizontal: true; vertical: false
+                    enabled: screenshotList.interactive
+                }
                 WheelHandler {
                     id: screenshotTouchpadScroll
                     objectName: "screenshotTouchpadScroll"
                     target: null
                     orientation: Qt.Horizontal
                     acceptedDevices: PointerDevice.TouchPad
+                    enabled: screenshotList.interactive
                     blocking: true
 
                     onWheel: function(event) {
@@ -732,6 +744,13 @@ Page {
         onDesiredWidthChanged: width = desiredWidth
         onDesiredHeightChanged: height = desiredHeight
         onAboutToShow: {
+            // Stop motion already in flight before showing the overlay, not
+            // after its opening animation. Preserve both scroll positions.
+            detailsFlickable.cancelFlick()
+            screenshotList.cancelFlick()
+            detailsWheelScroll.stopSmoothScroll()
+            detailsWheelScroll.middleMouseScroll.stop()
+            screenshotMiddleScroll.stop()
             width = desiredWidth
             height = desiredHeight
         }

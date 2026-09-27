@@ -44,8 +44,10 @@ TestCase {
             const oldX = page.previewPanX, oldY = page.previewPanY
             const x = surface.width / 2, y = surface.height / 2
             nativeInput.pointer(surface, 0, x, y, data.touchpad)
-            for (let step = 1; step <= 5; ++step)
+            for (let step = 1; step <= 5; ++step) {
                 nativeInput.pointer(surface, 1, x + direction * step * 16, y + direction * step * 10, data.touchpad)
+                wait(16)
+            }
             verify(handler.active, "A held left button must grab and pan the photo")
             verify((page.previewPanX - oldX) * direction > 40)
             verify((page.previewPanY - oldY) * direction > 20)
