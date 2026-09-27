@@ -83,3 +83,38 @@ Final package SHA-256:
 
 Exclusions SHA-256 before and after:
 `ffb8212a6bb802afaf89980ff6d7e9cd7593d24af9f7242ab18c284b6731bbd9`
+
+## Follow-up: matching action icons and real GIMP example
+
+Package revision 9, still the same public beta, replaces the add-on action
+button with the shared app-view action component. Install uses the same green
+DownloadArrow, including its light/dark colors. Remove uses the exact same
+`trash-red.svg` asset as Uninstall. Active work switches to Cancel.
+
+The updated 665-check QML suite passed, including arrow/asset assertions,
+install/remove/cancel transitions and narrow/light/dark layouts. The package
+build also passed all 27 Rust and 2 source-style checks.
+
+For a real demonstration, GIMP 3.2.6 was installed in the VM's user Flatpak
+installation, reusing the existing GNOME 50 runtime. The production add-on reader
+resolved exactly these compatible Flathub extensions for that deployment:
+
+1. Fourier: `runtime/org.gimp.GIMP.Plugin.Fourier/x86_64/3`
+2. G'MIC: `runtime/org.gimp.GIMP.Plugin.GMic/x86_64/3`
+3. Resynthesizer: `runtime/org.gimp.GIMP.Plugin.Resynthesizer/x86_64/3`
+
+`tests/integration/GimpAddonsLive.qml` installed Fourier through the real Add-Ons
+dialog, verified its Installed/Remove state and the shared icon asset, and
+captured both themes. GIMP and Fourier remain installed for further testing.
+G'MIC and Resynthesizer were not installed. No existing app was removed, updated,
+or launched, and GIMP itself was not launched.
+
+Captures in `output/addon-icons/` show real catalog and deployment data, not
+fixtures or mockups:
+
+- `appcenter-gimp-addons-button.png`: the Add-Ons button on GIMP's details page.
+- `appcenter-gimp-addons-dark.png`: installed Fourier beside available plug-ins.
+- `appcenter-gimp-addons-light.png`: the same real state in the light theme.
+
+Revision 9 package SHA-256:
+`ea781ac9175f5a6dc365b4828780e8e025adf947da9df50d4d9aa52429c53bc4`

@@ -116,13 +116,19 @@ Dialog {
                                         Label { text: card.modelData.summary || ""; textFormat: Text.PlainText; color: window.mutedTextColor; Layout.fillWidth: true; Layout.minimumWidth: 0; wrapMode: Text.Wrap; visible: text.length > 0 }
                                         Label { text: card.modelData.installed ? qsTr("Installed") : ""; color: window.mutedTextColor; visible: text.length > 0 }
                                     }
-                                    FluffButton {
+                                    AppActionButton {
                                         objectName: "addonActionButton"
+                                        Layout.fillWidth: false
+                                        Layout.minimumWidth: 110; Layout.minimumHeight: 40
+                                        leftPadding: 12; rightPadding: 12; topPadding: 8; bottomPadding: 8
+                                        font: Qt.application.font
                                         visible: dialog.addonData.state === "ready"
                                         text: card.job && card.job.active ? qsTr("Cancel") : card.modelData.installed ? qsTr("Remove") : qsTr("Install")
                                         enabled: card.job && card.job.active || card.modelData.installed || card.modelData.available
-                                        icon.name: card.job && card.job.active ? "dialog-cancel" : card.modelData.installed ? "edit-delete" : "list-add"
-                                        contentItem: FluffButtonContent { monochromeIcon: control.icon.name !== "edit-delete" }
+                                        downloadArrow: !(card.job && card.job.active) && !card.modelData.installed
+                                        icon.name: card.job && card.job.active ? "dialog-cancel" : "download"
+                                        icon.source: card.modelData.installed && !(card.job && card.job.active) ? Qt.resolvedUrl("trash-red.svg") : ""
+                                        icon.color: "transparent"
                                         onClicked: {
                                             if (card.job && card.job.active) dialog.backend.cancelJob(card.job.index)
                                             else dialog.backend.changeAddon(card.modelData.flatpakRef, !card.modelData.installed)

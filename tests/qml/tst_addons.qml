@@ -68,13 +68,21 @@ TestCase {
         backend.appAddons = {state:"ready", items:[addon]}
         waitForPolish(dialog().contentItem)
         let button = findChild(row(), "addonActionButton")
+        verify(button.downloadArrow)
+        verify(findChild(button, "installDownloadArrow").visible)
+        compare(button.icon.source.toString(), "")
         compare(button.text, "Install"); mouseClick(button)
         compare(backend.action.reference, addon.flatpakRef); compare(backend.action.install, true)
         backend.appAddons = {state:"ready", items:[Object.assign({}, addon, {installed:true})]}
         waitForPolish(dialog().contentItem)
         button = findChild(row(), "addonActionButton")
+        verify(!button.downloadArrow)
+        verify(button.icon.source.toString().endsWith("/trash-red.svg"))
         compare(button.text, "Remove"); mouseClick(button); compare(backend.action.install, false)
         backend.jobs = [Object.assign({}, addon, {index:3, active:true, addon:true, status:"Installing", progress:0.4})]
+        verify(!button.downloadArrow)
+        compare(button.icon.source.toString(), "")
+        compare(button.icon.name, "dialog-cancel")
         compare(button.text, "Cancel"); mouseClick(button); compare(backend.action.cancel, 3)
     }
     function test_uninstalled_parent_cannot_change_addons() {
@@ -110,7 +118,10 @@ TestCase {
         const position = button.mapToItem(dialog().contentItem, 0, 0)
         verify(position.x + button.width <= dialog().contentItem.width,
             "Button right " + (position.x + button.width) + " exceeds content width " + dialog().contentItem.width)
-        for (const control of [button, findChild(dialog(), "closeAddonsButton"), findChild(stack().currentItem, "viewAppAddonsButton")]) {
+        const arrow = findChild(button, "installDownloadArrow")
+        verify(arrow.visible)
+        compare(arrow.color, data.light ? "#16823e" : "#65d88b")
+        for (const control of [findChild(dialog(), "closeAddonsButton"), findChild(stack().currentItem, "viewAppAddonsButton")]) {
             const icon = findChild(control, "fluffButtonMonochromeIcon")
             verify(icon.visible)
             compare(icon.color, main.textColor)
