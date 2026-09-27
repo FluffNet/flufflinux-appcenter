@@ -32,7 +32,7 @@ install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter
 	mkdir -p "$(DESTDIR)$(PREFIX)/bin" "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml"
 	mkdir -p "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps" "$(DESTDIR)$(PREFIX)/share/applications"
 	install -m755 target/release/flufflinux-appcenter "$(DESTDIR)$(PREFIX)/bin/flufflinux-appcenter"
-	for alias in app-center plasma-discover discover flufflinux-discover; do ln -sfn flufflinux-appcenter "$(DESTDIR)$(PREFIX)/bin/$$alias"; done
+	for alias in plasma-discover discover flufflinux-discover; do ln -sfn flufflinux-appcenter "$(DESTDIR)$(PREFIX)/bin/$$alias"; done
 	mkdir -p "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter" "$(DESTDIR)$(PREFIX)/share/polkit-1/actions"
 	install -m755 target/release/flufflinux-appcenter-source-helper "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter/source-helper"
 	install -m755 scripts/register-flatpak-handler.sh "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter/register-flatpak-handler"
@@ -63,7 +63,7 @@ set-default-handler:
 uninstall:
 	sh scripts/register-flatpak-handler.sh "$(DESTDIR)$(SYSCONFDIR)/xdg/mimeapps.list" remove
 	rm -f "$(DESTDIR)$(PREFIX)/bin/flufflinux-appcenter"
-	for alias in app-center plasma-discover discover flufflinux-discover; do rm -f "$(DESTDIR)$(PREFIX)/bin/$$alias"; done
+	for alias in plasma-discover discover flufflinux-discover; do rm -f "$(DESTDIR)$(PREFIX)/bin/$$alias"; done
 	rm -f "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter/source-helper"
 	rm -f "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter/register-flatpak-handler"
 	rm -f "$(DESTDIR)$(PREFIX)/share/polkit-1/actions/com.flufflinux.appcenter.policy"

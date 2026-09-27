@@ -8,7 +8,7 @@ pub enum Command {
 }
 
 pub fn help() -> String {
-    format!("App Center {}\n\nUsage: app-center [options] [FILES OR URLS…]\n\n\
+    format!("App Center {}\n\nUsage: flufflinux-appcenter [options] [FILES OR URLS…]\n\n\
 Options (also supported by plasma-discover, discover and flufflinux-discover):\n\
   --search <text>             Open global app search\n\
   --application <ID or URI>    Open an app by ID or appstream: URI\n\
@@ -181,6 +181,7 @@ mod tests {
         assert_eq!(actions(&["--category", "Games", "--search", "chess"]).len(), 2);
     }
     #[test] fn information_options_do_not_launch() {
+        assert!(help().contains("Usage: flufflinux-appcenter [options]"));
         for flag in ["-h", "--help", "--help-all", "-v", "--version", "--author", "--license", "--listmodes", "--listbackends"] {
             assert!(matches!(parse_args(&[flag]).unwrap(), Command::Print(_)));
         }

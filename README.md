@@ -12,7 +12,7 @@ contains Flatpak source management.
 ## Pacman package and Discover replacement
 
 On Fluff Linux, run `sh scripts/build-package.sh` as a normal user. This builds
-`flufflinux-appcenter-2026.9.0beta-2-x86_64.pkg.tar.zst` in a fresh directory under
+`flufflinux-appcenter-2026.9.0beta-3-x86_64.pkg.tar.zst` in a fresh directory under
 `build/`, runs Rust tests, and records **FluffNet LLC** as packager. Install the
 printed package with `sudo pacman -U /absolute/path/to/package.pkg.tar.zst`.
 The package conflicts with and replaces both `discover` and `flufflinux-discover`;
@@ -29,7 +29,8 @@ Wayland window identity, so existing Discover pins launch and group with App
 Center. That old desktop file is a symlink to App Center's launcher, with App
 Center's name/icon. `flufflinux-appcenter.desktop` remains a hidden compatibility
 entry for existing file associations (not a second application-menu entry).
-`app-center`, `plasma-discover`, `discover`, and `flufflinux-discover` are executable symlinks.
+`flufflinux-appcenter` is the single executable for both GUI and CLI usage.
+`plasma-discover`, `discover`, and `flufflinux-discover` are compatibility symlinks.
 The old `flufflinuxplasmadiscover` and `plasmadiscover` icons are also symlinked to
 the new icon, including for copied desktop shortcuts still using those names.
 Locally customized shortcut names or absolute icon paths are not rewritten.
@@ -53,11 +54,11 @@ and exactly one visible application-menu entry, without changing the panel.
 
 ## Command-line compatibility
 
-All five executable names use the same parser and single-instance dispatcher.
+The main executable and its three legacy aliases use the same parser and single-instance dispatcher.
 For example, these open the same global search, including in an existing window:
 
 ```sh
-app-center --search "telegram"
+flufflinux-appcenter --search "telegram"
 plasma-discover --search "telegram"
 ```
 

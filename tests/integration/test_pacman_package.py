@@ -24,7 +24,9 @@ with tempfile.TemporaryDirectory(prefix="appcenter-package-test-") as temporary:
     subprocess.run(["bsdtar", "-xf", package, "-C", root], check=True)
     assert not (root / "etc/xdg/mimeapps.list").exists(), "shared MIME defaults must not be package-owned"
     assert not (root / "etc/xdg/autostart").exists(), "do not inherit Discover's notifier"
-    for name in ("app-center", "plasma-discover", "discover", "flufflinux-discover"):
+    assert not (root / "usr/bin/app-center").is_symlink()
+    assert not (root / "usr/bin/app-center").exists()
+    for name in ("plasma-discover", "discover", "flufflinux-discover"):
         alias = root / "usr/bin" / name
         assert alias.is_symlink()
         assert alias.resolve() == root / "usr/bin/flufflinux-appcenter"
