@@ -7,8 +7,22 @@ pub enum Command {
     Launch { actions: Vec<(String, String)>, desktop_file: String },
 }
 
+enum ParseError {
+    Syntax,
+    Rejected(String),
+}
+
+// Syntax mistakes become a literal search; resource limits and explicitly
+// unsupported operations remain errors rather than being silently swallowed.
+impl From<String> for ParseError {
+    fn from(_: String) -> Self { Self::Syntax }
+}
+impl From<&str> for ParseError {
+    fn from(_: &str) -> Self { Self::Syntax }
+}
+
 pub fn help() -> String {
-    format!("App Center {}\n\nUsage: flufflinux-appcenter [options] [FILES OR URLS…]\n\n\
+    format!("App Center {}\n\nUsage: flufflinux-appcenter [options] [SEARCH TEXT, FILES OR URLS…]\n\n\
 Options (also supported by plasma-discover, discover and flufflinux-discover):\n\
   --search <text>             Open global app search\n\
   --application <ID or URI>    Open an app by ID or appstream: URI\n\
@@ -25,10 +39,13 @@ Options (also supported by plasma-discover, discover and flufflinux-discover):\n
   -v, --version              Show version\n\
   --author                   Show author\n\
   --license                  Show license\n\
-  --                         Treat remaining arguments as files or URLs\n\n\
+  --                         Stop interpreting options\n\n\
 Files: .flatpak, .flatpakref, .flatpakrepo. URLs: appstream:, flatpak:,\n\
 https: and flatpak+https:. Relative files resolve in the calling directory.\n\
-Options accept --name=value too. Search text containing spaces must be quoted.\n\n\
+Options accept --name=value too. Other input is searched as text.\n\
+Examples: flufflinux-appcenter telegram; flufflinux-appcenter google chrome\n\
+Unrecognized words are joined into one query. Malformed command syntax is\n\
+searched literally without executing any partial command.\n\n\
 Discover-only --test is not supported: its QML testing framework is different.\n\
 --headless-update is not supported; use App Updates to review and install.\n\
 Generic Qt configuration can be supplied through QT_QPA_PLATFORM and\n\
@@ -36,13 +53,16 @@ QT_QUICK_CONTROLS_STYLE. App Center does not emulate Discover's Qt debug flags.\
         include_str!("../VERSION").trim())
 }
 
-fn source(value: &str, cwd: &Path, local_only: bool) -> Result<String, String> {
-    if value.is_empty() { return Err("A file or URL cannot be empty.".into()); }
-    let scheme = value.split_once(':').filter(|(prefix, _)| {
+fn url_scheme(value: &str) -> Option<&str> {
+    value.split_once(':').filter(|(prefix, _)| {
         prefix.starts_with(|c: char| c.is_ascii_alphabetic())
             && prefix.chars().all(|c| c.is_ascii_alphanumeric() || "+-.".contains(c))
-    });
-    if let Some((scheme, _)) = scheme {
+    }).map(|(scheme, _)| scheme)
+}
+
+fn source(value: &str, cwd: &Path, local_only: bool) -> Result<String, String> {
+    if value.is_empty() { return Err("A file or URL cannot be empty.".into()); }
+    if let Some(scheme) = url_scheme(value) {
         if scheme.eq_ignore_ascii_case("file") && !value[scheme.len() + 1..].starts_with('/') {
             return Err("Use an absolute file: URL or a plain relative file path.".into());
         }
@@ -70,21 +90,48 @@ pub fn parse(args: &[String], cwd: &Path) -> Result<Command, String> {
     if args.iter().any(|arg| arg.len() > 8192 || arg.contains('\0')) || args.len() > 64 {
         return Err("Too many or oversized command-line arguments.".into());
     }
+    match parse_command(args, cwd) {
+        Ok(command) => Ok(command),
+        Err(ParseError::Rejected(message)) => Err(message),
+        Err(ParseError::Syntax) => {
+            let query = args.join(" ");
+            if query.len() > 8192 { return Err("Search text is too long.".into()); }
+            Ok(Command::Launch { actions: vec![("search".into(), query)], desktop_file: "org.kde.discover".into() })
+        }
+    }
+}
+
+fn source_syntax(value: &str) -> bool {
+    // Only declared input forms take the file/link path. Ordinary text (even
+    // a name containing a colon or a slash) must not become a nonexistent file.
+    if let Some(scheme) = url_scheme(value) {
+        return ["appstream", "flatpak", "file", "https", "flatpak+https"]
+            .iter().any(|candidate| scheme.eq_ignore_ascii_case(candidate));
+    }
+    Path::new(value).extension().and_then(|part| part.to_str()).is_some_and(|extension|
+        ["flatpak", "flatpakref", "flatpakrepo"].iter().any(|candidate| extension.eq_ignore_ascii_case(candidate)))
+}
+
+fn parse_command(args: &[String], cwd: &Path) -> Result<Command, ParseError> {
     let mut options = BTreeMap::new();
     let mut positionals = Vec::new();
+    let mut words = Vec::new();
     let mut literal = false;
     let mut index = 0;
     while index < args.len() {
         let arg = &args[index];
         index += 1;
-        if literal { positionals.push(source(arg, cwd, false)?); continue; }
-        if arg == "--" { literal = true; continue; }
-        if !arg.starts_with('-') { positionals.push(source(arg, cwd, false)?); continue; }
+        if !literal && arg == "--" { literal = true; continue; }
+        if literal || !arg.starts_with('-') {
+            if source_syntax(arg) { positionals.push(source(arg, cwd, false)?); }
+            else { words.push(arg.clone()); }
+            continue;
+        }
         let (key, inline) = arg.split_once('=').map_or((arg.as_str(), None), |(k, v)| (k, Some(v)));
         match key {
             "-h" | "--help" | "--help-all" | "-v" | "--version" | "--author" | "--license"
             | "--listmodes" | "--listbackends" | "--updates" | "--headless-update" => {
-                if inline.is_some() { return Err(format!("{key} does not take a value.")); }
+                if inline.is_some() { return Err(ParseError::Syntax); }
                 options.insert(key.to_string(), String::new());
             }
             "--search" | "--application" | "--mime" | "--category" | "--mode" | "--local-filename"
@@ -98,10 +145,10 @@ pub fn parse(args: &[String], cwd: &Path) -> Result<Command, String> {
                         value.clone()
                     }
                 };
-                if value.is_empty() && key != "--search" { return Err(format!("{key} requires a non-empty value.")); }
+                if value.is_empty() && key != "--search" { return Err(ParseError::Syntax); }
                 options.insert(key.to_string(), value);
             }
-            _ => return Err(format!("Unknown option '{key}'. Use --help.")),
+            _ => words.push(arg.clone()),
         }
     }
     let has = |key: &str| options.contains_key(key);
@@ -111,8 +158,8 @@ pub fn parse(args: &[String], cwd: &Path) -> Result<Command, String> {
     if has("--license") { return Ok(Command::Print(include_str!("../LICENSE").into())); }
     if has("--listmodes") { return Ok(Command::Print("Available modes:\n * Browsing\n * Installed\n * Search\n * Update\n * Sources\n * About\n".into())); }
     if has("--listbackends") { return Ok(Command::Print("Available backends:\n * flatpak-backend\n".into())); }
-    if has("--headless-update") { return Err("--headless-update is not supported. Open App Updates with --mode update to review and install updates.".into()); }
-    if has("--test") { return Err("Discover's --test QML framework is not supported by App Center. Use App Center's tests/ and FLUFF_APP_CENTER_QML developer fixtures.".into()); }
+    if has("--headless-update") { return Err(ParseError::Rejected("--headless-update is not supported. Open App Updates with --mode update to review and install updates.".into())); }
+    if has("--test") { return Err(ParseError::Rejected("Discover's --test QML framework is not supported by App Center. Use App Center's tests/ and FLUFF_APP_CENTER_QML developer fixtures.".into())); }
     let desktop_file = options.get("--desktopfile").map(|name| name.trim_end_matches(".desktop")).unwrap_or("org.kde.discover");
     if desktop_file.is_empty() || !desktop_file.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
         return Err("--desktopfile requires a desktop-entry base name, not a path.".into());
@@ -133,10 +180,18 @@ pub fn parse(args: &[String], cwd: &Path) -> Result<Command, String> {
     } else if has("--updates") || has("--mode") {
         actions.push(("mode".into(), mode(if has("--updates") { "update" } else { &options["--mode"] })?));
     }
-    if let Some(value) = options.get("--search") { actions.push(("search".into(), value.clone())); }
+    if has("--search") || !words.is_empty() {
+        let mut query = options.get("--search").cloned().unwrap_or_default();
+        if !words.is_empty() {
+            if !query.is_empty() { query.push(' '); }
+            query.push_str(&words.join(" "));
+        }
+        if query.len() > 8192 { return Err(ParseError::Rejected("Search text is too long.".into())); }
+        actions.push(("search".into(), query));
+    }
     if let Some(value) = options.get("--local-filename") { actions.push(("source".into(), source(value, cwd, true)?)); }
     for value in positionals { actions.push(("source".into(), value)); }
-    if actions.len() > 16 { return Err("Open at most 16 files or destinations at once.".into()); }
+    if actions.len() > 16 { return Err(ParseError::Rejected("Open at most 16 files or destinations at once.".into())); }
     Ok(Command::Launch { actions, desktop_file: desktop_file.into() })
 }
 
@@ -164,14 +219,14 @@ mod tests {
         for args in [vec!["--updates"], vec!["--mode", "update"], vec!["--mode=update"]] {
             assert_eq!(actions(&args), [("mode".into(), "Update".into())]);
         }
-        assert!(parse_args(&["--mode", "garbage"]).is_err());
+        assert_eq!(actions(&["--mode", "garbage"]), [("search".into(), "--mode garbage".into())]);
     }
     #[test] fn relative_paths_are_resolved_before_ipc() {
         assert_eq!(actions(&["--local-filename", "Space App.flatpakref"])[0].1, "/caller/Space App.flatpakref");
-        assert_eq!(actions(&["--", "--updates"])[0].1, "/caller/--updates");
+        assert_eq!(actions(&["--", "--updates"]), [("search".into(), "--updates".into())]);
         assert_eq!(actions(&["file:///tmp/App.flatpak"])[0].1, "file:///tmp/App.flatpak");
-        assert!(parse_args(&["--local-filename", "https://example.org/a.flatpakref"]).is_err());
-        assert!(parse_args(&["file:relative.flatpakref"]).is_err());
+        assert_eq!(actions(&["--local-filename", "https://example.org/a.flatpakref"])[0].0, "search");
+        assert_eq!(actions(&["file:relative.flatpakref"])[0].0, "search");
     }
     #[test] fn application_and_filter_options() {
         assert_eq!(actions(&["--application", "org.Example.App"])[0].1, "appstream:org.Example.App");
@@ -187,12 +242,45 @@ mod tests {
         }
     }
     #[test] fn invalid_unsupported_and_oversized_inputs_fail() {
-        for args in [vec!["--search"], vec!["--unknown"], vec!["--mode", ""], vec!["--help=yes"],
-            vec!["--mime", "oops"], vec!["--mime", "application/"], vec!["--desktopfile", "../other"],
-            vec!["--headless-update"], vec!["--test", "old.qml"]] {
+        for args in [vec!["--headless-update"], vec!["--test", "old.qml"]] {
             assert!(parse_args(&args).is_err(), "{args:?}");
         }
         assert!(parse_args(&vec!["file.flatpak"; 17]).is_err());
         assert!(parse_args(&["--search", &"a".repeat(8193)]).is_err());
+        assert!(parse_args(&[&"a".repeat(5000), &"b".repeat(5000)]).is_err());
+        assert!(parse_args(&["bad\0input"]).is_err());
+    }
+    #[test] fn bare_text_and_unknown_options_are_one_search() {
+        for (args, expected) in [
+            (vec!["telegram"], "telegram"), (vec!["google", "chrome"], "google chrome"),
+            (vec!["Google Chrome"], "Google Chrome"), (vec!["משחקים", "chess"], "משחקים chess"),
+            (vec!["--serach", "telegram"], "--serach telegram"),
+            (vec!["--unknown=value"], "--unknown=value"), (vec!["C++", "music/audio"], "C++ music/audio"),
+            (vec!["Steam:", "games"], "Steam: games"), (vec!["org.telegram.desktop"], "org.telegram.desktop"),
+            (vec!["--search", "google", "chrome"], "google chrome"),
+        ] {
+            assert_eq!(actions(&args), [("search".into(), expected.into())], "{args:?}");
+        }
+    }
+    #[test] fn malformed_commands_only_search_never_partially_execute() {
+        for args in [vec!["--search"], vec!["--mode", ""], vec!["--help=yes"],
+            vec!["--mime", "oops"], vec!["--mime", "application/"], vec!["--desktopfile", "../other"],
+            vec!["appstream:org.Example.App", "--mode=nope"], vec!["--updates", "--local-filename"]] {
+            assert_eq!(actions(&args), [("search".into(), args.join(" "))], "{args:?}");
+        }
+    }
+    #[test] fn recognized_links_files_and_options_keep_their_meaning() {
+        for value in ["appstream://org.Example.App", "flatpak:org.Example.App", "file:///tmp/App.flatpak",
+            "https://example.org/App.flatpakref", "flatpak+https://example.org/App.flatpakref"] {
+            assert_eq!(actions(&[value]), [("source".into(), value.into())]);
+        }
+        assert_eq!(actions(&["./My App.FLATPAKREF"]), [("source".into(), "/caller/./My App.FLATPAKREF".into())]);
+        assert_eq!(actions(&["./My App:2026.flatpakref"]), [("source".into(), "/caller/./My App:2026.flatpakref".into())]);
+        assert_eq!(actions(&["--", "--mode.flatpakref"]), [("source".into(), "/caller/--mode.flatpakref".into())]);
+        assert_eq!(actions(&["--mode=Installed", "telegram"]),
+            [("mode".into(), "Installed".into()), ("search".into(), "telegram".into())]);
+        assert_eq!(actions(&["telegram", "appstream:org.Example.App"]),
+            [("search".into(), "telegram".into()), ("source".into(), "appstream:org.Example.App".into())]);
+        assert!(actions(&[]).is_empty());
     }
 }

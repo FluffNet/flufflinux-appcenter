@@ -25,7 +25,7 @@ with tempfile.TemporaryDirectory(prefix="appcenter-cli-") as temporary:
                            ("--author", "FluffNet LLC"), ("--license", "MIT"),
                            ("--listmodes", "Browsing"), ("--listbackends", "flatpak-backend")]:
         result = run([flag]); assert result.returncode == 0 and expected in result.stdout, result
-    for args in [["--search"], ["--mode=nope"], ["--not-an-option"], ["--headless-update"], ["--test", "old.qml"]]:
+    for args in [["--headless-update"], ["--test", "old.qml"]]:
         result = run(args); assert result.returncode != 0 and result.stderr, result
     env["QT_QPA_PLATFORM"] = display
     log = root / "events.log"
@@ -44,11 +44,17 @@ with tempfile.TemporaryDirectory(prefix="appcenter-cli-") as temporary:
             if all(state.get(key) == value for key, value in expected.items()): return True
         return False
     with log.open("w") as output:
-        first = subprocess.Popen([binary, "--search", "Telegram & friends", "--desktopfile=org.kde.discover.desktop"],
+        first = subprocess.Popen([binary, "Telegram & friends", "--desktopfile=org.kde.discover.desktop"],
                                  env=env, stdout=output, stderr=output)
         try:
             wait_for(lambda text: state_is(text, search="Telegram & friends"))
             cases = [(["--search=משחקים \"chess\""], {"search":"משחקים \"chess\""}),
+                     (["telegram"], {"search":"telegram"}),
+                     (["google", "chrome"], {"search":"google chrome"}),
+                     (["--serach", "Telegram"], {"search":"--serach Telegram"}),
+                     (["--search"], {"search":"--search"}),
+                     (["--mode=nope"], {"search":"--mode=nope", "category":"All Apps"}),
+                     (["--", "--updates"], {"search":"--updates", "category":"All Apps"}),
                      (["--category", "Games"], {"category":"Games", "search":""}),
                      (["--category=Viewer"], {"rawCategory":"Viewer"}),
                      (["--mime", "APPLICATION/PDF"], {"mime":"application/pdf", "rawCategory":""}),
@@ -72,4 +78,4 @@ with tempfile.TemporaryDirectory(prefix="appcenter-cli-") as temporary:
             assert "TypeError" not in log.read_text() and "ReferenceError" not in log.read_text(), log.read_text()
         finally:
             first.terminate(); first.wait(timeout=10)
-print("PASS: CLI introspection/errors, first-launch search, live IPC search/categories/MIME/all six modes, no automatic updates")
+print("PASS: CLI introspection/errors, first-launch bare search, live IPC multi-word/fallback searches, categories/MIME/all six modes, no automatic updates")

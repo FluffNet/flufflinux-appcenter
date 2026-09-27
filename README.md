@@ -12,7 +12,7 @@ contains Flatpak source management.
 ## Pacman package and Discover replacement
 
 On Fluff Linux, run `sh scripts/build-package.sh` as a normal user. This builds
-`flufflinux-appcenter-2026.9.0beta-3-x86_64.pkg.tar.zst` in a fresh directory under
+`flufflinux-appcenter-2026.9.0beta-4-x86_64.pkg.tar.zst` in a fresh directory under
 `build/`, runs Rust tests, and records **FluffNet LLC** as packager. Install the
 printed package with `sudo pacman -U /absolute/path/to/package.pkg.tar.zst`.
 The package conflicts with and replaces both `discover` and `flufflinux-discover`;
@@ -58,9 +58,24 @@ The main executable and its three legacy aliases use the same parser and single-
 For example, these open the same global search, including in an existing window:
 
 ```sh
+flufflinux-appcenter telegram
 flufflinux-appcenter --search "telegram"
+plasma-discover telegram
 plasma-discover --search "telegram"
 ```
+
+Bare input defaults to search. Multiple words are joined, so
+`flufflinux-appcenter google chrome` searches for "google chrome". Unknown flags
+are also literal search text. A malformed recognized command, such as
+`--mode=nope` or a missing option value, searches the entire input without
+executing any partial command. Explicit `--search` text and extra bare words
+are combined into one query. `--` stops option parsing but still distinguishes
+recognized files/links from search text.
+
+Recognized Flatpak file extensions and supported URL schemes retain their
+existing input handling, including error messages when a file/link cannot be
+opened. Input-size limits and the explicitly unsupported operations below
+remain errors. No argument fallback installs an app or checks for updates.
 
 Discover's public navigation and input options are supported:
 
