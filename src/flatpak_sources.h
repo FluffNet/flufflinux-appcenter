@@ -13,6 +13,7 @@
 #include <QJsonDocument>
 #include <QSet>
 #include <QSettings>
+#include <QStandardPaths>
 #include <QUrl>
 
 namespace Sources {
@@ -21,7 +22,7 @@ inline QString configPath() {
 #ifdef APPCENTER_SOURCE_TEST_CONFIG
     return APPCENTER_SOURCE_TEST_CONFIG;
 #else
-    return QDir::homePath() + "/.config/flufflinux-appcenter.conf";
+    return QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation) + "/flufflinux-appcenter.conf";
 #endif
 }
 inline QString url(FlatpakRemote *remote) {

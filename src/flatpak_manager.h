@@ -66,8 +66,9 @@ public:
     Q_INVOKABLE void refreshInstalled();
     Q_INVOKABLE void launchApp(QVariantMap app);
     QVariantList catalog() const { return m_catalog; }
-    bool catalogLoading() const { return m_catalogProcess.state() != QProcess::NotRunning; }
+    bool catalogLoading() const { return m_catalogRefreshPending || m_catalogAwaitingSources || m_catalogProcess.state() != QProcess::NotRunning; }
     void loadCatalog(const QString &cachePath = {});
+    void setCatalogNetworkState(const QString &state, bool ready);
     // Usable cached applications remain browsable even if refreshing fails.
     bool catalogSourcesUnavailable() const { return m_catalogLoadsFailed && m_catalog.isEmpty(); }
     QVariantList repositories() const { return m_repositories; }
@@ -120,6 +121,7 @@ private:
     void runSourceOperation(QVariantMap request);
     void reloadCatalog(bool force = false);
     void setCatalog(const QVariantList &catalog);
+    void startCatalogRefresh();
     void drainApplicationLinks();
     void drainInstalledApplicationLinks();
     QStringList m_pendingApplicationLinks;
@@ -165,6 +167,11 @@ private:
     QString m_catalogCachePath, m_catalogFingerprint, m_catalogReadFingerprint;
     QDateTime m_catalogSavedAt;
     bool m_catalogForceAgain = false, m_sourceRefreshCatalog = false;
+    bool m_catalogAwaitingSources = false, m_catalogResetAge = false;
+    bool m_catalogHasRefreshedSources = false;
+    bool m_catalogRefreshPending = false, m_catalogNetworkReady = true, m_catalogOffline = false;
+    bool m_sourceSucceeded = false, m_sourceCatalogReported = false;
+    int m_sourceCatalogsRefreshed = 0;
     QStringList m_pendingInputs;
     bool m_sourceResult = false, m_sourceListing = false, m_catalogAgain = false, m_sourcesRefreshPending = false;
 };

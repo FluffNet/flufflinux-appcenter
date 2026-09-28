@@ -47,6 +47,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     connect(this, &FlatpakManager::catalogChanged, this, &FlatpakManager::drainApplicationLinks);
     connect(this, &FlatpakManager::installedChanged, this, &FlatpakManager::drainApplicationLinks);
     connect(this, &FlatpakManager::installedChanged, this, &FlatpakManager::drainInstalledApplicationLinks);
+    connect(this, &FlatpakManager::jobsChanged, this, &FlatpakManager::startCatalogRefresh, Qt::QueuedConnection);
     connect(&m_catalogProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this] { QTimer::singleShot(0, this, &FlatpakManager::drainApplicationLinks); });
     connect(&m_catalogProcess, &QProcess::errorOccurred, this,
@@ -124,7 +125,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
             m_sourceBuffer.remove(0, end + 1);
             if (message["type"] == "sources") {
                 const auto sources = message["sources"].toArray().toVariantList();
-                if (sources != m_repositories) {
+                if (sources != m_repositories && (!m_sourceListing || m_catalogCachePath.isEmpty())) {
                     m_catalogLoadsFailed = false;
                     emit catalogChanged();
                 }
@@ -133,14 +134,18 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                     m_updatesError.clear(); emit updatesChanged();
                 }
                 m_repositories = sources;
-                emit repositoriesChanged(); reloadCatalog();
+                emit repositoriesChanged();
+                if (!m_sourceRefreshCatalog) reloadCatalog();
             } else if (message["type"] == "catalog-load") {
+                m_sourceCatalogReported = true;
+                m_sourceCatalogsRefreshed = message["refreshed"].toInt();
                 // Only completed catalog loads establish availability. A source
                 // settings error, empty result set or NM connectivity probe cannot.
                 m_catalogLoadsFailed = message["available"].toInt() == 0 && message["failed"].toInt() > 0;
                 emit catalogChanged();
             } else if (message["type"] == "result") {
                 m_sourceResult = true;
+                m_sourceSucceeded = message["success"].toBool();
                 // Opening Settings must not erase a provisioning/refresh
                 // error before the user has had a chance to read it.
                 if (!m_sourceListing || !message["success"].toBool()) m_sourcesError = message["error"].toString();
@@ -148,21 +153,37 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
             }
         }
     });
-    connect(&m_sourceProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this] {
+    connect(&m_sourceProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
+        [this](int code, QProcess::ExitStatus status) {
         if (!m_sourceResult) m_sourcesError = tr("Could not finish updating software sources.");
-        emit repositoriesChanged(); emit jobsChanged(); reloadCatalog(m_sourceRefreshCatalog);
+        if (m_catalogAwaitingSources) {
+            m_catalogAwaitingSources = false;
+            const bool completed = status == QProcess::NormalExit && (code == 0 || code == 1)
+                && m_sourceCatalogReported && m_sourceResult;
+            m_catalogResetAge = completed && !code && m_sourceSucceeded;
+            // Partial success can remain browsable, but must not renew the
+            // whole-list cache. All-failed refreshes never reveal the old list.
+            m_catalogHasRefreshedSources = m_catalogResetAge || (completed && m_sourceCatalogsRefreshed > 0);
+            if (m_catalogHasRefreshedSources) reloadCatalog(true);
+            else { m_catalogLoadsFailed = true; emit catalogChanged(); }
+        } else reloadCatalog(m_sourceRefreshCatalog);
+        emit repositoriesChanged(); emit jobsChanged();
         const auto inputs = m_pendingInputs; m_pendingInputs.clear();
         for (const auto &source : inputs) openSource(source);
     });
     connect(&m_sourceProcess, &QProcess::errorOccurred, this, [this](QProcess::ProcessError error) {
         if (error == QProcess::FailedToStart) {
             m_sourcesError = tr("Could not start the software-source worker.");
+            if (m_catalogAwaitingSources) {
+                m_catalogAwaitingSources = false; m_catalogLoadsFailed = true; emit catalogChanged();
+            }
             emit repositoriesChanged(); emit jobsChanged();
         }
     });
     connect(&m_catalogProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this](int code, QProcess::ExitStatus status) {
             const auto document = QJsonDocument::fromJson(m_catalogProcess.readAllStandardOutput());
+            if (m_catalogAwaitingSources || m_catalogRefreshPending) return;
             if (!code && status == QProcess::NormalExit && document.isArray()) {
                 setCatalog(document.array().toVariantList());
                 if (!m_catalogCachePath.isEmpty()) {
@@ -171,12 +192,19 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                     // Never label that mixed snapshot as a reusable cache.
                     if (!fingerprint.isEmpty() && fingerprint == m_catalogReadFingerprint) {
                         m_catalogFingerprint = fingerprint;
-                        m_catalogSavedAt = QDateTime::currentDateTimeUtc();
-                        CatalogCache::write(m_catalogCachePath, fingerprint, m_catalog, m_catalogSavedAt);
+                        if (m_catalogResetAge) m_catalogSavedAt = QDateTime::currentDateTimeUtc();
+                        m_catalogResetAge = false;
+                        // A local-only rebuild preserves the source-refresh
+                        // timestamp. It must never buy another cache lifetime.
+                        if (CatalogCache::fresh(m_catalogSavedAt))
+                            CatalogCache::write(m_catalogCachePath, fingerprint, m_catalog, m_catalogSavedAt);
                     } else if (!fingerprint.isEmpty()) m_catalogAgain = true;
                 }
                 if (!m_sizeApp.isEmpty()) requestInstallInfo(m_sizeApp);
                 refreshInstalled();
+            } else if (!m_catalogCachePath.isEmpty()) {
+                m_catalogResetAge = false;
+                if (m_catalog.isEmpty()) m_catalogLoadsFailed = true;
             }
             if (m_catalogAgain) {
                 const bool force = m_catalogForceAgain;
@@ -789,7 +817,7 @@ void FlatpakManager::drainInstalledApplicationLinks() {
     }
 }
 void FlatpakManager::drainApplicationLinks() {
-    if (sourcesBusy() || m_catalogProcess.state() != QProcess::NotRunning || m_loading) return;
+    if (sourcesBusy() || catalogLoading() || m_loading) return;
     const auto pending = m_pendingApplicationLinks;
     m_pendingApplicationLinks.clear();
     for (const auto &source : pending) openSource(source);
@@ -811,7 +839,7 @@ void FlatpakManager::openSource(QString source) {
         if (id.isEmpty()) {
             emit inputError(tr("Use an appstream: or flatpak: link containing an application ID only.")); return;
         }
-        if (m_catalogProcess.state() != QProcess::NotRunning || m_loading) {
+        if (catalogLoading() || m_loading) {
             if (m_pendingApplicationLinks.size() < 16) m_pendingApplicationLinks.append(source);
             else emit inputError(tr("Too many applications are waiting for the catalog to load."));
             return;
@@ -1094,13 +1122,27 @@ void FlatpakManager::cancelAll() {
     if (sourcesBusy()) { m_sourceProcess.write("{\"cancel\":true}\n"); m_sourceProcess.closeWriteChannel(); }
 }
 
-void FlatpakManager::initializeSources() { runSourceOperation({{"operation", "initialize"}}); }
+void FlatpakManager::initializeSources() {
+    // Cache-enabled startup either accepted a fresh snapshot or already
+    // requested a real refresh. Do not provision/rebuild a second time.
+    if (m_catalogCachePath.isEmpty()) runSourceOperation({{"operation", "initialize"}});
+}
 void FlatpakManager::refreshSources(bool catalogs) { runSourceOperation({{"operation", catalogs ? "refresh" : "list"}}); }
 void FlatpakManager::addDefaultSources() { runSourceOperation({{"operation", "defaults"}}); }
 void FlatpakManager::runSourceOperation(QVariantMap request) {
     if (m_stopping || busy()) return;
+    if (request.value("operation") == "refresh" && !m_catalogCachePath.isEmpty()
+            && (!m_catalogNetworkReady || m_catalogOffline)) {
+        m_catalogRefreshPending = true; emit catalogChanged(); return;
+    }
     m_sourceListing = request.value("operation") == "list";
     m_sourceRefreshCatalog = request.value("operation") == "refresh";
+    if (m_sourceRefreshCatalog && !m_catalogCachePath.isEmpty()) {
+        m_catalogRefreshPending = false;
+        setCatalog({}); m_catalogFingerprint.clear(); m_catalogSavedAt = {};
+        m_catalogAwaitingSources = true; m_catalogResetAge = false;
+        m_catalogHasRefreshedSources = false;
+    }
     if (!m_sourceListing && m_updatesState == "ready") {
         m_updates.clear(); m_updatesState = "idle"; m_updatesSkipped.clear();
         m_updatesError.clear(); emit updatesChanged();
@@ -1110,7 +1152,8 @@ void FlatpakManager::runSourceOperation(QVariantMap request) {
         m_catalogLoadsFailed = false;
         emit catalogChanged();
     }
-    m_sourceBuffer.clear(); m_sourceResult = false;
+    m_sourceBuffer.clear(); m_sourceResult = false; m_sourceSucceeded = false;
+    m_sourceCatalogReported = false; m_sourceCatalogsRefreshed = 0;
     request["action"] = "repositories";
     m_sourceProcess.start(QCoreApplication::applicationFilePath(), {"--transaction-worker",
         QString::fromUtf8(QJsonDocument::fromVariant(request).toJson(QJsonDocument::Compact))});
@@ -1145,22 +1188,41 @@ void FlatpakManager::setCatalog(const QVariantList &catalog) {
         m_metadata[normalizedId(app.value("id").toString())] = app;
     }
 }
+void FlatpakManager::setCatalogNetworkState(const QString &state, bool ready) {
+    m_catalogNetworkReady = ready; m_catalogOffline = state == "offline";
+    startCatalogRefresh();
+}
+void FlatpakManager::startCatalogRefresh() {
+    if (m_catalogRefreshPending && m_catalogNetworkReady && !m_catalogOffline && !busy() && !m_stopping)
+        runSourceOperation({{"operation", "refresh"}});
+}
 void FlatpakManager::loadCatalog(const QString &cachePath) {
     m_catalogCachePath = cachePath;
     if (!cachePath.isEmpty()) {
         const auto fingerprint = CatalogInputs::fingerprint();
         const auto cache = CatalogCache::read(cachePath, fingerprint);
-        if (cache.valid) {
+        if (cache.valid && CatalogCache::fresh(cache.savedAt)) {
+            m_catalogHasRefreshedSources = true;
             setCatalog(cache.apps);
             m_catalogFingerprint = fingerprint; m_catalogSavedAt = cache.savedAt;
             emit catalogChanged();
-            if (CatalogCache::fresh(cache.savedAt)) return;
+            return;
         }
+        // Missing, invalid and expired snapshots all require actual source
+        // metadata, not a parse of yesterday's local AppStream deployment.
+        setCatalog({}); m_catalogSavedAt = {}; m_catalogFingerprint.clear();
+        m_catalogHasRefreshedSources = false;
+        m_catalogRefreshPending = true; emit catalogChanged(); startCatalogRefresh();
+        return;
     }
     reloadCatalog();
 }
 void FlatpakManager::reloadCatalog(bool force) {
     if (m_stopping) return;
+    if (m_catalogAwaitingSources || m_catalogRefreshPending) return;
+    // Opening Settings after a failed startup refresh must not expose yesterday's
+    // local catalog or make that failure appear resolved.
+    if (!m_catalogCachePath.isEmpty() && !m_catalogHasRefreshedSources) return;
     if (m_catalogProcess.state() != QProcess::NotRunning) {
         m_catalogAgain = true; m_catalogForceAgain |= force; return;
     }
@@ -1172,7 +1234,7 @@ void FlatpakManager::reloadCatalog(bool force) {
                 && CatalogCache::fresh(m_catalogSavedAt)) return;
         // Once rebuilding, only that worker's stable result may validate the
         // in-memory list. Inputs could change away and then back mid-parse.
-        m_catalogFingerprint.clear(); m_catalogSavedAt = {};
+        m_catalogFingerprint.clear();
     }
     m_catalogProcess.start(QCoreApplication::applicationFilePath(), {"--catalog"});
     emit catalogChanged();

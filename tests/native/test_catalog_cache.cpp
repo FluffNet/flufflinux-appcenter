@@ -14,8 +14,8 @@ int main(int argc, char **argv) {
     assert(CatalogCache::write(path, "inputs", apps, now));
     const auto cached = CatalogCache::read(path, "inputs", now);
     assert(cached.valid && cached.apps == apps && cached.savedAt == now);
-    assert(CatalogCache::fresh(now, now.addSecs(86399)));
-    assert(!CatalogCache::fresh(now, now.addSecs(86400)));
+    assert(CatalogCache::fresh(now, now.addSecs(43199)));
+    assert(!CatalogCache::fresh(now, now.addSecs(43200)));
     assert(!CatalogCache::fresh(now, now.addSecs(-1)));
     assert(!CatalogCache::read(path, "inputs", now.addSecs(-1)).valid);
     assert(!CatalogCache::read(path, "different-source", now).valid);
@@ -49,5 +49,5 @@ int main(int argc, char **argv) {
     QJsonArray second; CatalogInputs::catalogFiles(second, directory.filePath("appstream"));
     assert(first != second);
     assert(CatalogInputs::stamp(xml) != CatalogInputs::stamp(directory.filePath("missing")));
-    qInfo("PASS: catalog cache round trip, 24-hour expiry, stale display, clock rollback, invalidation, corruption, oversize and unwritable paths");
+    qInfo("PASS: catalog cache round trip, exact 12-hour expiry, clock rollback, invalidation, corruption, oversize and unwritable paths");
 }

@@ -11,7 +11,9 @@
 #include <QStandardPaths>
 
 namespace CatalogCache {
-constexpr int version = 1;
+// Version 1 only rebuilt local metadata and is not proof of a source refresh.
+constexpr int version = 2;
+constexpr qint64 lifetimeSeconds = 12 * 60 * 60;
 constexpr qint64 maximumBytes = 64 * 1024 * 1024;
 struct Entry {
     QVariantList apps;
@@ -22,9 +24,9 @@ inline QString defaultPath() {
     return QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/application-list.json";
 }
 inline bool fresh(const QDateTime &savedAt, const QDateTime &now = QDateTime::currentDateTimeUtc()) {
-    // Use a rolling day, not a midnight cutoff. Clock rollback cannot make a
+    // Use a rolling lifetime, not a midnight cutoff. Clock rollback cannot make a
     // future-dated cache stay fresh indefinitely.
-    return savedAt.isValid() && savedAt <= now && savedAt.secsTo(now) < 24 * 60 * 60;
+    return savedAt.isValid() && savedAt <= now && savedAt.secsTo(now) < lifetimeSeconds;
 }
 inline Entry read(const QString &path, const QString &fingerprint,
                   const QDateTime &now = QDateTime::currentDateTimeUtc()) {

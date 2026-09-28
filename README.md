@@ -444,19 +444,33 @@ reflows, but does not reset a deliberate scroll when the window is resized.
 The finished application list is saved as `application-list.json` in Qt's
 per-user App Center cache directory under `$XDG_CACHE_HOME` (normally
 `~/.cache`). Repeat launches show that list in the first frame without
-`Loading applications...`. The snapshot is fresh for 24 hours; an older
-matching snapshot stays visible while a worker rebuilds it in the background.
-This rebuild reads local Flatpak metadata, not an automatic app update check
-or a daily redownload of every source.
+`Loading applications...` and without contacting the sources or rebuilding.
+The lifetime is strictly 12 hours from the last successful full source refresh
+and catalog rebuild. At 12 hours or more, startup shows `Loading applications...`,
+refreshes the actual enabled Flatpak/AppStream sources, then rebuilds and saves
+the list. It does not show the expired list or refresh it in the background.
+This updates catalog metadata, not installed apps, and does not check for app
+updates. Conditional source responses confirming unchanged data are valid
+refreshes; merely parsing existing local metadata is not.
 
 Changes to Flatpak installations/deployments, source configuration, cached
 AppStream metadata, source filters, exclusions or the App Center binary
 invalidate the snapshot. Window size and sorting preferences do not. Source
-initialization/listing reuses unchanged data instead of parsing it again.
-Settings' explicit source refresh still rebuilds the list. Missing/corrupt
-caches fall back to the normal worker; cache write failures do not block
-browsing. Writes are atomic, and inputs changing during a parse cannot be
-saved as a fresh snapshot. The existing offline/source-failure UI is unchanged.
+initialization is skipped for a valid fresh snapshot. Settings' explicit source
+refresh still rebuilds the list. Missing/corrupt/legacy caches require a full
+source refresh too. Local rebuilds for installation/exclusion/source changes
+preserve the last source-refresh timestamp instead of extending the lifetime.
+Writes are atomic, and inputs changing during a parse cannot be saved as a
+fresh snapshot. Cache write failures do not block browsing.
+
+Startup waits for NetworkManager's initial state before attempting an expired
+refresh. Fully offline defers it until a connection appears; LAN-only, limited,
+portal and unknown states allow an attempt. Failed source refreshes cannot
+renew the cache. If all pulls fail, Home/categories show `Cannot Connect to
+Sources` with Try Again; an offline machine shows `No Network Connection` and
+disables App Updates. Partial success stays browsable without renewing the
+whole-list cache. Source failures are in-app messages, not queue jobs or KDE
+installation-failure notifications.
 
 On a cold start the GUI appears before parsing finishes. Catalog loading runs
 in the existing `--catalog` worker; launcher/IPC clients do not parse or rewrite
@@ -473,9 +487,21 @@ inside the KDE Wayland session to measure the first frame and exercise a launch
 request that arrives before it. The test uses a separate socket and closes its
 own temporary window; it does not replace the installed package.
 `python tests/integration/test_catalog_startup.py target/release/flufflinux-appcenter`
-checks cold, warm and expired-cache launches using real catalog data and a
-temporary cache. `sh tests/run_catalog_availability.sh` also checks cache
-validation, invalidation, refresh failure and no redundant startup parsing.
+checks cold, warm and expired-cache launches against a temporary HTTP Flatpak
+source. It publishes a new app, verifies a fresh cache makes no source request,
+then expires the cache and proves the new app is downloaded and displayed.
+`sh tests/run_catalog_availability.sh` also checks the exact 12-hour boundary,
+offline deferral, LAN/limited attempts, refresh failure, local-rebuild age
+preservation, invalidation and no redundant startup parsing.
+
+For live error screenshots, compile `tests/native/network_preview.cpp` with
+Qt6Core/Qt6DBus into `target/network-preview`, then run
+`python tests/integration/capture_catalog_failures.py target/release/flufflinux-appcenter`
+inside KDE. NetworkManager states are simulated on a private bus; the production
+worker attempts real Flathub through a refusing proxy, which records the attempted
+requests. The VM's connection,
+installed apps and real source/config files are unchanged. Captures go into
+`target/cache-lan-source-failure.png` and `target/cache-fully-offline.png`.
 
 Catalog and Installed scrollbars sit at the outer right edge for the full page
 content height, with a persistent contrasting thumb and a minimum 44-pixel

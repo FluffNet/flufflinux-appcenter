@@ -466,10 +466,11 @@ bool removeRepositories(FlatpakInstallation *user, const QJsonArray &members, Wo
 
 bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker &w) {
     const auto operation = request["operation"].toString();
-    int availableCatalogs = 0, failedCatalogs = 0;
+    int availableCatalogs = 0, failedCatalogs = 0, refreshedCatalogs = 0;
     const auto reportCatalogs = [&] {
         if (!g_cancellable_is_cancelled(w.cancel))
-            send({{"type", "catalog-load"}, {"available", availableCatalogs}, {"failed", failedCatalogs}});
+            send({{"type", "catalog-load"}, {"available", availableCatalogs},
+                {"failed", failedCatalogs}, {"refreshed", refreshedCatalogs}});
     };
     g_autoptr(GError) error = nullptr;
     if (operation == "initialize" || operation == "refresh") {
@@ -524,7 +525,8 @@ bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker 
     }
     send({{"type", "sources"}, {"sources", Sources::group(Sources::list())}});
     if (operation == "list" || operation == "remove") return w.problem.isEmpty();
-    // Fetch only missing catalogs on launch; explicit Refresh updates all.
+    // Initialize fetches missing catalogs. Refresh (manual or expired app-list
+    // cache) updates every enabled catalog, even if a local copy exists.
     // This runs in the child, never on the GUI thread.
     g_autoptr(GPtrArray) remotes = flatpak_installation_list_remotes(user, w.cancel, nullptr);
     for (guint i = 0; remotes && i < remotes->len; ++i) {
@@ -541,7 +543,7 @@ bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker 
             w.problem += str(flatpak_remote_get_name(remote)) + ": " + str(error->message);
             if (cached) ++availableCatalogs;
             else ++failedCatalogs;
-        } else ++availableCatalogs;
+        } else { ++availableCatalogs; ++refreshedCatalogs; }
     }
     reportCatalogs();
     return w.problem.isEmpty();

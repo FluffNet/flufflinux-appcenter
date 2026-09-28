@@ -25,7 +25,7 @@ with tempfile.TemporaryDirectory(prefix="appcenter-catalog-load-") as directory:
         assert result.returncode == 0, (args, result.stderr)
         return result.stdout
 
-    def check(available, failed, operation="initialize"):
+    def check(available, failed, operation="initialize", refreshed=0):
         child = subprocess.Popen([worker, json.dumps({"action": "repositories", "operation": operation})],
                                  env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
         events = []
@@ -50,7 +50,7 @@ with tempfile.TemporaryDirectory(prefix="appcenter-catalog-load-") as directory:
                 child.kill()
                 child.wait()
         reports = [event for event in events if event["type"] == "catalog-load"]
-        assert reports == [{"type": "catalog-load", "available": available, "failed": failed}], events
+        assert reports == [{"type": "catalog-load", "available": available, "failed": failed, "refreshed": refreshed}], events
         assert not any(event["type"] in ("review", "updates", "plan") for event in events), events
 
     for scope in ("user", "system"):
@@ -83,6 +83,15 @@ with tempfile.TemporaryDirectory(prefix="appcenter-catalog-load-") as directory:
             "--subject=Test catalog", "--tree=dir=" + str(metadata))
     command("ostree", "--repo=" + str(repository), "summary", "--update")
     command("flatpak", "remote-add", "--user", "--no-gpg-verify", "working", repository.as_uri())
-    check(1, 0, "refresh")
+    check(1, 0, "refresh", refreshed=1)
+    # Change the actual source while an older active catalog already exists.
+    (metadata / "appstream.xml.gz").write_bytes(gzip.compress(b"<components><component><id>org.example.New</id></component></components>"))
+    command("ostree", "--repo=" + str(repository), "commit", "--branch=appstream/" + arch,
+            "--subject=Changed catalog", "--tree=dir=" + str(metadata))
+    command("ostree", "--repo=" + str(repository), "summary", "--update")
+    active = root / "user/appstream/working" / arch / "active/appstream.xml.gz"
+    assert b"org.example.New" not in gzip.decompress(active.read_bytes())
+    check(1, 0, "refresh", refreshed=1)
+    assert b"org.example.New" in gzip.decompress(active.read_bytes()), "Refresh must pull changed source metadata"
     assert not (root / "user/app").exists() and not (root / "system/app").exists()
     print("PASS: real worker all-failed, partial/cache/empty success, disabled and removed sources, fresh recovery; no app changes")
