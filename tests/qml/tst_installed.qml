@@ -6,6 +6,40 @@ TestCase {
     name: "Installed"
     when: main.visible
     AppCenter.Main { id: main; visible: true }
+    function test_compact_vertical_padding_data() {
+        return [{tag:"wide", width:1180, version:"156.0.1", date:"24/09/2026 12:39"},
+                {tag:"narrow-wrapped", width:720, version:"2026.09.28.1234567890.1234567890.1234567890", date:"24 September 2026 12:39"}]
+    }
+    function test_compact_vertical_padding(data) {
+        const previousWidth = main.width
+        const stack = findChild(main, "navigationStack")
+        try {
+            main.width = data.width
+            main.showCatalog(); tryCompare(stack, "busy", false)
+            main.selectedCategory = "Installed"
+            main.installedApps = [{id:"org.mozilla.firefox", name:"Firefox", developer:"Mozilla", icon:"",
+                installedVersion:data.version, installedSize:"321.08 MiB", installedOrigin:"flathub",
+                installation:"system", updatedDate:data.date}]
+            const list = findChild(stack.currentItem, "installedList")
+            tryVerify(function() { return list.itemAtIndex(0) !== null })
+            const row = list.itemAtIndex(0)
+            waitForPolish(row)
+            compare(row.topPadding, 12); compare(row.bottomPadding, 12)
+            compare(row.leftPadding, 16); compare(row.rightPadding, 16)
+            compare(row.height, Math.max(108, row.contentItem.implicitHeight + 24))
+            const last = findChild(row, "installedUpdatedDateValue")
+            verify(last.visible)
+            verify(last.mapToItem(row, 0, last.height).y <= row.height - row.bottomPadding + 1)
+            const button = findChild(row, "uninstallButton")
+            compare(button.width, 44); compare(button.height, 44)
+            verify(button.mapToItem(row, 0, 0).y >= row.topPadding)
+            verify(button.mapToItem(row, 0, button.height).y <= row.height - row.bottomPadding)
+        } finally {
+            main.width = previousWidth
+            main.installedApps = []
+            main.selectedCategory = "All Apps"
+        }
+    }
     function test_installation_date_only_when_recorded() {
         const app = {id: "org.example.Dated", name: "Dated app", icon: "", summary: "", description: "",
             category: "", license: "", homepage: "https://example.org", developer: "", screenshots: [],

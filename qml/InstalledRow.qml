@@ -14,6 +14,8 @@ AbstractButton {
     readonly property bool removalFailed: !!job && job.action === "uninstall" && job.failed === true
     height: Math.max(108, contentItem.implicitHeight + topPadding + bottomPadding)
     padding: 16
+    topPadding: 12
+    bottomPadding: 12
     hoverEnabled: true
     // Use the same scalable glyph rendering as text inputs and other labels.
     component MetadataLabel: Label { renderType: Text.QtRendering }
