@@ -1,8 +1,8 @@
 # Prepared by make fakeroot. Package creation is manual.
 pkgname = flufflinux-appcenter
 pkgbase = flufflinux-appcenter
-pkgver = 2026.9.0beta-11
-pkgdesc = Native Flatpak App Center for Fluff Linux
+pkgver = 2026.9b-1
+pkgdesc = App Center for Fluff Linux
 url = https://github.com/FluffNet/flufflinux-appcenter
 builddate = @BUILD_DATE@
 packager = FluffNet LLC

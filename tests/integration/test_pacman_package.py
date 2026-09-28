@@ -16,6 +16,9 @@ for line in metadata.splitlines():
         key, value = line.split(" = ", 1)
         values.setdefault(key, []).append(value)
 assert values["pkgname"] == ["flufflinux-appcenter"]
+assert values["pkgbase"] == ["flufflinux-appcenter"]
+assert values["pkgver"] == ["2026.9b-1"]
+assert values["pkgdesc"] == ["App Center for Fluff Linux"]
 assert values["packager"] == ["FluffNet LLC"]
 assert int(values["size"][0]) > 0 and int(values["builddate"][0]) >= 0
 assert "@" not in metadata, "metadata placeholders must be resolved"
