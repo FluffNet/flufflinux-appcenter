@@ -67,6 +67,9 @@ public:
     Q_INVOKABLE void launchApp(QVariantMap app);
     QVariantList catalog() const { return m_catalog; }
     bool catalogLoading() const { return m_catalogRefreshPending || m_catalogAwaitingSources || m_catalogProcess.state() != QProcess::NotRunning; }
+    // Closing the window must not kill a post-transaction cache write. A
+    // refresh deferred for offline connectivity is not active background work.
+    bool backgroundWorkPending() const { return busy() || m_catalogProcess.state() != QProcess::NotRunning; }
     void loadCatalog(const QString &cachePath = {});
     void setCatalogNetworkState(const QString &state, bool ready);
     // Usable cached applications remain browsable even if refreshing fails.
@@ -161,6 +164,8 @@ private:
     QString m_installedError;
     QVariantList m_catalog, m_repositories;
     QProcess m_sourceProcess, m_catalogProcess;
+    QTimer m_catalogTimeout;
+    bool m_catalogTimedOut = false;
     QByteArray m_sourceBuffer;
     QString m_sourcesError;
     bool m_catalogLoadsFailed = false;

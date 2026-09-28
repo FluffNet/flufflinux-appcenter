@@ -72,13 +72,14 @@ Dialog {
                 anchors.centerIn: parent
                 visible: dialog.addonData.state === "loading"
                 LoadingSpinner { running: dialog.addonData.state === "loading"; color: window.textColor }
-                Label { text: qsTr("Loading add-ons..."); color: window.mutedTextColor }
+                PageStatusLabel { objectName: "addonsLoadingMessage"; text: qsTr("Loading...") }
             }
-            Label {
+            PageStatusLabel {
+                objectName: "addonsEmptyMessage"
                 anchors.centerIn: parent; width: parent.width
                 visible: dialog.addonData.state === "ready" && dialog.rows.length === 0
                 text: qsTr("No compatible add-ons are available for this installed version.")
-                color: window.mutedTextColor; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter
             }
             Flickable {
                 id: scroll

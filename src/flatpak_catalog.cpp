@@ -1,6 +1,9 @@
 #include "flatpak_sources.h"
+#include "catalog_inputs.h"
+#include "catalog_cache.h"
 #include <QHash>
 #include <QSet>
+#include <iostream>
 
 namespace {
 QHash<QString, quint64> downloadSizes;
@@ -9,6 +12,19 @@ QString sizeKey(const QString &remote, const QString &url, const QString &ref) {
     return remote + '\n' + url + '\n' + ref;
 }
 
+}
+
+extern "C" int fluff_catalog_cache_result(const char *json, const char *request) {
+    int argc = 1; char name[] = "flufflinux-appcenter-catalog"; char *argv[] = {name, nullptr};
+    QCoreApplication application(argc, argv);
+    const auto apps = QJsonDocument::fromJson(json);
+    if (!apps.isArray()) return 1;
+    // All potentially blocking cache writes stay in this killable worker,
+    // never on the GUI thread. QSaveFile commits atomically or preserves the old file.
+    const auto result = CatalogCache::snapshot(QJsonDocument::fromJson(request).object(),
+        apps.array().toVariantList(), CatalogInputs::fingerprint());
+    std::cout << QJsonDocument(result).toJson(QJsonDocument::Compact).constData() << std::endl;
+    return 0;
 }
 
 extern "C" bool fluff_catalog_app_installed(const char *id) {

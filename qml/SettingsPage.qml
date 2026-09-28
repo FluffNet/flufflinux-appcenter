@@ -174,7 +174,7 @@ Page {
                     }
                 }
             }
-            Label { Layout.margins: 24; visible: page.sources.length === 0 && !page.busy; text: qsTr("No sources configured."); color: window.mutedTextColor }
+            PageStatusLabel { objectName: "sourcesEmptyMessage"; Layout.margins: 24; visible: page.sources.length === 0 && !page.busy; text: qsTr("No sources configured.") }
             Item { Layout.preferredHeight: 24 }
         }
     }

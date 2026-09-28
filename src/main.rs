@@ -22,6 +22,7 @@ unsafe extern "C" {
     fn fluff_permissions_worker(request: *const i8) -> i32;
     fn fluff_addons_worker(request: *const i8) -> i32;
     fn fluff_updates_worker(request: *const i8) -> i32;
+    fn fluff_catalog_cache_result(json: *const i8, request: *const i8) -> i32;
 }
 
 fn installed_assets(executable: &Path) -> Option<PathBuf> {
@@ -77,8 +78,14 @@ fn c_path(path: &Path) -> Result<CString, String> {
 
 fn run() -> Result<i32, String> {
     let args: Vec<String> = env::args().skip(1).collect();
-    if args == ["--catalog"] {
-        println!("{}", appstream::to_json(&appstream::load_catalog()));
+    if args.first().map(String::as_str) == Some("--catalog") && args.len() <= 2 {
+        let json = appstream::to_json(&appstream::load_catalog());
+        if args.len() == 2 {
+            let json = CString::new(json).map_err(|e| e.to_string())?;
+            let request = CString::new(args[1].as_str()).map_err(|e| e.to_string())?;
+            return Ok(unsafe { fluff_catalog_cache_result(json.as_ptr(), request.as_ptr()) });
+        }
+        println!("{json}");
         return Ok(0);
     }
     // The unprivileged worker doesn't parse the catalog or initialize a GUI.

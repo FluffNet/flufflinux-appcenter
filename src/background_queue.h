@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QObject>
+#include <QEventLoopLocker>
 #include <QPointer>
 #include <QTimer>
 #include <QMap>
@@ -45,4 +46,8 @@ private:
     bool m_batchReported = true;
     QTimer m_idle;
     bool m_closed = false;
+    // Native KJob notifications have their own quit locks. Their final release
+    // must not exit the hidden app before our workers/cache writes finish.
+    // Only the controller's explicit idle quit ends this service.
+    QEventLoopLocker m_lifetimeLock;
 };

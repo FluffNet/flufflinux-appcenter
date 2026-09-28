@@ -23,13 +23,17 @@ static void until(const std::function<bool()> &condition) {
     assert(condition());
 }
 int main(int argc, char **argv) {
-    if (argc == 2 && QByteArray(argv[1]) == "--catalog") {
+    if ((argc == 2 || argc == 3) && QByteArray(argv[1]) == "--catalog") {
+        QCoreApplication child(argc, argv);
         QFile calls(qEnvironmentVariable("APPCENTER_TEST_CATALOG_CALLS"));
         if (calls.open(QIODevice::WriteOnly | QIODevice::Append)) calls.write("parse\n");
         QThread::msleep(qEnvironmentVariableIntValue("APPCENTER_TEST_CATALOG_DELAY"));
         if (qEnvironmentVariableIsSet("APPCENTER_TEST_CATALOG_FAIL")) return 1;
-        std::cout << (qEnvironmentVariableIsSet("APPCENTER_TEST_CACHED")
+        const auto apps = QJsonDocument::fromJson(qEnvironmentVariableIsSet("APPCENTER_TEST_CACHED")
             ? "[{\"id\":\"org.example.Cached\",\"name\":\"Cached\"}]" : "[]");
+        if (argc == 3) send(CatalogCache::snapshot(QJsonDocument::fromJson(argv[2]).object(),
+            apps.array().toVariantList(), CatalogInputs::fingerprint()));
+        else std::cout << apps.toJson(QJsonDocument::Compact).constData();
         return 0;
     }
     if (argc == 3 && QByteArray(argv[1]) == "--transaction-worker") {

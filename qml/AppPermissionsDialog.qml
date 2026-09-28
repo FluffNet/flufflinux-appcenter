@@ -76,7 +76,7 @@ Dialog {
                     Layout.fillWidth: true
                     visible: dialog.loading; spacing: 12
                     LoadingSpinner { running: dialog.loading; Layout.preferredWidth: 26; Layout.preferredHeight: 26 }
-                    Label { text: qsTr("Loading app permissions…"); color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
+                    PageStatusLabel { objectName: "permissionsLoadingMessage"; text: qsTr("Loading..."); Layout.fillWidth: true; wrapMode: Text.Wrap }
                 }
                 Label {
                     objectName: "permissionsError"

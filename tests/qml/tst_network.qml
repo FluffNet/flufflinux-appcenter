@@ -56,11 +56,47 @@ TestCase {
             searchName:name.toLowerCase(), searchHaystack:name.toLowerCase(), searchSummary:"", searchDescription:"", searchMetadata:id}
     }
     function settle() { waitForPolish(root()); wait(40) }
+    function test_page_status_foreground_data() {
+        return [{tag:"dark", background:"#202326", foreground:"#ffffff"},
+            {tag:"light", background:"#eff0f1", foreground:"#202326"}]
+    }
+    function test_page_status_foreground(data) {
+        const background = main.palette.window, foreground = main.palette.windowText
+        function status(name) {
+            const label = control(name)
+            verify(label.visible, name + " is visible")
+            verify(label.font.bold, name + " is bold")
+            compare(label.color, main.textColor, name + " follows the theme foreground")
+        }
+        try {
+            main.palette.window = data.background; main.palette.windowText = data.foreground
+            main.catalog = []; backend.catalogLoading = true; settle()
+            status("catalogEmptyMessage"); compare(control("catalogEmptyMessage").text, "Loading...")
+            backend.catalogLoading = false; settle()
+            status("catalogEmptyMessage"); compare(control("catalogEmptyMessage").text, "No results.")
+            root().openCategory("Installed"); backend.installedError = "Could not read installed apps."; settle()
+            status("catalogEmptyMessage")
+            root().openCategory("All Apps"); backend.installedError = ""
+            network.state = "offline"; settle()
+            status("networkOfflineTitle"); status("networkOfflineNote")
+            network.state = "limited"; backend.catalogSourcesUnavailable = true; settle()
+            status("networkOfflineTitle"); status("networkOfflineNote")
+            backend.catalogSourcesUnavailable = false; main.showUpdates()
+            backend.updates = {state:"checking", items:[]}; settle(); status("updateCheckStatus")
+            for (const updates of [{state:"ready", items:[]}, {state:"error", items:[], error:"Connection failed"},
+                                   {state:"cancelled", items:[]}]) {
+                backend.updates = updates; settle(); status("updatesEmpty")
+            }
+        } finally {
+            main.palette.window = background; main.palette.windowText = foreground
+            backend.catalogLoading = false; backend.installedError = ""
+        }
+    }
     function test_loading_local_catalog_is_not_an_empty_result() {
         main.catalog = []
         backend.catalogLoading = true
         settle()
-        compare(control("catalogEmptyMessage").text, "Loading applications…")
+        compare(control("catalogEmptyMessage").text, "Loading...")
         verify(control("catalogEmptyMessage").visible)
         backend.catalogLoading = false
         settle()
@@ -198,7 +234,7 @@ TestCase {
         root().openCategory("All Apps"); settle()
         mouseClick(findChild(notice, "retryCatalogSourcesButton")); settle()
         compare(backend.refreshes, 1); compare(backend.checks, 0)
-        verify(!notice.visible); compare(control("catalogEmptyMessage").text, "Loading applications…")
+        verify(!notice.visible); compare(control("catalogEmptyMessage").text, "Loading...")
         backend.sourcesBusy = false; main.catalog = [app("org.example.One", "One")]; settle()
         verify(control("catalogGrid").visible); verify(!notice.visible)
     }

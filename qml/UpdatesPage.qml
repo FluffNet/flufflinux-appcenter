@@ -252,14 +252,14 @@ Page {
                     color: window.textColor
                     Layout.preferredWidth: 24; Layout.preferredHeight: 24
                 }
-                Label {
+                PageStatusLabel {
                     objectName: "updateCheckStatus"
                     text: qsTr("Checking for app updates…")
                     textFormat: Text.PlainText; wrapMode: Text.Wrap
-                    color: window.mutedTextColor; Layout.fillWidth: true
+                    Layout.fillWidth: true
                 }
             }
-            Label {
+            PageStatusLabel {
                 objectName: "updatesEmpty"
                 anchors.centerIn: parent; width: parent.width; horizontalAlignment: Text.AlignHCenter
                 visible: page.rows.length === 0 && !page.checking && text.length > 0
@@ -268,7 +268,7 @@ Page {
                     ? (page.skipped.length ? qsTr("No app updates available from the sources that could be checked.") : qsTr("Your apps are up to date."))
                     : page.updateData.state === "cancelled" ? qsTr("App update check cancelled.")
                     : page.updateData.error ? qsTr("Could not check all app updates. Please try again.") : ""
-                color: window.mutedTextColor; wrapMode: Text.Wrap
+                wrapMode: Text.Wrap
             }
         }
     }

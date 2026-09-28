@@ -44,6 +44,14 @@ bool active(const QVariantMap &job) { return job.value("active").toBool(); }
 
 FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : QObject(parent) {
     m_catalog = catalog;
+    m_catalogTimeout.setSingleShot(true);
+    m_catalogTimeout.setInterval(30000);
+    m_catalogTimeout.setParent(this); m_catalogTimeout.setObjectName("catalogWorkTimeout");
+    connect(&m_catalogTimeout, &QTimer::timeout, this, [this] {
+        qWarning("Application-list rebuild/cache save timed out; stopping the worker");
+        m_catalogTimedOut = true; m_catalogAgain = false; m_catalogForceAgain = false;
+        m_catalogProcess.kill();
+    });
     connect(this, &FlatpakManager::catalogChanged, this, &FlatpakManager::drainApplicationLinks);
     connect(this, &FlatpakManager::installedChanged, this, &FlatpakManager::drainApplicationLinks);
     connect(this, &FlatpakManager::installedChanged, this, &FlatpakManager::drainInstalledApplicationLinks);
@@ -52,6 +60,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
         [this] { QTimer::singleShot(0, this, &FlatpakManager::drainApplicationLinks); });
     connect(&m_catalogProcess, &QProcess::errorOccurred, this,
         [this] {
+            m_catalogTimeout.stop();
             emit catalogChanged();
             QTimer::singleShot(0, this, &FlatpakManager::drainApplicationLinks);
         });
@@ -183,21 +192,22 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     connect(&m_catalogProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this](int code, QProcess::ExitStatus status) {
             const auto document = QJsonDocument::fromJson(m_catalogProcess.readAllStandardOutput());
-            if (m_catalogAwaitingSources || m_catalogRefreshPending) return;
-            if (!code && status == QProcess::NormalExit && document.isArray()) {
-                setCatalog(document.array().toVariantList());
+            if (m_catalogAwaitingSources || m_catalogRefreshPending) { m_catalogTimeout.stop(); return; }
+            const auto apps = document.isArray() ? document.array() : document.object()["apps"].toArray();
+            if (!m_catalogTimedOut && !code && status == QProcess::NormalExit
+                    && (document.isArray() || document.object()["apps"].isArray())) {
+                setCatalog(apps.toVariantList());
                 if (!m_catalogCachePath.isEmpty()) {
                     const auto fingerprint = CatalogInputs::fingerprint();
                     // A source/installation may change while the worker reads.
                     // Never label that mixed snapshot as a reusable cache.
                     if (!fingerprint.isEmpty() && fingerprint == m_catalogReadFingerprint) {
                         m_catalogFingerprint = fingerprint;
-                        if (m_catalogResetAge) m_catalogSavedAt = QDateTime::currentDateTimeUtc();
+                        if (m_catalogResetAge)
+                            m_catalogSavedAt = QDateTime::fromString(document.object()["savedAt"].toString(), Qt::ISODateWithMs);
                         m_catalogResetAge = false;
-                        // A local-only rebuild preserves the source-refresh
-                        // timestamp. It must never buy another cache lifetime.
-                        if (CatalogCache::fresh(m_catalogSavedAt))
-                            CatalogCache::write(m_catalogCachePath, fingerprint, m_catalog, m_catalogSavedAt);
+                        // The bounded worker already performed the atomic save.
+                        // A local-only rebuild must not buy another cache lifetime.
                     } else if (!fingerprint.isEmpty()) m_catalogAgain = true;
                 }
                 if (!m_sizeApp.isEmpty()) requestInstallInfo(m_sizeApp);
@@ -210,6 +220,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                 const bool force = m_catalogForceAgain;
                 m_catalogAgain = false; m_catalogForceAgain = false; reloadCatalog(force);
             }
+            if (m_catalogProcess.state() == QProcess::NotRunning) m_catalogTimeout.stop();
             emit catalogChanged();
         });
     connectWorker(m_installWorker);
@@ -1236,7 +1247,14 @@ void FlatpakManager::reloadCatalog(bool force) {
         // in-memory list. Inputs could change away and then back mid-parse.
         m_catalogFingerprint.clear();
     }
-    m_catalogProcess.start(QCoreApplication::applicationFilePath(), {"--catalog"});
+    QStringList arguments{"--catalog"};
+    if (!m_catalogCachePath.isEmpty()) arguments << QString::fromUtf8(QJsonDocument(QJsonObject{
+        {"path", m_catalogCachePath}, {"fingerprint", m_catalogReadFingerprint}, {"resetAge", m_catalogResetAge},
+        {"savedAt", m_catalogSavedAt.toUTC().toString(Qt::ISODateWithMs)}}).toJson(QJsonDocument::Compact));
+    m_catalogTimedOut = false;
+    // Input changes can require another parse, but retries share one deadline.
+    if (!m_catalogTimeout.isActive()) m_catalogTimeout.start();
+    m_catalogProcess.start(QCoreApplication::applicationFilePath(), arguments);
     emit catalogChanged();
 }
 void FlatpakManager::refreshInstalled() {

@@ -1,5 +1,7 @@
 // Real manager/controller and KDE libraries on an isolated test D-Bus.
 // Workers and power/job services are fixtures; no real apps are changed.
+#include "../../src/catalog_inputs.h"
+#include "../../src/catalog_cache.h"
 #include "../../src/background_queue.h"
 #include "../../src/flatpak_manager.h"
 #include <QApplication>
@@ -63,7 +65,13 @@ static void write(const QString &path, const QByteArray &data, bool executable =
 static void send(const QJsonObject &event) { std::cout << QJsonDocument(event).toJson(QJsonDocument::Compact).constData() << std::endl; }
 
 int main(int argc, char **argv) {
-    if (argc == 2 && QByteArray(argv[1]) == "--catalog") { std::cout << "[]"; return 0; }
+    if ((argc == 2 || argc == 3) && QByteArray(argv[1]) == "--catalog") {
+        QCoreApplication child(argc, argv);
+        QThread::msleep(qEnvironmentVariableIntValue("BACKGROUND_TEST_CATALOG_DELAY"));
+        if (argc == 3) send(CatalogCache::snapshot(QJsonDocument::fromJson(argv[2]).object(), {}, CatalogInputs::fingerprint()));
+        else std::cout << "[]";
+        return 0;
+    }
     if (argc == 3 && QByteArray(argv[1]) == "--updates-worker") {
         const QString ref = "app/org.example.Update/x86_64/stable";
         send({{"type", "updates"}, {"updates", QJsonArray{QJsonObject{
@@ -101,6 +109,10 @@ int main(int argc, char **argv) {
     QTemporaryDir temp; assert(temp.isValid());
     for (const auto variable : {"XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "BACKGROUND_TEST_CONTROL"})
         qputenv(variable, temp.path().toUtf8());
+    for (const auto variable : {"FLATPAK_USER_DIR", "FLATPAK_SYSTEM_DIR", "FLATPAK_CONFIG_DIR"}) {
+        const auto path = temp.filePath(variable);
+        assert(QDir().mkpath(path)); qputenv(variable, path.toUtf8());
+    }
     write(temp.filePath("flatpak"), "#!/bin/sh\nif [ \"$1\" = list ]; then printf 'org.example.Remove\\tRemove\\t1 MB\\tflathub\\tuser\\tstable\\tx86_64\\tTest\\t1.0\\n'; fi\n", true);
     write(temp.filePath("kbuildsycoca6"), "#!/bin/sh\nexit 0\n", true);
     qputenv("PATH", temp.path().toUtf8() + ':' + qgetenv("PATH"));
@@ -225,5 +237,55 @@ int main(int argc, char **argv) {
     waitFor([&] { return !manager.busy() && desktop.views.isEmpty(); });
     assert(desktop.results.last() == 0);
     window.show();
+    waitFor([&] { return !manager.catalogLoading(); });
+    const auto cache = temp.filePath("catalog.json");
+    const auto age = QDateTime::currentDateTimeUtc().addSecs(-3600);
+    const auto exclusions = temp.filePath("exclusions.conf");
+    qputenv("FLUFF_APP_CENTER_EXCLUSIONS", exclusions.toUtf8());
+    assert(CatalogCache::write(cache, CatalogInputs::fingerprint(), {}, age));
+    manager.loadCatalog(cache);
+    assert(!manager.catalogLoading());
+    // The last operation changes local inputs. Saving the new snapshot takes
+    // longer than the two-second idle shutdown delay, but does not refresh sources.
+    write(exclusions, "org.example.Hidden\n");
+    qputenv("BACKGROUND_TEST_CATALOG_DELAY", "3500");
+    manager.refreshSources(false);
+    waitFor([&] { return manager.catalogLoading() && !manager.busy(); });
+    assert(manager.backgroundWorkPending());
+    bool savedBeforeQuit = false;
+    QObject::connect(&app, &QCoreApplication::aboutToQuit, &app, [&] {
+        const auto result = CatalogCache::read(cache, CatalogInputs::fingerprint());
+        savedBeforeQuit = result.valid && result.savedAt == age && !manager.backgroundWorkPending();
+    });
+    window.close();
+    // Model the last KDE job releasing its automatic-quit lock while hidden.
+    auto notificationLock = new QEventLoopLocker;
+    QTimer::singleShot(200, &app, [notificationLock] { delete notificationLock; });
+    QTimer::singleShot(10000, &app, &QCoreApplication::quit);
+    app.exec();
+    assert(savedBeforeQuit);
+    // A stuck parse/write cannot extend the background service indefinitely.
+    window.show();
+    const auto timeout = manager.findChild<QTimer *>("catalogWorkTimeout"); assert(timeout);
+    timeout->setInterval(150);
+    write(exclusions, "org.example.OtherHidden\n");
+    manager.refreshSources(false);
+    waitFor([&] { return manager.catalogLoading(); });
+    const auto remaining = timeout->remainingTime();
+    window.close(); window.show(); window.close();
+    assert(manager.backgroundWorkPending() && background.closed());
+    assert(timeout->remainingTime() <= remaining); // Reopening never restarts the deadline.
+    QFile previous(cache); assert(previous.open(QIODevice::ReadOnly)); const auto previousBytes = previous.readAll(); previous.close();
+    waitFor([&] { return !manager.backgroundWorkPending(); });
+    assert(previous.open(QIODevice::ReadOnly)); assert(previous.readAll() == previousBytes); previous.close();
+    // Waiting for offline connectivity is not work that keeps the service alive.
+    assert(CatalogCache::write(cache, CatalogInputs::fingerprint(), {}, age.addDays(-1)));
+    manager.setCatalogNetworkState("offline", true); manager.loadCatalog(cache);
+    assert(manager.catalogLoading() && !manager.backgroundWorkPending());
+    window.show(); window.close();
+    QElapsedTimer offlineExit; offlineExit.start(); app.exec();
+    assert(offlineExit.elapsed() < 3000);
     std::cout << "PASS: close/reopen/minimize, real manager queue, one running vs queued view, exact progress and continuous average-speed timer, success/failure/cancel/crash, hidden removal confirmation, suspend inhibit/release, batch 2/5 and history/cancellation accounting, escaped once-only closed-window summary\n";
+    std::cout << "PASS: idle shutdown waits for the post-queue catalog cache, without extending its source-refresh age\n";
+    std::cout << "PASS: stuck cache work is stopped, the previous file is preserved, and reopen/close does not restart the deadline\n";
 }

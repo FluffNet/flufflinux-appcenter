@@ -202,7 +202,7 @@ Page {
                     }
                 }
             }
-            Label { visible: !window.downloadQueue.jobs.length; text: qsTr("No operations yet."); color: window.textColor }
+            PageStatusLabel { objectName: "queueEmptyMessage"; visible: !window.downloadQueue.jobs.length; text: qsTr("No operations yet.") }
         }
     }
 }

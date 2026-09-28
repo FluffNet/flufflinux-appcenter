@@ -48,18 +48,19 @@ Item {
             Layout.preferredWidth: 64; Layout.preferredHeight: 64
             Layout.alignment: Qt.AlignHCenter
         }
-        Label {
+        PageStatusLabel {
             objectName: "networkOfflineTitle"
             text: notice.title; textFormat: Text.PlainText
             Layout.fillWidth: true
-            font.pixelSize: 26; font.weight: Font.DemiBold
-            color: window.textColor; wrapMode: Text.WordWrap
+            font.pixelSize: 26
+            wrapMode: Text.WordWrap
             horizontalAlignment: Text.AlignHCenter
         }
-        Label {
+        PageStatusLabel {
+            objectName: "networkOfflineNote"
             text: notice.note; textFormat: Text.PlainText
             Layout.fillWidth: true
-            font.pixelSize: 14; color: window.mutedTextColor
+            font.pixelSize: 14
             wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
         }
         Button {

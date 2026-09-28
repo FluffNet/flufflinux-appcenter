@@ -83,6 +83,7 @@ BackgroundQueue::BackgroundQueue(FlatpakManager *manager, QWindow *window,
     window->installEventFilter(this);
     connect(manager, &FlatpakManager::jobsChanged, this, &BackgroundQueue::synchronize);
     connect(manager, &FlatpakManager::reviewChanged, this, &BackgroundQueue::synchronize);
+    connect(manager, &FlatpakManager::catalogChanged, this, &BackgroundQueue::synchronize);
     connect(window, &QWindow::visibleChanged, this, [this](bool visible) {
         if (!visible || !m_closed) return;
         m_closed = false; m_idle.stop(); detachJobs(); m_tray.reset();
@@ -90,7 +91,7 @@ BackgroundQueue::BackgroundQueue(FlatpakManager *manager, QWindow *window,
     m_idle.setInterval(2000);
     m_idle.setSingleShot(true);
     connect(&m_idle, &QTimer::timeout, this, [this] {
-        if (m_closed && !m_manager->busy()) QCoreApplication::quit();
+        if (m_closed && !m_manager->backgroundWorkPending()) QCoreApplication::quit();
     });
     synchronize();
 }
@@ -200,7 +201,7 @@ void BackgroundQueue::synchronize() {
         m_jobs[it.key()]->update(job);
     }
     if (!m_closed) { if (batchFinished) m_batchReported = true; return; }
-    if (m_manager->busy()) m_idle.stop();
+    if (m_manager->backgroundWorkPending()) m_idle.stop();
     else if (!m_idle.isActive()) m_idle.start();
 
     if (count && !m_tray) {

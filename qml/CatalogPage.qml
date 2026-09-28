@@ -916,7 +916,7 @@ Page {
                 retryEnabled: !!window.backend && !window.backend.busy
                 onRetryRequested: window.backend.refreshSources(true)
             }
-            Label {
+            PageStatusLabel {
                 objectName: "catalogEmptyMessage"
                 anchors.centerIn: parent
                 width: parent.width - 48
@@ -926,8 +926,8 @@ Page {
                 text: page.installedView && window.installedError ? window.installedError
                       : !page.installedView && window.catalog.length === 0
                           && (window.catalogLoading || (window.backend && window.backend.sourcesBusy))
-                      ? qsTr("Loading applications…") : qsTr("No results.")
-                color: window.mutedTextColor; font.pixelSize: 17
+                      ? qsTr("Loading...") : qsTr("No results.")
+                font.pixelSize: 17
             }
         }
         UpdatesPage {

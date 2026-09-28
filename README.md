@@ -444,9 +444,9 @@ reflows, but does not reset a deliberate scroll when the window is resized.
 The finished application list is saved as `application-list.json` in Qt's
 per-user App Center cache directory under `$XDG_CACHE_HOME` (normally
 `~/.cache`). Repeat launches show that list in the first frame without
-`Loading applications...` and without contacting the sources or rebuilding.
+`Loading...` and without contacting the sources or rebuilding.
 The lifetime is strictly 12 hours from the last successful full source refresh
-and catalog rebuild. At 12 hours or more, startup shows `Loading applications...`,
+and catalog rebuild. At 12 hours or more, startup shows `Loading...`,
 refreshes the actual enabled Flatpak/AppStream sources, then rebuilds and saves
 the list. It does not show the expired list or refresh it in the background.
 This updates catalog metadata, not installed apps, and does not check for app
@@ -462,6 +462,21 @@ source refresh too. Local rebuilds for installation/exclusion/source changes
 preserve the last source-refresh timestamp instead of extending the lifetime.
 Writes are atomic, and inputs changing during a parse cannot be saved as a
 fresh snapshot. Cache write failures do not block browsing.
+After a background queue finishes, the service waits for the local catalog
+snapshot to be saved before exiting. Reopening then reuses the fresh list;
+finishing an install/removal does not restart the 12-hour source-refresh timer.
+This also applies to a normal X-button close during loading/saving. The worker
+has one 30-second deadline covering parsing, saving and any unstable-input
+retries. The GUI never performs the disk write. Timeout stops the worker and
+releases background shutdown; it does not restart an endless retry loop.
+An immediate reopen presents the same process and its in-memory app list while
+the save continues. It starts neither a duplicate worker nor a source refresh;
+closing again does not reset the original deadline.
+Snapshots carry a SHA-256 integrity checksum. Truncated, altered or oversized
+files are rejected. Atomic saving has direct-write fallback explicitly disabled,
+so an interrupted or failed save leaves the previous good file untouched.
+The in-memory list remains usable after a save failure; the next launch retries
+the ordinary load/refresh path when no valid fresh snapshot is available.
 
 Startup waits for NetworkManager's initial state before attempting an expired
 refresh. Fully offline defers it until a connection appears; LAN-only, limited,
@@ -474,7 +489,7 @@ installation-failure notifications.
 
 On a cold start the GUI appears before parsing finishes. Catalog loading runs
 in the existing `--catalog` worker; launcher/IPC clients do not parse or rewrite
-the catalog. Home displays `Loading applications...` only without a usable
+the catalog. Home displays `Loading...` only without a usable
 snapshot, and early app links wait for the catalog. The service receives KDE's Wayland
 activation token from the launcher so focus/startup feedback follows the window.
 The launcher waits for the service's window-ready acknowledgement before exiting.
@@ -493,6 +508,16 @@ then expires the cache and proves the new app is downloaded and displayed.
 `sh tests/run_catalog_availability.sh` also checks the exact 12-hour boundary,
 offline deferral, LAN/limited attempts, refresh failure, local-rebuild age
 preservation, invalidation and no redundant startup parsing.
+`python tests/integration/test_catalog_queue_reopen.py /usr/bin/flufflinux-appcenter`
+checks the installed binary with two tiny isolated local Flatpaks and a slow
+post-queue parser. It verifies cached reopening and the unchanged refresh age.
+Add `--reopen-during-save` to reopen during that pause, check the list stays
+visible, close again and verify the same save still completes.
+`python tests/integration/test_startup_cycles.py /usr/bin/flufflinux-appcenter`
+measures 20 real GUI open/close cycles, alternating new processes with quick
+reopening before idle exit. It uses the real catalog and a private IPC socket.
+Centered loading, empty and error messages share bold, theme-foreground text,
+including `No results.`; ordinary app descriptions remain secondary text.
 
 For live error screenshots, compile `tests/native/network_preview.cpp` with
 Qt6Core/Qt6DBus into `target/network-preview`, then run

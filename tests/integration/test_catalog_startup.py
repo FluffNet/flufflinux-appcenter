@@ -5,6 +5,7 @@ Only temporary source/config/cache directories are changed. No apps installed.
 import datetime
 import functools
 import gzip
+import hashlib
 import http.server
 import json
 import os
@@ -93,6 +94,9 @@ with tempfile.TemporaryDirectory(prefix="appcenter-catalog-cache-") as directory
         assert len(requests) == request_count, "Fresh cache must not contact the sources"
 
         data["savedAt"] = (datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(hours=12)).isoformat(timespec="milliseconds")
+        if "checksum" in data:
+            data["checksum"] = hashlib.sha256(json.dumps({k: v for k, v in data.items() if k != "checksum"},
+                sort_keys=True, ensure_ascii=False, separators=(",", ":")).encode()).hexdigest()
         cache.write_text(json.dumps(data))
         count, loading, _ = launch("EXPIRED")
         assert count == 0 and loading, "Expired apps must not appear while refreshing"
