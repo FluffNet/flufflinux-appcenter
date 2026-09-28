@@ -38,6 +38,7 @@ depend = gtk-update-icon-cache
 depend = hicolor-icon-theme
 depend = flufflinux-update
 depend = kcoreaddons
+depend = kwindowsystem
 depend = kjobwidgets>=6.18
 depend = kstatusnotifieritem
 depend = systemd

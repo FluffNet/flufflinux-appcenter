@@ -24,6 +24,8 @@
 #include <QQuickWindow>
 #include <QStandardPaths>
 #include <QUrl>
+#include <KWindowSystem>
+#include <cstdio>
 #include <memory>
 #include <unistd.h>
 
@@ -41,9 +43,18 @@ public:
     }
 };
 
-extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, const char *icon_path,
+extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
                               int input_count, const char *const *inputs, const char *desktop_file) {
     if (geteuid() == 0) { qCritical("Run App Center as your regular desktop user, not root."); return 1; }
+    QElapsedTimer startup; startup.start();
+    const bool traceStartup = qEnvironmentVariableIntValue("FLUFF_APP_CENTER_TRACE_STARTUP") == 1;
+    const auto trace = [&](const char *stage) {
+        if (traceStartup) std::fprintf(stderr, "APPCENTER_STARTUP %s %lld ms\n", stage,
+                                      static_cast<long long>(startup.elapsed()));
+    };
+    // Qt may consume this environment variable. Capture it before constructing
+    // QApplication so the launcher can hand it to the session service over IPC.
+    const auto activationToken = qEnvironmentVariable("XDG_ACTIVATION_TOKEN");
     int argc = 1;
     char name[] = "flufflinux-appcenter";
     char *argv[] = {name, nullptr};
@@ -53,6 +64,7 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     if (!qEnvironmentVariableIsSet("PLASMA_INTEGRATION_USE_PORTAL"))
         qputenv("PLASMA_INTEGRATION_USE_PORTAL", "1");
     QApplication application(argc, argv);
+    trace("qt-ready");
     configureDesktopTypography(application);
     QCoreApplication::setApplicationName("flufflinux-appcenter");
     QGuiApplication::setApplicationDisplayName("App Center");
@@ -65,13 +77,22 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     QJsonArray incoming;
     for (int i = 0; i < input_count && i < 16; ++i)
         incoming.append(QJsonDocument::fromJson(inputs[i]).object());
+    if (!activationToken.isEmpty() && activationToken.size() <= 8192)
+        incoming.append(QJsonObject{{"type", "activation"}, {"value", activationToken}});
     const auto socketPath = QStandardPaths::writableLocation(QStandardPaths::RuntimeLocation) + "/flufflinux-appcenter.socket";
     QLocalSocket existing;
+    const auto forward = [&] {
+        existing.write(QJsonDocument(incoming).toJson(QJsonDocument::Compact) + '\n');
+        if (!existing.waitForBytesWritten(2000)) return false;
+        // Keep the launcher alive until the service has shown a frame, so KDE
+        // does not finish launch feedback while the window is still mapping.
+        if (existing.waitForReadyRead(15000)) return existing.readLine() == "ready\n";
+        // Previous releases acknowledge by closing, without a response body.
+        return existing.error() == QLocalSocket::PeerClosedError;
+    };
     existing.connectToServer(socketPath);
     if (existing.waitForConnected(200)) {
-        existing.write(QJsonDocument(incoming).toJson(QJsonDocument::Compact) + '\n');
-        existing.waitForBytesWritten(2000);
-        return 0;
+        return forward() ? 0 : 1;
     }
     // Installed launches activate an on-demand user service. Closing a window
     // or the launching terminal cannot kill its transaction workers.
@@ -90,8 +111,7 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
         while (deadline.elapsed() < 15000) {
             existing.abort(); existing.connectToServer(socketPath);
             if (existing.waitForConnected(100)) {
-                existing.write(QJsonDocument(incoming).toJson(QJsonDocument::Compact) + '\n');
-                return existing.waitForBytesWritten(2000) ? 0 : 1;
+                return forward() ? 0 : 1;
             }
             QThread::msleep(50);
         }
@@ -104,11 +124,10 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     QLocalServer::removeServer(socketPath);
     if (!server.listen(socketPath)) { qCritical("Cannot create the App Center link handler socket."); return 1; }
 
-    QFile catalog(QString::fromUtf8(catalog_path));
-    if (!catalog.open(QIODevice::ReadOnly)) return 2;
-    const auto document = QJsonDocument::fromJson(catalog.readAll());
-    if (!document.isArray()) return 3;
-    FlatpakManager manager(document.array().toVariantList());
+    FlatpakManager manager({});
+    // Parsing AppStream can take seconds. Do it in the existing worker,
+    // while the window is already responsive. CLI clients never parse it.
+    manager.loadCatalog();
     CatalogStats catalogStats;
     NetworkStatus networkStatus;
     // Custom QML is used by read-only UI fixtures; it must not read/write the
@@ -128,16 +147,34 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     engine.rootContext()->setContextProperty("fluffNetworkStatus", &networkStatus);
     engine.rootContext()->setContextProperty("fluffCatalogPreferences", &catalogPreferences);
     engine.rootContext()->setContextProperty("fluffAppIconUrl", QUrl::fromLocalFile(QString::fromUtf8(icon_path)));
-    engine.rootContext()->setContextProperty("fluffInitialCatalog", document.array().toVariantList());
+    engine.rootContext()->setContextProperty("fluffInitialCatalog", QVariantList{});
     engine.rootContext()->setContextProperty("fluffWindowManaged", manageWindow);
     if (manageWindow) QTimer::singleShot(0, &manager, &FlatpakManager::initializeSources);
     engine.load(QUrl::fromLocalFile(QString::fromUtf8(qml_path)));
     if (engine.rootObjects().isEmpty()) return 4;
+    trace("qml-ready");
+    bool firstFrame = true, firstCatalog = true;
+    QObject::connect(&manager, &FlatpakManager::catalogChanged, &application, [&] {
+        if (firstCatalog && !manager.catalogLoading()) { firstCatalog = false; trace("catalog-ready"); }
+    });
+    if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
+        QObject::connect(window, &QQuickWindow::frameSwapped, &application, [&] {
+            if (firstFrame) { firstFrame = false; trace("first-frame"); }
+        }, Qt::QueuedConnection);
+    }
     if (manageWindow) {
         if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()))
             windowPreferences->restore(window);
     }
     auto dispatch = [&](const QJsonArray &sources) {
+        QString token;
+        // The optional activation record is separate from the 16 CLI actions.
+        // Older instances safely ignore it, retaining their array IPC format.
+        for (const auto &source : sources) {
+            const auto action = source.toObject();
+            if (action["type"] == "activation" && action["value"].toString().size() <= 8192)
+                token = action["value"].toString();
+        }
         for (int i = 0; i < sources.size() && i < 16; ++i) {
             // Accept the previous release's IPC format during an in-place
             // upgrade, but new requests explicitly distinguish files/actions.
@@ -153,13 +190,13 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
                 QMetaObject::invokeMethod(engine.rootObjects().first(), "handleCliAction", Q_ARG(QVariant, action.toVariantMap()));
         }
         if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-            // Raising an existing instance must not undo its maximized state.
-            if (window->visibility() == QWindow::Minimized) {
-                if (windowPreferences ? windowPreferences->maximized()
-                                      : window->windowStates().testFlag(Qt::WindowMaximized)) window->showMaximized();
+            if (windowPreferences) windowPreferences->present();
+            else if (!window->isVisible() || window->visibility() == QWindow::Minimized) {
+                if (window->windowStates().testFlag(Qt::WindowMaximized)) window->showMaximized();
                 else window->showNormal();
-            } else window->show();
-            window->raise(); window->requestActivate();
+            }
+            if (!token.isEmpty()) KWindowSystem::setCurrentXdgActivationToken(token);
+            KWindowSystem::activateWindow(window);
         }
     };
     std::unique_ptr<BackgroundQueue> background;
@@ -170,13 +207,26 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
     QObject::connect(&server, &QLocalServer::newConnection, &engine, [&] {
         while (auto socket = server.nextPendingConnection()) {
             QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
-            QObject::connect(socket, &QLocalSocket::readyRead, &engine, [socket, &dispatch] {
+            const auto receive = [socket, &dispatch, &engine, &firstFrame] {
+                if (socket->property("handled").toBool()) return;
                 if (socket->bytesAvailable() > 128 * 1024) { socket->disconnectFromServer(); return; }
                 if (!socket->canReadLine()) return;
+                socket->setProperty("handled", true);
                 const auto doc = QJsonDocument::fromJson(socket->readLine(128 * 1024));
                 if (doc.isArray()) dispatch(doc.array());
-                socket->disconnectFromServer();
-            });
+                const auto acknowledge = [socket] {
+                    socket->write("ready\n"); socket->disconnectFromServer();
+                };
+                const auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
+                if (window && (firstFrame || !window->isExposed())) {
+                    QObject::connect(window, &QQuickWindow::frameSwapped, socket, acknowledge,
+                        Qt::ConnectionType(Qt::QueuedConnection | Qt::SingleShotConnection));
+                    window->requestUpdate();
+                } else acknowledge();
+            };
+            QObject::connect(socket, &QLocalSocket::readyRead, &engine, receive);
+            // A fast launcher can finish writing before newConnection is handled.
+            receive();
         }
     });
     QTimer::singleShot(0, &engine, [&] { if (!incoming.isEmpty()) dispatch(incoming); });

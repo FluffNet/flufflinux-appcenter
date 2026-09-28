@@ -48,7 +48,10 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     connect(&m_catalogProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this] { QTimer::singleShot(0, this, &FlatpakManager::drainApplicationLinks); });
     connect(&m_catalogProcess, &QProcess::errorOccurred, this,
-        [this] { QTimer::singleShot(0, this, &FlatpakManager::drainApplicationLinks); });
+        [this] {
+            emit catalogChanged();
+            QTimer::singleShot(0, this, &FlatpakManager::drainApplicationLinks);
+        });
     connect(this, &FlatpakManager::installedChanged, this, &FlatpakManager::updatesChanged);
     m_updatesTimeout.setSingleShot(true);
     m_updatesTimeout.setParent(this); m_updatesTimeout.setObjectName("updateCheckTimeout");
@@ -164,11 +167,11 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                     const auto app = entry.toMap();
                     m_metadata[normalizedId(app.value("id").toString())] = app;
                 }
-                emit catalogChanged();
                 if (!m_sizeApp.isEmpty()) requestInstallInfo(m_sizeApp);
                 refreshInstalled();
             }
             if (m_catalogAgain) { m_catalogAgain = false; reloadCatalog(); }
+            emit catalogChanged();
         });
     connectWorker(m_installWorker);
     connectWorker(m_removalWorker);
@@ -1127,6 +1130,7 @@ void FlatpakManager::reloadCatalog() {
     if (m_stopping) return;
     if (m_catalogProcess.state() != QProcess::NotRunning) { m_catalogAgain = true; return; }
     m_catalogProcess.start(QCoreApplication::applicationFilePath(), {"--catalog"});
+    emit catalogChanged();
 }
 void FlatpakManager::refreshInstalled() {
     if (m_installedProcess.state() != QProcess::NotRunning) { m_installedRefreshPending = true; return; }

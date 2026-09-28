@@ -4,6 +4,7 @@ WheelHandler {
     id: wheelScroll
 
     required property Flickable scrollTarget
+    signal scrollStarted()
     property real wheelStep: 100
     property real touchpadStep: 42
     property real touchpadPixelScale: 2.15
@@ -13,7 +14,7 @@ WheelHandler {
     property MiddleMouseScroll middleMouseScroll: MiddleMouseScroll {
         scrollTarget: wheelScroll.scrollTarget
         idleZ: wheelScroll.middleScrollIdleZ
-        onStarted: wheelScroll.stopSmoothScroll()
+        onStarted: { wheelScroll.scrollStarted(); wheelScroll.stopSmoothScroll() }
     }
 
     target: null
@@ -49,6 +50,7 @@ WheelHandler {
     }
 
     function scrollBy(delta, smoothly) {
+        scrollStarted()
         if (!smoothly) {
             stopSmoothScroll()
             scrollTarget.contentY = boundedContentY(scrollTarget.contentY + delta)

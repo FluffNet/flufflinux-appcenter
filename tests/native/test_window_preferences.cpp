@@ -24,7 +24,15 @@ int main(int argc, char **argv) {
         QQuickWindow window;
         window.setTitle("App Center window settings test");
         preferences.restore(&window);
+        preferences.present(); // Service activation can arrive before exposure.
         settle();
+        assert(window.visibility() == QWindow::Maximized);
+        preferences.present(); settle();
+        assert(window.visibility() == QWindow::Maximized);
+        window.hide(); preferences.present(); settle();
+        assert(window.visibility() == QWindow::Maximized);
+        window.showMinimized(); settle(); preferences.present(); settle();
+        assert(window.visibility() == QWindow::Maximized);
         QSettings stored(path, QSettings::IniFormat);
         assert(stored.value("Window/maximized").toBool());
         assert(stored.value("Window/width").toInt() == 1180);
@@ -32,6 +40,9 @@ int main(int argc, char **argv) {
         settle();
         window.resize(780, 550);
         settle();
+        window.hide(); preferences.present(); settle();
+        assert(window.visibility() == QWindow::Windowed);
+        assert(window.size() == QSize(780, 550));
         stored.sync();
         assert(!stored.value("Window/maximized").toBool());
         assert(stored.value("Window/width").toInt() == 780);
@@ -95,6 +106,7 @@ int main(int argc, char **argv) {
             const auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first());
             assert(window && !window->isVisible());
             preferences.restore(window); settle();
+            preferences.present(); settle();
             assert(window->visibility() == (run != 1 ? QWindow::Maximized : QWindow::Windowed));
             if (run == 0) {
                 window->showNormal(); settle(); window->resize(790, 560); settle();
@@ -123,5 +135,5 @@ int main(int argc, char **argv) {
         assert(manual.value("Other/retain").toString() == "yes");
         window.close();
     }
-    puts("PASS: default/creation, live resize and state persistence, restart, minimized exclusion, screen fit, invalid values, unrelated keys");
+    puts("PASS: default/creation, activation, hidden/minimized reopening, live resize and state persistence, restart, screen fit, invalid values, unrelated keys");
 }

@@ -22,6 +22,8 @@ static void until(const std::function<bool()> &condition) {
 }
 int main(int argc, char **argv) {
     if (argc == 2 && QByteArray(argv[1]) == "--catalog") {
+        QThread::msleep(qEnvironmentVariableIntValue("APPCENTER_TEST_CATALOG_DELAY"));
+        if (qEnvironmentVariableIsSet("APPCENTER_TEST_CATALOG_FAIL")) return 1;
         std::cout << (qEnvironmentVariableIsSet("APPCENTER_TEST_CACHED")
             ? "[{\"id\":\"org.example.Cached\",\"name\":\"Cached\"}]" : "[]");
         return 0;
@@ -49,6 +51,29 @@ int main(int argc, char **argv) {
     QGuiApplication app(argc, argv);
     FlatpakManager manager({});
     until([&] { return !manager.installedLoading(); });
+    qputenv("APPCENTER_TEST_CACHED", "1");
+    qputenv("APPCENTER_TEST_CATALOG_DELAY", "200");
+    QString opened, error;
+    QObject::connect(&manager, &FlatpakManager::appOpened, &app,
+        [&](const QVariantMap &value) { opened = value.value("id").toString(); });
+    QObject::connect(&manager, &FlatpakManager::inputError, &app,
+        [&](const QString &message) { error = message; });
+    QElapsedTimer load; load.start();
+    manager.loadCatalog();
+    assert(load.elapsed() < 100 && manager.catalogLoading());
+    manager.openSource("appstream:org.example.Cached");
+    assert(opened.isEmpty() && error.isEmpty());
+    until([&] { return !manager.catalogLoading() && !opened.isEmpty(); });
+    assert(opened == "org.example.Cached" && error.isEmpty());
+    qputenv("APPCENTER_TEST_CATALOG_FAIL", "1");
+    manager.loadCatalog();
+    until([&] { return !manager.catalogLoading(); });
+    assert(!manager.catalog().isEmpty()); // A failed refresh retains usable data.
+    qunsetenv("APPCENTER_TEST_CATALOG_FAIL");
+    qunsetenv("APPCENTER_TEST_CATALOG_DELAY");
+    qunsetenv("APPCENTER_TEST_CACHED");
+    manager.loadCatalog();
+    until([&] { return !manager.catalogLoading() && !manager.installedLoading(); });
     assert(!manager.catalogSourcesUnavailable());
     const auto refresh = [&](int available, int failed) {
         qputenv("APPCENTER_TEST_AVAILABLE", QByteArray::number(available));
@@ -70,5 +95,5 @@ int main(int argc, char **argv) {
     until([&] { return !manager.catalog().isEmpty(); });
     assert(!manager.catalogSourcesUnavailable()); // System/cache fallback stays browsable.
     assert(manager.updates().value("state") == "idle");
-    qInfo("PASS: aggregate failures, partial/empty success, Settings, retry, cached fallback, no update checks");
+    qInfo("PASS: nonblocking startup, deferred app links, failed worker, aggregate failures, partial/empty success, Settings, retry, cached fallback, no update checks");
 }

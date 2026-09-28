@@ -11,6 +11,7 @@ const QT_PACKAGES: &[&str] = &[
     "Qt6Network",
     "Qt6DBus",
     "KF6CoreAddons",
+    "KF6WindowSystem",
     "flatpak",
     "ostree-1",
 ];

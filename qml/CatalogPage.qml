@@ -45,6 +45,7 @@ Page {
         return qsTr("Latest published release date. Unknown dates appear last.")
     }
     function revealAllApps() {
+        catalogGrid.releaseTopAnchor()
         // Keep the All Apps heading/sort control in view, rather than jumping
         // back above recommendations whenever the user chooses another order.
         Qt.callLater(function() {
@@ -760,6 +761,29 @@ Page {
                     id: catalogGrid
                     EmptySpaceFocus { parent: catalogGrid }
                     objectName: "catalogGrid"
+                    property real previousOriginY: 0
+                    property bool startupTopAnchor: true
+                    property int scrollIntent: 0
+                    function releaseTopAnchor() { startupTopAnchor = false; scrollIntent++ }
+                    function resetToTop() {
+                        startupTopAnchor = true
+                        positionViewAtBeginning()
+                    }
+                    function settleAtTop() {
+                        const intent = scrollIntent
+                        Qt.callLater(function() {
+                            if (intent === scrollIntent && !moving) positionViewAtBeginning()
+                        })
+                    }
+                    onMovementStarted: releaseTopAnchor()
+                    onOriginYChanged: {
+                        // The header can grow when the catalog arrives or the
+                        // compositor sets the initial window size. Keep its top
+                        // visible only if the user was already at the beginning.
+                        const wasAtTop = contentY <= previousOriginY + 1
+                        previousOriginY = originY
+                        if ((startupTopAnchor || wasAtTop) && !moving) settleAtTop()
+                    }
                     visible: !page.installedView
                     Layout.fillWidth: true; Layout.fillHeight: true
                     Layout.leftMargin: 20; Layout.rightMargin: 20; Layout.bottomMargin: 20
@@ -776,6 +800,9 @@ Page {
                         height: page.homeView ? homeHeader.anchors.topMargin + homeHeader.implicitHeight
                             + (catalogGrid.height < 500 ? 16 : 24) : 0
                         visible: page.homeView
+                        onHeightChanged: {
+                            if (catalogGrid.startupTopAnchor) catalogGrid.settleAtTop()
+                        }
                         ColumnLayout {
                             id: homeHeader
                             anchors.left: parent.left; anchors.right: parent.right; anchors.top: parent.top
@@ -833,10 +860,12 @@ Page {
                         parent: page.contentItem
                         anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
                         visible: catalogGrid.visible && size < 1
+                        onPressedChanged: { if (pressed) catalogGrid.releaseTopAnchor() }
                     }
                     NaturalWheelScroll {
                         objectName: "catalogNaturalScroll"
                         scrollTarget: catalogGrid
+                        onScrollStarted: catalogGrid.releaseTopAnchor()
                     }
                     delegate: AppCard {
                         required property var modelData
@@ -893,9 +922,10 @@ Page {
                 width: parent.width - 48
                 wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
                 visible: !page.catalogBlocked && (page.installedView ? !window.installedLoading && (window.installedError || page.installedMatches.length === 0)
-                                            : window.catalogLoaded && page.visibleApps.length === 0)
+                                            : page.visibleApps.length === 0)
                 text: page.installedView && window.installedError ? window.installedError
-                      : !page.installedView && window.catalog.length === 0 && window.backend && window.backend.sourcesBusy
+                      : !page.installedView && window.catalog.length === 0
+                          && (window.catalogLoading || (window.backend && window.backend.sourcesBusy))
                       ? qsTr("Loading applications…") : qsTr("No results.")
                 color: window.mutedTextColor; font.pixelSize: 17
             }
@@ -916,11 +946,11 @@ Page {
             page.loadCatalogPopularity()
         }
         function onNetworkReadyChanged() { page.loadCatalogPopularity() }
-        function onSearchTextChanged() { catalogGrid.positionViewAtBeginning() }
+        function onSearchTextChanged() { catalogGrid.resetToTop() }
         function onSelectedCategoryChanged() {
             page.categorySortIndex = 0
-            catalogGrid.positionViewAtBeginning()
+            catalogGrid.resetToTop()
         }
-        function onSearchCategoryFilterChanged() { catalogGrid.positionViewAtBeginning() }
+        function onSearchCategoryFilterChanged() { catalogGrid.resetToTop() }
     }
 }

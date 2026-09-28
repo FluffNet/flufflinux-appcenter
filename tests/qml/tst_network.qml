@@ -26,6 +26,7 @@ TestCase {
         property bool busy: false
         property bool catalogSourcesUnavailable: false
         property bool sourcesBusy: false
+        property bool catalogLoading: false
         property int refreshes: 0
         function refreshSources(catalogs) {
             if (catalogs) refreshes++
@@ -55,6 +56,16 @@ TestCase {
             searchName:name.toLowerCase(), searchHaystack:name.toLowerCase(), searchSummary:"", searchDescription:"", searchMetadata:id}
     }
     function settle() { waitForPolish(root()); wait(40) }
+    function test_loading_local_catalog_is_not_an_empty_result() {
+        main.catalog = []
+        backend.catalogLoading = true
+        settle()
+        compare(control("catalogEmptyMessage").text, "Loading applications…")
+        verify(control("catalogEmptyMessage").visible)
+        backend.catalogLoading = false
+        settle()
+        compare(control("catalogEmptyMessage").text, "No results.")
+    }
     function init() {
         failOnWarning(/(ReferenceError|TypeError|Binding loop|Cannot assign)/)
         network.state = "online"; network.ready = true

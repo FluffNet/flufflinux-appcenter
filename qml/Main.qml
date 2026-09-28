@@ -51,7 +51,8 @@ ApplicationWindow {
     property string selectedCategory: "All Apps"
     property string searchCategoryFilter: "All Apps"
     property string searchText: ""
-    readonly property bool catalogLoaded: true
+    readonly property bool catalogLoading: !!backend && backend.catalogLoading === true
+    readonly property bool catalogLoaded: !catalogLoading || catalog.length > 0
     DownloadQueue {
         id: downloads
         objectName: "downloadQueue"

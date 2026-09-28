@@ -27,6 +27,7 @@ for key in ("conflict", "replaces"):
 assert "flufflinux-update" in values["depend"]
 assert "kjobwidgets>=6.18" in values["depend"]
 assert "kstatusnotifieritem" in values["depend"]
+assert "kwindowsystem" in values["depend"]
 assert values["backup"] == ["etc/flufflinux-appcenter/exclusions.conf"]
 with ExitStack() as stack:
     root = package

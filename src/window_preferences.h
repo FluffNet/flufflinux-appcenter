@@ -58,6 +58,11 @@ public:
         connect(window, &QWindow::windowStateChanged, this, [this](Qt::WindowState state) {
             // Minimizing is temporary, not a startup preference.
             if (state == Qt::WindowMinimized || state == Qt::WindowFullScreen) return;
+            // Wayland can briefly report NoState while a minimized/hidden
+            // surface is unmapped. That is not the user unmaximizing it.
+            if (state == Qt::WindowNoState && QGuiApplication::platformName().startsWith("wayland")
+                    && (!m_window->isVisible()
+                    || m_window->visibility() == QWindow::Minimized)) return;
             m_maximized = state == Qt::WindowMaximized;
             queueCapture();
             m_save.start();
@@ -76,6 +81,16 @@ public:
     }
 
     bool maximized() const { return m_maximized; }
+
+    void present() {
+        if (!m_window) return;
+        // QWindow::show() means automatic visibility, not just "raise". It
+        // resets maximized windows to normal during service/CLI activation.
+        if (!m_window->isVisible() || m_window->visibility() == QWindow::Minimized) {
+            if (m_maximized) m_window->showMaximized();
+            else m_window->showNormal();
+        }
+    }
 
 protected:
     bool eventFilter(QObject *object, QEvent *event) override {

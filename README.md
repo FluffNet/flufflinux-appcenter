@@ -436,6 +436,26 @@ screen's available area opens maximized instead. Invalid/missing values use
 safe defaults, and unrelated config keys are preserved. Custom test QML does
 not read or change the user's window settings.
 
+Service/CLI activation raises the existing window without restoring a maximized
+window to normal. Reopening a hidden or minimized window preserves its last
+normal/maximized choice. Home stays at the top while its header fills and
+reflows, but does not reset a deliberate scroll when the window is resized.
+
+The GUI starts before the local AppStream catalog is parsed. Catalog loading
+runs in the existing `--catalog` worker; launcher/IPC clients do not parse or
+rewrite the catalog. Home displays `Loading applications...` while waiting,
+and early app links wait for the catalog. The service receives KDE's Wayland
+activation token from the launcher so focus/startup feedback follows the window.
+The launcher waits for the service's window-ready acknowledgement before exiting.
+For timing diagnostics, `FLUFF_APP_CENTER_TRACE_STARTUP=1` prints elapsed
+milliseconds for Qt initialization, QML loading, the first frame and the local
+catalog. `tests/integration/StartupSmoke.qml` exercises real catalog arrival
+without changing sources, installing apps or changing window preferences.
+Run `python tests/integration/benchmark_startup.py target/release/flufflinux-appcenter --early`
+inside the KDE Wayland session to measure the first frame and exercise a launch
+request that arrives before it. The test uses a separate socket and closes its
+own temporary window; it does not replace the installed package.
+
 Catalog and Installed scrollbars sit at the outer right edge for the full page
 content height, with a persistent contrasting thumb and a minimum 44-pixel
 drag target. Catalog cards share the available width and spare viewport height,
@@ -787,7 +807,7 @@ they never change regular user/system Flatpaks.
 Fluff Linux (Arch-based), KDE Plasma 6, Wayland. No macOS or Windows builds.
 
 ```sh
-sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree polkit gzip make desktop-file-utils gtk-update-icon-cache kservice kirigami xdg-utils plasma-integration xdg-desktop-portal xdg-desktop-portal-kde kcoreaddons kjobwidgets kstatusnotifieritem systemd
+sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative flatpak ostree polkit gzip make desktop-file-utils gtk-update-icon-cache kservice kirigami xdg-utils plasma-integration xdg-desktop-portal xdg-desktop-portal-kde kcoreaddons kwindowsystem kjobwidgets kstatusnotifieritem systemd
 cargo run
 ```
 

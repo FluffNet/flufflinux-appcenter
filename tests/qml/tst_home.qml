@@ -98,6 +98,34 @@ TestCase {
         compare(page().installedSortOptions.length, 6)
         verify(page().installedSortOptions[4].indexOf("Size:") === 0, "Installed keeps size sorting")
     }
+    Component { id: freshWindow; AppCenter.Main {} }
+    function test_startup_keeps_home_at_top_data() {
+        return [{tag:"catalog-ready", delayed:false}, {tag:"catalog-arrives-later", delayed:true}]
+    }
+    function test_startup_keeps_home_at_top(data) {
+        const apps = page().recommendedIds.map((id, i) => app(id, "Pick " + i, i, ""))
+            .concat(Array.from({length:40}, (_, i) => app("org.example.App" + i, "App " + i, i, "")))
+        const fresh = createTemporaryObject(freshWindow, null,
+            {width:1280, height:728, catalog:data.delayed ? [] : apps})
+        verify(fresh)
+        const grid = findChild(fresh, "catalogGrid")
+        const heading = findChild(fresh, "recommendedHeading")
+        waitForPolish(grid); wait(50)
+        if (data.delayed) { fresh.catalog = apps; waitForPolish(grid); wait(50) }
+        verify(grid.atYBeginning, "Fresh Home starts at the very top")
+        verify(heading.mapToItem(grid, 0, 0).y >= 0)
+        // The real Wayland transition used to add a third common-app row and
+        // leave its heading above the viewport, without any scrolling input.
+        fresh.width = 1180
+        waitForPolish(grid); wait(50)
+        verify(grid.atYBeginning, "Header reflow preserves the top")
+        verify(heading.mapToItem(grid, 0, 0).y >= 0)
+        findChild(fresh, "catalogNaturalScroll").scrollBy(180, false)
+        fresh.width = 1280
+        waitForPolish(grid); wait(50)
+        verify(!grid.atYBeginning, "Do not reset a deliberate scroll on resize")
+        fresh.close()
+    }
     function test_popularity_omits_only_visible_recommendations_data() {
         return [{tag:"most", index:2}, {tag:"least", index:3}]
     }
