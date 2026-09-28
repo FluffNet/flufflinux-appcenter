@@ -49,6 +49,9 @@ For source testing only, **`cargo run`** opens the app without installing it.
 `cargo build --release` builds the main executable; `make` also builds its source
 management helper. Neither command creates a package.
 
+`sh tests/run_build_headers.sh` checks the source-helper and catalog headers with
+compiler warnings treated as errors, without installing or running the helper.
+
 ## Discover replacement
 
 The package keeps **`org.kde.discover.desktop`** as its visible desktop ID and

@@ -1,6 +1,10 @@
 #pragma once
 #include <flatpak.h>
 #include <ostree.h>
+// Complete Qt string types before QCryptographicHash's span overloads inspect
+// them (GCC 16 diagnoses the earlier incomplete QChar). Keep GLib before Qt
+// because its public headers use a member named signals.
+#include <QString>
 #include <QCryptographicHash>
 #include <QDir>
 #include <QFile>
