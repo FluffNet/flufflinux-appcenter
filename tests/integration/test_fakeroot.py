@@ -36,6 +36,8 @@ with tempfile.TemporaryDirectory(prefix="appcenter-fakeroot-test-") as temporary
         assert (result.returncode == 0) == success, log.read_text()
     def stage(*arguments, success=True):
         make("-o", "build", "fakeroot", f"EXCLUSIONS_FILE={curated}", *arguments, success=success)
+        if success:
+            assert log.read_text().splitlines()[-1] == "Copied to fakeroot."
     make("-n", "fakeroot")
     assert not (source / "fakeroot").exists(), "dry-run must not prepare staging"
     stage()

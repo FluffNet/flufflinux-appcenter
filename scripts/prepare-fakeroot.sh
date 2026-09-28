@@ -34,4 +34,4 @@ if [ -d "$destination" ]; then
     printf 'Previous staging preserved at %s/fakeroot\n' "$backup"
 fi
 mv "$stage" "$destination"
-printf 'Ready: %s (including .PKGINFO and .INSTALL). No package was created or installed.\n' "$destination"
+printf 'Copied to fakeroot.\n'
