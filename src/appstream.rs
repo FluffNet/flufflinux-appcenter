@@ -145,6 +145,16 @@ fn collect_files(directory: &Path, depth: u8, files: &mut Vec<PathBuf>) {
             path.extension().and_then(|value| value.to_str()),
             Some("xml" | "gz")
         ) {
+            // Flatpak deploys both forms of the same catalog. Prefer the XML
+            // already decompressed by Flatpak instead of parsing every app
+            // twice. Other XML files and compressed-only catalogs remain.
+            let plain = path.with_extension("");
+            if path.extension().and_then(|value| value.to_str()) == Some("gz")
+                && plain.extension().and_then(|value| value.to_str()) == Some("xml")
+                && plain.is_file()
+            {
+                continue;
+            }
             files.push(path);
         }
     }
@@ -158,7 +168,13 @@ fn read_metadata(path: &Path) -> Option<String> {
             .success()
             .then(|| String::from_utf8_lossy(&output.stdout).into_owned())
     } else {
-        fs::read_to_string(path).ok()
+        fs::read_to_string(path).ok().or_else(|| {
+            // A deployment can change between enumeration and reading, or its
+            // plain copy may be unreadable. Retain the compressed fallback.
+            let compressed = path.with_extension("xml.gz");
+            (path.extension().and_then(|value| value.to_str()) == Some("xml") && compressed.is_file())
+                .then(|| read_metadata(&compressed)).flatten()
+        })
     }
 }
 
@@ -586,6 +602,41 @@ mod tests {
             assert_eq!(app.version, expected);
             assert!(to_json(&[app]).contains(&format!("\"version\":{}", escape_json(expected))));
         }
+    }
+
+    #[test]
+    fn paired_xml_and_gzip_are_read_once_with_fallback() {
+        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("fluff-catalog-formats-{}-{unique}", std::process::id()));
+        fs::create_dir(&root).unwrap();
+        struct Cleanup(PathBuf);
+        impl Drop for Cleanup {
+            fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); }
+        }
+        let _cleanup = Cleanup(root.clone());
+        let plain = root.join("appstream.xml");
+        let compressed = root.join("appstream.xml.gz");
+        let xml = "<components><component><id>org.example.One</id></component></components>";
+        fs::write(&plain, xml).unwrap();
+        let gzip = Command::new("gzip").arg("-nc").arg(&plain).output().unwrap();
+        assert!(gzip.status.success());
+        fs::write(&compressed, &gzip.stdout).unwrap();
+        fs::write(root.join("additional.xml"), "<components/>").unwrap();
+        fs::write(root.join("compressed-only.xml.gz"), &gzip.stdout).unwrap();
+        let mut files = Vec::new();
+        collect_files(&root, 0, &mut files);
+        files.sort();
+        assert_eq!(files, vec![root.join("additional.xml"), plain.clone(), root.join("compressed-only.xml.gz")]);
+        assert_eq!(read_metadata(&plain).as_deref(), Some(xml));
+        fs::write(&plain, [0xff, 0xfe]).unwrap();
+        assert_eq!(read_metadata(&plain).as_deref(), Some(xml)); // Unreadable text falls back.
+        fs::remove_file(&plain).unwrap();
+        assert_eq!(read_metadata(&plain).as_deref(), Some(xml)); // Replaced during reading.
+        files.clear(); collect_files(&root, 0, &mut files);
+        assert!(files.contains(&compressed) && !files.contains(&plain));
+        assert_eq!(read_metadata(&compressed).as_deref(), Some(xml));
+        fs::write(&compressed, "broken gzip").unwrap();
+        assert!(read_metadata(&plain).is_none());
     }
 
     #[test]

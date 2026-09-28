@@ -525,6 +525,13 @@ serialization/cache finishing uses 96-99%. Only an accepted, completed list
 reaches 100%. Values advance from real worker events, never a timer, and cannot
 move backwards during a load or its bounded parser retries. Fresh-cache startup
 still skips the loading screen entirely.
+Flatpak's paired `appstream.xml` and `appstream.xml.gz` are read once, preferring
+the already decompressed XML. Compressed-only catalogs are supported, and the
+compressed copy remains a fallback if the plain file cannot be read. Different
+sources and separate metadata files are not merged or skipped by this shortcut.
+`python tests/integration/benchmark_catalog_dedup.py BEFORE_BINARY AFTER_BINARY`
+alternates local-only catalog reads and checks complete catalog equality before
+reporting timing differences; it never refreshes sources or rewrites caches.
 `python tests/integration/test_catalog_progress_live.py target/release/flufflinux-appcenter`
 measures a real clean Flathub pull followed by a cached launch in each theme,
 using empty disposable data/config/cache roots and a private single-instance

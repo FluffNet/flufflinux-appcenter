@@ -128,3 +128,46 @@ guards, and native source/cache/manager checks. Progress tests cover split IPC
 messages, backwards/malformed reports, parser retries, failure below 100%, and
 fresh-cache loading-screen suppression. The existing 12-hour HTTP-source test
 also verifies that expiry still downloads genuinely changed metadata.
+
+## Duplicate metadata parsing
+
+The audit found that each Flatpak deployment's `appstream.xml` and
+`appstream.xml.gz` were both parsed, despite containing the same metadata.
+The plain and decompressed copies in the VM's active user/system Flathub
+deployments were verified byte-identical. The parser now selects the plain copy
+once, retaining compressed-only catalogs and a compressed fallback if the plain
+file is missing or unreadable. Different sources remain separate; their content
+can differ even when they use the same remote URL.
+
+The two-CPU, local-only `benchmark_catalog_dedup.py` alternated the before/after
+binaries three times each. All six complete JSON catalogs matched, not just
+their application counts (3,309 apps).
+
+| Catalog parsing | Run 1 | Run 2 | Run 3 | Median |
+| --- | --- | --- | --- | --- |
+| Before | 2.907 s | 2.967 s | 2.940 s | 2.940 s |
+| After | 1.539 s | 1.497 s | 1.538 s | 1.538 s |
+
+This is a 48% reduction in local catalog parsing time for this source set, not
+a 48% reduction in total first-launch time. The network refresh still dominates
+an empty-source startup. The new paired-format/fallback unit test brings the
+Rust suite to 29 passing tests, alongside the two source-text guards.
+
+The final optimized build then repeated the two empty-profile real Flathub
+pulls, with the same two-CPU restriction and no pre-existing source/app cache:
+
+| Run | First cold window | Cold list ready | Cached list ready |
+| --- | --- | --- | --- |
+| 1, dark theme | 0.463 s | 30.518 s | 1.413 s |
+| 2, light theme | 0.586 s | 28.035 s | 1.657 s |
+
+Both returned 3,298 apps with monotonic progress. Source refreshes reached 70%
+at 23.881 s and 21.030 s, so much of the difference from the earlier clean runs
+was network variation, not the parser optimization. The local-only comparison
+above isolates the confirmed code improvement. Final screenshots and logs are
+in `output/loading-progress-after-dedup/`.
+
+The final HTTP-source regression passed again: cold load returned 3,301 apps,
+warm startup made no source requests/rebuild/cache write, and 12-hour expiry
+downloaded the newly published 3,302nd app before renewing the timestamp.
+Maximized/top-of-page startup and early CLI forwarding also remained correct.
