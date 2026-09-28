@@ -65,6 +65,7 @@ with ExitStack() as stack:
         assert entry["Name"] == "App Center"
         assert "GenericName" not in entry
         assert entry["Comment"] == "Browse, Discover and install applications"
+        assert {"System", "PackageManager", "Network"} <= set(entry["Categories"].split(";"))
         assert {"discover", "software"} <= set(entry["Keywords"].lower().split(";"))
         assert entry["Icon"] == "flufflinux-appcenter"
         assert entry["Exec"] == "flufflinux-appcenter --desktop-open %U"
