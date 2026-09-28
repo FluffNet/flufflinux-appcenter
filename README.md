@@ -10,20 +10,46 @@ automatic background update checks. An on-demand user service keeps active
 transactions running after the window is closed, with native KDE tray progress.
 Settings contains Flatpak source management.
 
-## Pacman package and Discover replacement
+## Build and prepare fakeroot
 
-On Fluff Linux, run `sh scripts/build-package.sh` as a normal user. This builds
-`flufflinux-appcenter-2026.9.0beta-5-x86_64.pkg.tar.zst` in a fresh directory under
-`build/`, runs Rust tests, and records **FluffNet LLC** as packager. Install the
-printed package with `sudo pacman -U /absolute/path/to/package.pkg.tar.zst`.
-The package conflicts with and replaces both `discover` and `flufflinux-discover`;
-`flufflinux-update` is a required dependency, alongside the native Qt/KDE/Flatpak
-runtime dependencies. It does not autostart a notifier or run App Center as root.
-Build dependencies must already be installed; the script does not use sudo.
-Existing unmanaged source installs need a file backup before package adoption;
-do not bypass conflicts with `--overwrite '*'`. Direct `make install` refuses to
-overwrite a package-managed software center at `/usr`; staging with `DESTDIR`
-remains available. Use pacman for subsequent installed-package upgrades/removal.
+On Fluff Linux, with the build dependencies installed, run:
+
+```sh
+make fakeroot
+```
+
+This builds App Center and prepares **`fakeroot/`** with all installed files,
+Discover compatibility symlinks, **`.PKGINFO`** and **`.INSTALL`**. It does not
+create an archive, install anything, run package hooks or require sudo.
+**You create the package manually.** Include the hidden metadata files when
+packaging the directory. Re-running preserves the previous tree under
+`build/fakeroot-backup.*/fakeroot` before replacing it with a fresh tree.
+
+`.PKGINFO` declares `flufflinux-appcenter`, packager **FluffNet LLC**, all runtime
+dependencies including `flufflinux-update`, and conflicts/replacements for both
+`discover` and `flufflinux-discover`. Its template is `packaging/PKGINFO.in`.
+`.INSTALL` comes from `packaging/INSTALL`: it registers Flatpak file handlers,
+refreshes desktop/icon caches and reloads user-service definitions. It never
+starts or enables App Center. Shared MIME defaults are merged, not packaged.
+
+For a direct installation without making a package:
+
+```sh
+make
+sudo make install
+```
+
+That copies the files into the system and runs the same install hooks. It does
+not create or register a pacman package. Use `sudo make uninstall` to remove a
+direct source install; its exclusions config is preserved. Direct installation
+refuses to overwrite a package-managed Discover or App Center. Remove a direct
+source install before switching to a package, without forcing file conflicts.
+
+For source testing only, **`cargo run`** opens the app without installing it.
+`cargo build --release` builds the main executable; `make` also builds its source
+management helper. Neither command creates a package.
+
+## Discover replacement
 
 The package keeps **`org.kde.discover.desktop`** as its visible desktop ID and
 Wayland window identity, so existing Discover pins launch and group with App
@@ -40,11 +66,14 @@ Both old Flatpak and `appstream:` URL handler desktop IDs remain supported.
 Discover's notifier is not carried over.
 
 The build includes `/etc/flufflinux-appcenter/exclusions.conf` when present;
-use `EXCLUSIONS_FILE=data/exclusions.conf sh scripts/build-package.sh` for bundled
+use `make fakeroot EXCLUSIONS_FILE=data/exclusions.conf` for bundled
 defaults. Pacman tracks this as a backup configuration file, preserving edits
 on upgrade. Shared `/etc/xdg/mimeapps.list` is not package-owned: install/remove
 scripts merge only App Center's associations, preserving unrelated defaults.
-Archive checks: `python3 tests/integration/test_pacman_package.py PACKAGE`.
+Staging checks: `python3 tests/integration/test_pacman_package.py fakeroot`.
+The same check accepts a manually created package archive instead of a directory.
+`python3 tests/integration/test_fakeroot.py` checks staging and direct install
+hooks in temporary directories without installing anything on the system.
 Launcher dispatch: `python3 tests/integration/test_legacy_launch.py`.
 The optional installed-KDE pin regression is `tests/native/test_discover_pin.cpp`.
 Build it with Qt6Widgets/Qt6Qml flags, `-lKF6Service -ltaskmanager`, and include
@@ -181,10 +210,11 @@ re-evaluates the installed exception after its install/removal transactions.
 An empty config disables exclusions; a missing/unreadable config uses the bundled
 defaults. Installed system packages are not mistaken for installed Flatpak copies.
 
-`make install` preserves an existing config. `DESTDIR=... make install` automatically
-copies the host's edited exclusions into fakeroot; if absent, it installs the
-bundled defaults. Use `EXCLUSIONS_FILE=data/exclusions.conf` for defaults-only,
-reproducible staging, or point it at a curated file. Uninstall preserves the config.
+`make install` preserves an existing config. `make fakeroot` automatically copies
+the host's edited exclusions into staging; if absent, it uses the bundled defaults.
+Use `make fakeroot EXCLUSIONS_FILE=data/exclusions.conf` for defaults-only staging,
+or point it at a curated file. Source uninstall preserves the config, and the
+package metadata marks it as a backup configuration file.
 
 Catalog tests: `sh tests/run_catalog.sh`, `sh tests/run_qml_suite.sh`,
 `python3 tests/integration/test_catalog_exclusions.py` (read-only populated-catalog
@@ -763,31 +793,22 @@ from those caches still appear in Installed and can be removed. Adding a new
 source refreshes its AppStream metadata and reloads the catalog without a restart.
 Settings also provides an explicit Refresh; offline failures remain visible there.
 
-## Install and register as the default handler
+## Default file handler
 
 ```sh
-make
-sudo make install
 make set-default-handler
 ```
 
-Run the last command **without sudo**, as the desktop user. It changes defaults
-only for Flatpak files and supported Flatpak link schemes.
+Run this optional command after installation **without sudo**, as the desktop
+user. It changes defaults only for Flatpak files and supported Flatpak link schemes.
 
-`make install` also merges those six associations into
-`/etc/xdg/mimeapps.list` as system-wide defaults, preserving unrelated entries
-and existing alternatives. Explicit per-user choices take precedence. The last
+The shared `.INSTALL` hooks used by pacman and direct `make install` merge those
+six associations into `/etc/xdg/mimeapps.list` as system-wide defaults, preserving unrelated entries
+and existing alternatives. Explicit per-user choices take precedence. The
 command above selects App Center for the current user as well.
-
-For distro packaging:
-
-```sh
-DESTDIR="$PWD/fakeroot" make install
-```
-
-Staging writes the default associations only under `DESTDIR`; it does not change
-the host's icon caches or MIME defaults. Override `SYSCONFDIR` for another
-configuration prefix.
+`make fakeroot` only stages files; registration happens when the resulting
+package is installed. Advanced `make install DESTDIR=...` copies the payload
+without running hooks or adding shared MIME defaults to the staged file list.
 
 ## Architecture
 

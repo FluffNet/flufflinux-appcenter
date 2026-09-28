@@ -1,8 +1,6 @@
 PREFIX ?= /usr
 SYSCONFDIR ?= /etc
 DESTDIR ?=
-# Pacman merges shared MIME defaults from its install script, not its file list.
-REGISTER_MIME ?= 1
 # Include the machine's curated exclusions in archiso/fakeroot staging. Set
 # EXCLUSIONS_FILE=data/exclusions.conf for a reproducible defaults-only package.
 EXCLUSIONS_FILE ?= $(if $(wildcard $(SYSCONFDIR)/flufflinux-appcenter/exclusions.conf),$(SYSCONFDIR)/flufflinux-appcenter/exclusions.conf,data/exclusions.conf)
@@ -11,10 +9,14 @@ ifneq ($(shell uname -s),Linux)
 $(error App Center can only be built on Fluff Linux/Arch Linux)
 endif
 
-.PHONY: build install uninstall clean set-default-handler
+.PHONY: build fakeroot install uninstall clean set-default-handler
 
 build: target/release/flufflinux-appcenter-source-helper
 	cargo build --release
+
+# Stage only. Creating and installing a package remains a manual step.
+fakeroot: build
+	sh scripts/prepare-fakeroot.sh "$(EXCLUSIONS_FILE)"
 
 target/release/flufflinux-appcenter: Cargo.toml Cargo.lock VERSION build.rs data/exclusions.conf $(wildcard src/*.rs src/*.cpp src/*.h)
 	cargo build --release
@@ -42,6 +44,7 @@ install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter
 	sed 's|@PREFIX@|$(PREFIX)|g' data/com.flufflinux.appcenter.policy.in > "$(DESTDIR)$(PREFIX)/share/polkit-1/actions/com.flufflinux.appcenter.policy"
 	chmod 644 "$(DESTDIR)$(PREFIX)/share/polkit-1/actions/com.flufflinux.appcenter.policy"
 	install -m644 LICENSE "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/LICENSE"
+	install -Dm644 LICENSE "$(DESTDIR)$(PREFIX)/share/licenses/flufflinux-appcenter/LICENSE"
 	install -m644 qml/*.qml "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/"
 	install -m644 qml/*.svg "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/"
 	install -m644 assets/flufflinux-appcenter.svg "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/flufflinux-appcenter.svg"
@@ -55,8 +58,10 @@ install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter
 	ln -sfn flufflinux-appcenter.desktop "$(DESTDIR)$(PREFIX)/share/applications/org.kde.discover.urlhandler.desktop"
 	mkdir -p "$(DESTDIR)$(SYSCONFDIR)/flufflinux-appcenter"
 	@if [ -n "$(DESTDIR)" ] || [ ! -e "$(DESTDIR)$(SYSCONFDIR)/flufflinux-appcenter/exclusions.conf" ]; then install -m644 "$(EXCLUSIONS_FILE)" "$(DESTDIR)$(SYSCONFDIR)/flufflinux-appcenter/exclusions.conf"; fi
-	@if [ "$(REGISTER_MIME)" = 1 ]; then sh scripts/register-flatpak-handler.sh "$(DESTDIR)$(SYSCONFDIR)/xdg/mimeapps.list"; fi
-	@if [ -z "$(DESTDIR)" ]; then update-desktop-database "$(PREFIX)/share/applications"; gtk-update-icon-cache -f -t "$(PREFIX)/share/icons/hicolor"; fi
+	@if [ -z "$(DESTDIR)" ]; then \
+		APPCENTER_PREFIX="$(PREFIX)" APPCENTER_SYSCONFDIR="$(SYSCONFDIR)" \
+		sh -ec '. ./packaging/INSTALL; post_install'; \
+	fi
 
 # Run as the desktop user after installation, not via sudo. Respect other MIME
 # defaults: only these Flatpak file types and URI schemes are associated.
@@ -64,7 +69,13 @@ set-default-handler:
 	xdg-mime default flufflinux-appcenter.desktop application/vnd.flatpak application/vnd.flatpak.ref application/vnd.flatpak.repo x-scheme-handler/flatpak x-scheme-handler/flatpak+https x-scheme-handler/appstream
 
 uninstall:
-	sh scripts/register-flatpak-handler.sh "$(DESTDIR)$(SYSCONFDIR)/xdg/mimeapps.list" remove
+	@if [ -z "$(DESTDIR)" ] && [ "$(PREFIX)" = /usr ] && command -v pacman >/dev/null 2>&1 && pacman -Qq flufflinux-appcenter >/dev/null 2>&1; then \
+		echo 'Use pacman to remove the package-managed App Center.' >&2; exit 1; \
+	fi
+	@if [ -z "$(DESTDIR)" ]; then \
+		APPCENTER_PREFIX="$(PREFIX)" APPCENTER_SYSCONFDIR="$(SYSCONFDIR)" \
+		sh -ec '. ./packaging/INSTALL; pre_remove'; \
+	fi
 	rm -f "$(DESTDIR)$(PREFIX)/bin/flufflinux-appcenter"
 	rm -f "$(DESTDIR)$(PREFIX)/lib/systemd/user/flufflinux-appcenter.service"
 	for alias in plasma-discover discover flufflinux-discover; do rm -f "$(DESTDIR)$(PREFIX)/bin/$$alias"; done
@@ -72,11 +83,16 @@ uninstall:
 	rm -f "$(DESTDIR)$(PREFIX)/lib/flufflinux-appcenter/register-flatpak-handler"
 	rm -f "$(DESTDIR)$(PREFIX)/share/polkit-1/actions/com.flufflinux.appcenter.policy"
 	rm -rf "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter"
+	rm -f "$(DESTDIR)$(PREFIX)/share/licenses/flufflinux-appcenter/LICENSE"
 	rm -f "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/flufflinux-appcenter.svg"
 	rm -f "$(DESTDIR)$(PREFIX)/share/applications/flufflinux-appcenter.desktop"
 	rm -f "$(DESTDIR)$(PREFIX)/share/applications/org.kde.discover.desktop" "$(DESTDIR)$(PREFIX)/share/applications/org.kde.discover.flatpak.desktop"
 	rm -f "$(DESTDIR)$(PREFIX)/share/applications/org.kde.discover.urlhandler.desktop"
 	for alias in flufflinuxplasmadiscover plasmadiscover; do rm -f "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/$$alias.svg"; done
+	@if [ -z "$(DESTDIR)" ]; then \
+		APPCENTER_PREFIX="$(PREFIX)" APPCENTER_SYSCONFDIR="$(SYSCONFDIR)" \
+		sh -ec '. ./packaging/INSTALL; post_remove'; \
+	fi
 
 clean:
 	cargo clean

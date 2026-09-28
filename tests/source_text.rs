@@ -20,7 +20,7 @@ fn inspect(directory: &Path, root: &Path, failures: &mut Vec<String>) {
         if kind.is_dir() {
             // Build products, archived screenshots and local tool state are
             // not authored source. Never descend into dependencies or VCS data.
-            if matches!(entry.file_name().to_str(), Some("target" | "build" | "output" |
+            if matches!(entry.file_name().to_str(), Some("target" | "build" | "output" | "fakeroot" |
                 ".git" | ".codex" | ".agents" | ".venv" | "node_modules" | "__pycache__")) { continue; }
             inspect(&path, root, failures);
         } else if kind.is_file() {
