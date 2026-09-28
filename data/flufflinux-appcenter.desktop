@@ -1,7 +1,6 @@
 [Desktop Entry]
 Name=App Center
-GenericName=Software Center
-Comment=Browse, install and remove Flatpak applications
+Comment=Browse, Discover and install applications
 Exec=flufflinux-appcenter --desktop-open %U
 Icon=flufflinux-appcenter
 Terminal=false
@@ -9,7 +8,7 @@ Type=Application
 NoDisplay=false
 OnlyShowIn=KDE;
 Categories=Qt;KDE;System;PackageManager;
-Keywords=software;apps;applications;catalog;store;
+Keywords=Discover;software;apps;applications;catalog;store;
 SingleMainWindow=true
 StartupNotify=true
 Actions=Updates;

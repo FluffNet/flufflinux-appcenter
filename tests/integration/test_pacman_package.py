@@ -59,6 +59,9 @@ with ExitStack() as stack:
         content.read(desktop)
         entry = content["Desktop Entry"]
         assert entry["Name"] == "App Center"
+        assert "GenericName" not in entry
+        assert entry["Comment"] == "Browse, Discover and install applications"
+        assert {"discover", "software"} <= set(entry["Keywords"].lower().split(";"))
         assert entry["Icon"] == "flufflinux-appcenter"
         assert entry["Exec"] == "flufflinux-appcenter --desktop-open %U"
         assert "x-scheme-handler/appstream" in entry["MimeType"].split(";")
