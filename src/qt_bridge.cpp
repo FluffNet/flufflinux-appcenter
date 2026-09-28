@@ -148,6 +148,7 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *catalog_path, con
             if (type == "mode" && value == "Update")
                 QMetaObject::invokeMethod(engine.rootObjects().first(), "showUpdates");
             else if (type == "source") manager.openSource(value);
+            else if (type == "installed-application") manager.openInstalledApplication(value);
             else if (QStringList{"mode", "search", "category", "mime"}.contains(type))
                 QMetaObject::invokeMethod(engine.rootObjects().first(), "handleCliAction", Q_ARG(QVariant, action.toVariantMap()));
         }

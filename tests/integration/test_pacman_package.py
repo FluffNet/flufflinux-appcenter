@@ -54,7 +54,7 @@ with tempfile.TemporaryDirectory(prefix="appcenter-package-test-") as temporary:
         entry = content["Desktop Entry"]
         assert entry["Name"] == "App Center"
         assert entry["Icon"] == "flufflinux-appcenter"
-        assert entry["Exec"] == "flufflinux-appcenter %U"
+        assert entry["Exec"] == "flufflinux-appcenter --desktop-open %U"
         assert "x-scheme-handler/appstream" in entry["MimeType"].split(";")
         assert content["Desktop Action Updates"]["Exec"] == "flufflinux-appcenter --updates"
         if entry.get("NoDisplay") != "true":

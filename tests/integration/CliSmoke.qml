@@ -31,5 +31,6 @@ AppCenter.Main {
         target: fluffBackend
         function onInputError(message) { console.log("CLI_ERROR " + message) }
         function onAppOpened(app) { console.log("CLI_APP " + app.id) }
+        function onHomeRequested() { console.log("CLI_HOME"); main.showHome() }
     }
 }

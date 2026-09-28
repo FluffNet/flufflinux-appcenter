@@ -70,11 +70,15 @@ with tempfile.TemporaryDirectory(prefix="appcenter-cli-") as temporary:
                 result = run(args); assert result.returncode == 0, result.stderr
                 wait_for(lambda text: state_is(text, **expected), offset)
             # Errors are presented in the running window, not silently swallowed.
-            for args, marker in [(["--application", "org.invalid.DoesNotExist"], "not found"),
+            for args, marker in [(["--application", "org.invalid.DoesNotExist"], "No matching Flatpak was found"),
                                  (["--local-filename", "missing file.flatpakref"], "CLI_ERROR")]:
                 offset = len(log.read_text()); result = run(args, cwd=root)
                 assert result.returncode == 0, result.stderr
                 wait_for(lambda text: marker in text, offset)
+            offset = len(log.read_text())
+            assert run(["--desktop-open", "appstream://org.invalid.DoesNotExist"]).returncode == 0
+            wait_for(lambda text: "CLI_HOME" in text, offset)
+            assert "CLI_ERROR" not in log.read_text()[offset:]
             assert "TypeError" not in log.read_text() and "ReferenceError" not in log.read_text(), log.read_text()
         finally:
             first.terminate(); first.wait(timeout=10)

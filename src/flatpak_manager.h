@@ -56,6 +56,7 @@ public:
     Q_INVOKABLE void requestInstallInfo(QVariantMap app);
     Q_INVOKABLE void uninstallApp(QVariantMap app);
     Q_INVOKABLE void openSource(QString source);
+    void openInstalledApplication(QString source);
     Q_INVOKABLE void answerReview(int token, bool accept);
     Q_INVOKABLE void cancelJob(int index);
     Q_INVOKABLE void cancelAll();
@@ -79,6 +80,7 @@ signals:
     void reviewChanged();
     void installedChanged();
     void appOpened(QVariantMap app);
+    void homeRequested();
     void inputError(QString message);
     void installSizesChanged();
     void appPermissionsChanged();
@@ -114,7 +116,9 @@ private:
     void runSourceOperation(QVariantMap request);
     void reloadCatalog();
     void drainApplicationLinks();
+    void drainInstalledApplicationLinks();
     QStringList m_pendingApplicationLinks;
+    QStringList m_pendingInstalledApplicationLinks;
     QVariantList m_jobs, m_requests, m_installed, m_pendingReviews;
     quint64 m_queueBatch = 0;
     QVariantMap m_review;

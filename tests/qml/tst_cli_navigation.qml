@@ -74,4 +74,19 @@ TestCase {
         send("mode", "Browsing"); tryCompare(findChild(main, "aboutDialog"), "visible", false)
         compare(findChild(main, "navigationStack").depth, 1)
     }
+    function test_home_fallback_clears_details_search_filters_and_dialogs() {
+        send("mime", "application/pdf")
+        main.openApp(main.catalog[1])
+        tryCompare(findChild(main, "navigationStack"), "busy", false)
+        main.showAbout()
+        main.showHome()
+        tryCompare(findChild(main, "navigationStack"), "busy", false)
+        compare(findChild(main, "navigationStack").depth, 1)
+        compare(main.selectedCategory, "All Apps")
+        compare(main.searchText, "")
+        compare(page().cliMimeType, "")
+        compare(page().cliCategory, "")
+        tryCompare(findChild(main, "aboutDialog"), "visible", false)
+        verify(page().homeView)
+    }
 }

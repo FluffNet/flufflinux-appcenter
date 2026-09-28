@@ -2,7 +2,7 @@
 Name=App Center
 GenericName=Software Center
 Comment=Browse, install and remove Flatpak applications
-Exec=flufflinux-appcenter %U
+Exec=flufflinux-appcenter --desktop-open %U
 Icon=flufflinux-appcenter
 Terminal=false
 Type=Application

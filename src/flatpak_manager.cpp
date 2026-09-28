@@ -28,6 +28,15 @@ QString normalizedId(QString id) {
     if (id.endsWith(".desktop")) id.chop(8);
     return id;
 }
+QString applicationLinkId(const QString &source) {
+    const QUrl url(source);
+    if (url.scheme() != "appstream" && url.scheme() != "flatpak") return {};
+    auto id = QUrl::fromPercentEncoding(source.mid(source.indexOf(':') + 1).toUtf8());
+    if (id.startsWith("//")) id.remove(0, 2);
+    if (id.endsWith('/')) id.chop(1);
+    static const QRegularExpression validId("^[A-Za-z0-9_][A-Za-z0-9_.-]*\\.[A-Za-z0-9_.-]+$");
+    return validId.match(id).hasMatch() && !url.hasQuery() && !url.hasFragment() ? id : QString();
+}
 bool active(const QVariantMap &job) { return job.value("active").toBool(); }
 }
 
@@ -35,6 +44,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     m_catalog = catalog;
     connect(this, &FlatpakManager::catalogChanged, this, &FlatpakManager::drainApplicationLinks);
     connect(this, &FlatpakManager::installedChanged, this, &FlatpakManager::drainApplicationLinks);
+    connect(this, &FlatpakManager::installedChanged, this, &FlatpakManager::drainInstalledApplicationLinks);
     connect(&m_catalogProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this] { QTimer::singleShot(0, this, &FlatpakManager::drainApplicationLinks); });
     connect(&m_catalogProcess, &QProcess::errorOccurred, this,
@@ -730,6 +740,40 @@ void FlatpakManager::uninstallApp(QVariantMap app) {
     }
     emit inputError(tr("That app is no longer installed. The list has been refreshed.")); refreshInstalled();
 }
+void FlatpakManager::openInstalledApplication(QString source) {
+    source = source.trimmed();
+    if (source.size() > 8192 || QUrl(source).scheme() != "appstream"
+        || applicationLinkId(source).isEmpty() || m_pendingInstalledApplicationLinks.size() >= 16) {
+        emit homeRequested(); return;
+    }
+    m_pendingInstalledApplicationLinks.append(source);
+    // KDE sends only an app ID, not its package type. Check the current local
+    // Flatpak deployments, including changes made outside App Center.
+    refreshInstalled();
+}
+void FlatpakManager::drainInstalledApplicationLinks() {
+    if (m_loading) return;
+    const auto pending = m_pendingInstalledApplicationLinks;
+    m_pendingInstalledApplicationLinks.clear();
+    for (const auto &source : pending) {
+        const auto id = normalizedId(applicationLinkId(source));
+        QVariantMap match;
+        QSet<QString> foldedIds;
+        if (m_installedError.isEmpty()) for (const auto &entry : m_installed) {
+            const auto app = entry.toMap();
+            const auto candidate = normalizedId(app.value("id").toString());
+            if (candidate == id) { match = app; foldedIds = {candidate}; break; }
+            if (candidate.compare(id, Qt::CaseInsensitive) == 0) {
+                foldedIds.insert(candidate);
+                if (match.isEmpty()) match = app;
+            }
+        }
+        // No catalog fallback: a native package with the same AppStream ID
+        // must never be mistaken for an installed Flatpak.
+        if (foldedIds.size() == 1 && !match.isEmpty()) emit appOpened(match);
+        else emit homeRequested();
+    }
+}
 void FlatpakManager::drainApplicationLinks() {
     if (sourcesBusy() || m_catalogProcess.state() != QProcess::NotRunning || m_loading) return;
     const auto pending = m_pendingApplicationLinks;
@@ -749,11 +793,8 @@ void FlatpakManager::openSource(QString source) {
     const QUrl url(source);
     if (url.scheme() == "flatpak" || url.scheme() == "appstream") {
         // Do not use QUrl::host(): host names are lowercased, but app IDs are not.
-        auto id = QUrl::fromPercentEncoding(source.mid(source.indexOf(':') + 1).toUtf8());
-        if (id.startsWith("//")) id.remove(0, 2);
-        if (id.endsWith('/')) id.chop(1);
-        static const QRegularExpression validId("^[A-Za-z0-9_][A-Za-z0-9_.-]*\\.[A-Za-z0-9_.-]+$");
-        if (!validId.match(id).hasMatch() || url.hasQuery() || url.hasFragment()) {
+        const auto id = applicationLinkId(source);
+        if (id.isEmpty()) {
             emit inputError(tr("Use an appstream: or flatpak: link containing an application ID only.")); return;
         }
         if (m_catalogProcess.state() != QProcess::NotRunning || m_loading) {

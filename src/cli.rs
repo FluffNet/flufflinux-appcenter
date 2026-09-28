@@ -33,6 +33,7 @@ Options (also supported by plasma-discover, discover and flufflinux-discover):\n
   --listmodes                 Print the supported modes\n\
   --listbackends              Print the available backend\n\
   --local-filename <file>     Review a local Flatpak file (does not install it)\n\
+  --desktop-open             Desktop AppStream links open installed apps only\n\
   --desktopfile <name>        Override the desktop ID for a new window\n\
   --catalog                  Print the local catalog as JSON\n\
   -h, --help, --help-all      Show this help\n\
@@ -130,7 +131,7 @@ fn parse_command(args: &[String], cwd: &Path) -> Result<Command, ParseError> {
         let (key, inline) = arg.split_once('=').map_or((arg.as_str(), None), |(k, v)| (k, Some(v)));
         match key {
             "-h" | "--help" | "--help-all" | "-v" | "--version" | "--author" | "--license"
-            | "--listmodes" | "--listbackends" | "--updates" | "--headless-update" => {
+            | "--listmodes" | "--listbackends" | "--updates" | "--headless-update" | "--desktop-open" => {
                 if inline.is_some() { return Err(ParseError::Syntax); }
                 options.insert(key.to_string(), String::new());
             }
@@ -190,7 +191,11 @@ fn parse_command(args: &[String], cwd: &Path) -> Result<Command, ParseError> {
         actions.push(("search".into(), query));
     }
     if let Some(value) = options.get("--local-filename") { actions.push(("source".into(), source(value, cwd, true)?)); }
-    for value in positionals { actions.push(("source".into(), value)); }
+    for value in positionals {
+        let installed_link = has("--desktop-open") && url_scheme(&value)
+            .is_some_and(|scheme| scheme.eq_ignore_ascii_case("appstream"));
+        actions.push((if installed_link { "installed-application" } else { "source" }.into(), value));
+    }
     if actions.len() > 16 { return Err(ParseError::Rejected("Open at most 16 files or destinations at once.".into())); }
     Ok(Command::Launch { actions, desktop_file: desktop_file.into() })
 }
@@ -234,6 +239,17 @@ mod tests {
         assert_eq!(actions(&["--mime=application/pdf"])[0].0, "mime");
         assert_eq!(actions(&["--category", "Audio & Video"])[0].1, "Audio & Video");
         assert_eq!(actions(&["--category", "Games", "--search", "chess"]).len(), 2);
+    }
+    #[test] fn desktop_links_require_installed_apps_but_files_and_cli_do_not() {
+        assert_eq!(actions(&["--desktop-open", "appstream://org.Example.App"]),
+            [("installed-application".into(), "appstream://org.Example.App".into())]);
+        assert_eq!(actions(&["--desktop-open", "APPSTREAM:org.Example.App"])[0].0, "installed-application");
+        for value in ["file:///tmp/Space%20App.flatpak", "file:///tmp/App.flatpakref",
+            "file:///tmp/App.flatpakrepo", "flatpak:org.Example.App", "https://example.org/App.flatpakref"] {
+            assert_eq!(actions(&["--desktop-open", value]), [("source".into(), value.into())]);
+        }
+        assert_eq!(actions(&["--desktop-open", "--application", "org.Example.App"])[0].0, "source");
+        assert!(actions(&["--desktop-open"]).is_empty());
     }
     #[test] fn information_options_do_not_launch() {
         assert!(help().contains("Usage: flufflinux-appcenter [options]"));

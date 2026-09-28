@@ -132,6 +132,7 @@ ApplicationWindow {
         target: window.backend
         ignoreUnknownSignals: true
         function onAppOpened(app) { window.openApp(app) }
+        function onHomeRequested() { window.showHome() }
         function onInputError(message) { inputError.text = message; errorDialog.open() }
         function onCatalogChanged() { window.catalog = window.backend.catalog }
     }
@@ -145,6 +146,12 @@ ApplicationWindow {
         if (backend && typeof backend.refreshSources === "function") backend.refreshSources()
     }
     function showAbout() { aboutDialog.open() }
+    function showHome() {
+        aboutDialog.close()
+        errorDialog.close()
+        showCatalog()
+        stack.get(0).openCliFilter("search", "")
+    }
     function showUpdates() {
         if (networkOffline) return
         aboutDialog.close()
