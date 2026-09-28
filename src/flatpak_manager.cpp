@@ -1,4 +1,6 @@
 #include <flatpak.h>
+#include "catalog_inputs.h"
+#include "catalog_cache.h"
 #include "flatpak_manager.h"
 #include "transaction_progress.h"
 #include "flatpak_sizes.h"
@@ -148,7 +150,7 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     });
     connect(&m_sourceProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this, [this] {
         if (!m_sourceResult) m_sourcesError = tr("Could not finish updating software sources.");
-        emit repositoriesChanged(); emit jobsChanged(); reloadCatalog();
+        emit repositoriesChanged(); emit jobsChanged(); reloadCatalog(m_sourceRefreshCatalog);
         const auto inputs = m_pendingInputs; m_pendingInputs.clear();
         for (const auto &source : inputs) openSource(source);
     });
@@ -162,15 +164,24 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
         [this](int code, QProcess::ExitStatus status) {
             const auto document = QJsonDocument::fromJson(m_catalogProcess.readAllStandardOutput());
             if (!code && status == QProcess::NormalExit && document.isArray()) {
-                m_catalog = document.array().toVariantList(); m_metadata.clear();
-                for (const auto &entry : m_catalog) {
-                    const auto app = entry.toMap();
-                    m_metadata[normalizedId(app.value("id").toString())] = app;
+                setCatalog(document.array().toVariantList());
+                if (!m_catalogCachePath.isEmpty()) {
+                    const auto fingerprint = CatalogInputs::fingerprint();
+                    // A source/installation may change while the worker reads.
+                    // Never label that mixed snapshot as a reusable cache.
+                    if (!fingerprint.isEmpty() && fingerprint == m_catalogReadFingerprint) {
+                        m_catalogFingerprint = fingerprint;
+                        m_catalogSavedAt = QDateTime::currentDateTimeUtc();
+                        CatalogCache::write(m_catalogCachePath, fingerprint, m_catalog, m_catalogSavedAt);
+                    } else if (!fingerprint.isEmpty()) m_catalogAgain = true;
                 }
                 if (!m_sizeApp.isEmpty()) requestInstallInfo(m_sizeApp);
                 refreshInstalled();
             }
-            if (m_catalogAgain) { m_catalogAgain = false; reloadCatalog(); }
+            if (m_catalogAgain) {
+                const bool force = m_catalogForceAgain;
+                m_catalogAgain = false; m_catalogForceAgain = false; reloadCatalog(force);
+            }
             emit catalogChanged();
         });
     connectWorker(m_installWorker);
@@ -1089,6 +1100,7 @@ void FlatpakManager::addDefaultSources() { runSourceOperation({{"operation", "de
 void FlatpakManager::runSourceOperation(QVariantMap request) {
     if (m_stopping || busy()) return;
     m_sourceListing = request.value("operation") == "list";
+    m_sourceRefreshCatalog = request.value("operation") == "refresh";
     if (!m_sourceListing && m_updatesState == "ready") {
         m_updates.clear(); m_updatesState = "idle"; m_updatesSkipped.clear();
         m_updatesError.clear(); emit updatesChanged();
@@ -1126,9 +1138,42 @@ void FlatpakManager::removeSource(QVariantMap source) {
         }
     }
 }
-void FlatpakManager::reloadCatalog() {
+void FlatpakManager::setCatalog(const QVariantList &catalog) {
+    m_catalog = catalog; m_metadata.clear();
+    for (const auto &entry : m_catalog) {
+        const auto app = entry.toMap();
+        m_metadata[normalizedId(app.value("id").toString())] = app;
+    }
+}
+void FlatpakManager::loadCatalog(const QString &cachePath) {
+    m_catalogCachePath = cachePath;
+    if (!cachePath.isEmpty()) {
+        const auto fingerprint = CatalogInputs::fingerprint();
+        const auto cache = CatalogCache::read(cachePath, fingerprint);
+        if (cache.valid) {
+            setCatalog(cache.apps);
+            m_catalogFingerprint = fingerprint; m_catalogSavedAt = cache.savedAt;
+            emit catalogChanged();
+            if (CatalogCache::fresh(cache.savedAt)) return;
+        }
+    }
+    reloadCatalog();
+}
+void FlatpakManager::reloadCatalog(bool force) {
     if (m_stopping) return;
-    if (m_catalogProcess.state() != QProcess::NotRunning) { m_catalogAgain = true; return; }
+    if (m_catalogProcess.state() != QProcess::NotRunning) {
+        m_catalogAgain = true; m_catalogForceAgain |= force; return;
+    }
+    if (!m_catalogCachePath.isEmpty()) {
+        m_catalogReadFingerprint = CatalogInputs::fingerprint();
+        // Source initialization/listing often reports unchanged inputs twice.
+        // Reuse the in-memory snapshot instead of launching another full parse.
+        if (!force && !m_catalogReadFingerprint.isEmpty() && m_catalogReadFingerprint == m_catalogFingerprint
+                && CatalogCache::fresh(m_catalogSavedAt)) return;
+        // Once rebuilding, only that worker's stable result may validate the
+        // in-memory list. Inputs could change away and then back mid-parse.
+        m_catalogFingerprint.clear(); m_catalogSavedAt = {};
+    }
     m_catalogProcess.start(QCoreApplication::applicationFilePath(), {"--catalog"});
     emit catalogChanged();
 }

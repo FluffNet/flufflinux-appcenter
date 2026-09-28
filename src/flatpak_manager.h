@@ -6,6 +6,7 @@
 #include <QElapsedTimer>
 #include <QHash>
 #include <QJsonObject>
+#include <QDateTime>
 #include "install_history.h"
 #include "download_rate.h"
 
@@ -66,7 +67,7 @@ public:
     Q_INVOKABLE void launchApp(QVariantMap app);
     QVariantList catalog() const { return m_catalog; }
     bool catalogLoading() const { return m_catalogProcess.state() != QProcess::NotRunning; }
-    void loadCatalog() { reloadCatalog(); }
+    void loadCatalog(const QString &cachePath = {});
     // Usable cached applications remain browsable even if refreshing fails.
     bool catalogSourcesUnavailable() const { return m_catalogLoadsFailed && m_catalog.isEmpty(); }
     QVariantList repositories() const { return m_repositories; }
@@ -117,7 +118,8 @@ private:
     QVariantMap installRequest(const QVariantMap &app) const;
     QVariantMap metadata(const QString &id) const;
     void runSourceOperation(QVariantMap request);
-    void reloadCatalog();
+    void reloadCatalog(bool force = false);
+    void setCatalog(const QVariantList &catalog);
     void drainApplicationLinks();
     void drainInstalledApplicationLinks();
     QStringList m_pendingApplicationLinks;
@@ -160,6 +162,9 @@ private:
     QByteArray m_sourceBuffer;
     QString m_sourcesError;
     bool m_catalogLoadsFailed = false;
+    QString m_catalogCachePath, m_catalogFingerprint, m_catalogReadFingerprint;
+    QDateTime m_catalogSavedAt;
+    bool m_catalogForceAgain = false, m_sourceRefreshCatalog = false;
     QStringList m_pendingInputs;
     bool m_sourceResult = false, m_sourceListing = false, m_catalogAgain = false, m_sourcesRefreshPending = false;
 };

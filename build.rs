@@ -141,6 +141,8 @@ fn main() {
     println!("cargo:rerun-if-changed=src/background_queue.h");
     println!("cargo:rerun-if-changed=src/sleep_inhibitor.h");
     println!("cargo:rerun-if-changed=src/catalog_stats.h");
+    println!("cargo:rerun-if-changed=src/catalog_cache.h");
+    println!("cargo:rerun-if-changed=src/catalog_inputs.h");
     println!("cargo:rerun-if-changed=src/catalog_stats.cpp");
     println!("cargo:rerun-if-changed=src/network_status.h");
     println!("cargo:rerun-if-changed=src/network_status.cpp");

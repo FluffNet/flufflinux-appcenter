@@ -1,5 +1,6 @@
 #include "flatpak_manager.h"
 #include "catalog_stats.h"
+#include "catalog_cache.h"
 #include "catalog_preferences.h"
 #include "network_status.h"
 #include "window_preferences.h"
@@ -125,9 +126,10 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     if (!server.listen(socketPath)) { qCritical("Cannot create the App Center link handler socket."); return 1; }
 
     FlatpakManager manager({});
-    // Parsing AppStream can take seconds. Do it in the existing worker,
-    // while the window is already responsive. CLI clients never parse it.
-    manager.loadCatalog();
+    // A valid local snapshot is ready before QML's first frame. Cold/expired
+    // parses stay in the worker; launcher/IPC clients never read this cache.
+    manager.loadCatalog(CatalogCache::defaultPath());
+    if (!manager.catalogLoading()) trace("catalog-cache-ready");
     CatalogStats catalogStats;
     NetworkStatus networkStatus;
     // Custom QML is used by read-only UI fixtures; it must not read/write the
@@ -147,7 +149,7 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     engine.rootContext()->setContextProperty("fluffNetworkStatus", &networkStatus);
     engine.rootContext()->setContextProperty("fluffCatalogPreferences", &catalogPreferences);
     engine.rootContext()->setContextProperty("fluffAppIconUrl", QUrl::fromLocalFile(QString::fromUtf8(icon_path)));
-    engine.rootContext()->setContextProperty("fluffInitialCatalog", QVariantList{});
+    engine.rootContext()->setContextProperty("fluffInitialCatalog", manager.catalog());
     engine.rootContext()->setContextProperty("fluffWindowManaged", manageWindow);
     if (manageWindow) QTimer::singleShot(0, &manager, &FlatpakManager::initializeSources);
     engine.load(QUrl::fromLocalFile(QString::fromUtf8(qml_path)));

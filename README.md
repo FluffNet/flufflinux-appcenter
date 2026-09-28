@@ -441,10 +441,27 @@ window to normal. Reopening a hidden or minimized window preserves its last
 normal/maximized choice. Home stays at the top while its header fills and
 reflows, but does not reset a deliberate scroll when the window is resized.
 
-The GUI starts before the local AppStream catalog is parsed. Catalog loading
-runs in the existing `--catalog` worker; launcher/IPC clients do not parse or
-rewrite the catalog. Home displays `Loading applications...` while waiting,
-and early app links wait for the catalog. The service receives KDE's Wayland
+The finished application list is saved as `application-list.json` in Qt's
+per-user App Center cache directory under `$XDG_CACHE_HOME` (normally
+`~/.cache`). Repeat launches show that list in the first frame without
+`Loading applications...`. The snapshot is fresh for 24 hours; an older
+matching snapshot stays visible while a worker rebuilds it in the background.
+This rebuild reads local Flatpak metadata, not an automatic app update check
+or a daily redownload of every source.
+
+Changes to Flatpak installations/deployments, source configuration, cached
+AppStream metadata, source filters, exclusions or the App Center binary
+invalidate the snapshot. Window size and sorting preferences do not. Source
+initialization/listing reuses unchanged data instead of parsing it again.
+Settings' explicit source refresh still rebuilds the list. Missing/corrupt
+caches fall back to the normal worker; cache write failures do not block
+browsing. Writes are atomic, and inputs changing during a parse cannot be
+saved as a fresh snapshot. The existing offline/source-failure UI is unchanged.
+
+On a cold start the GUI appears before parsing finishes. Catalog loading runs
+in the existing `--catalog` worker; launcher/IPC clients do not parse or rewrite
+the catalog. Home displays `Loading applications...` only without a usable
+snapshot, and early app links wait for the catalog. The service receives KDE's Wayland
 activation token from the launcher so focus/startup feedback follows the window.
 The launcher waits for the service's window-ready acknowledgement before exiting.
 For timing diagnostics, `FLUFF_APP_CENTER_TRACE_STARTUP=1` prints elapsed
@@ -455,6 +472,10 @@ Run `python tests/integration/benchmark_startup.py target/release/flufflinux-app
 inside the KDE Wayland session to measure the first frame and exercise a launch
 request that arrives before it. The test uses a separate socket and closes its
 own temporary window; it does not replace the installed package.
+`python tests/integration/test_catalog_startup.py target/release/flufflinux-appcenter`
+checks cold, warm and expired-cache launches using real catalog data and a
+temporary cache. `sh tests/run_catalog_availability.sh` also checks cache
+validation, invalidation, refresh failure and no redundant startup parsing.
 
 Catalog and Installed scrollbars sit at the outer right edge for the full page
 content height, with a persistent contrasting thumb and a minimum 44-pixel

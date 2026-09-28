@@ -17,12 +17,15 @@ AppCenter.Main {
         if (searchText === "telegram") { console.log("STARTUP_CLI_SEARCH_RECEIVED"); finish.interval = 300 }
     }
     onFrameSwapped: {
-        if (!reportedFrame) { reportedFrame = true; console.log("STARTUP_FIRST_FRAME") }
+        if (!reportedFrame) {
+            reportedFrame = true
+            console.log("STARTUP_FIRST_FRAME", "apps", catalog.length, "loading", catalogLoading)
+        }
     }
     Timer {
         interval: 100; repeat: true; running: true
         onTriggered: {
-            if (!main.reportedFrame || main.catalog.length === 0 || main.reportedCatalog) return
+            if (!main.reportedFrame || main.catalog.length === 0 || main.catalogLoading || main.reportedCatalog) return
             // CatalogChanged can precede the render-thread polish pass. Check
             // the settled, actually rendered header rather than that interim frame.
             if (++main.catalogFrames < 5) return

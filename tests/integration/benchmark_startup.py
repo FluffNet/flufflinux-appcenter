@@ -15,6 +15,7 @@ if not display.startswith("/"):
     display = str(Path(env.get("XDG_RUNTIME_DIR", f"/run/user/{os.getuid()}")) / display)
 with tempfile.TemporaryDirectory(prefix="appcenter-startup-") as runtime:
     env.update(XDG_RUNTIME_DIR=runtime, WAYLAND_DISPLAY=display,
+               XDG_CACHE_HOME=env.get("APPCENTER_TEST_CACHE_HOME", str(Path(runtime) / "cache")),
                QT_QPA_PLATFORM="wayland", QT_FORCE_STDERR_LOGGING="1",
                QT_QUICK_BACKEND="software", FLUFF_APP_CENTER_QML=fixture,
                FLUFF_APP_CENTER_TRACE_STARTUP="1")

@@ -1,4 +1,6 @@
 // Production manager + isolated worker protocol; no real sources/apps changed.
+#include "../../src/catalog_inputs.h"
+#include "../../src/catalog_cache.h"
 #include "../../src/flatpak_manager.h"
 #include <QGuiApplication>
 #include <QJsonArray>
@@ -22,6 +24,8 @@ static void until(const std::function<bool()> &condition) {
 }
 int main(int argc, char **argv) {
     if (argc == 2 && QByteArray(argv[1]) == "--catalog") {
+        QFile calls(qEnvironmentVariable("APPCENTER_TEST_CATALOG_CALLS"));
+        if (calls.open(QIODevice::WriteOnly | QIODevice::Append)) calls.write("parse\n");
         QThread::msleep(qEnvironmentVariableIntValue("APPCENTER_TEST_CATALOG_DELAY"));
         if (qEnvironmentVariableIsSet("APPCENTER_TEST_CATALOG_FAIL")) return 1;
         std::cout << (qEnvironmentVariableIsSet("APPCENTER_TEST_CACHED")
@@ -43,6 +47,7 @@ int main(int argc, char **argv) {
     QTemporaryDir temporary; assert(temporary.isValid());
     qputenv("XDG_DATA_HOME", (temporary.path() + "/data").toUtf8());
     qputenv("XDG_CONFIG_HOME", (temporary.path() + "/config").toUtf8());
+    qputenv("XDG_CACHE_HOME", (temporary.path() + "/cache").toUtf8());
     qputenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent-catalog-test-bus");
     QFile flatpak(temporary.filePath("flatpak")); assert(flatpak.open(QIODevice::WriteOnly));
     flatpak.write("#!/bin/sh\nexit 0\n"); flatpak.close();
@@ -95,5 +100,78 @@ int main(int argc, char **argv) {
     until([&] { return !manager.catalog().isEmpty(); });
     assert(!manager.catalogSourcesUnavailable()); // System/cache fallback stays browsable.
     assert(manager.updates().value("state") == "idle");
+    until([&] { return !manager.catalogLoading() && !manager.busy(); });
+    const auto cachePath = temporary.filePath("catalog.json");
+    const auto callsPath = temporary.filePath("catalog-calls");
+    const auto exclusionsPath = temporary.filePath("exclusions.conf");
+    qputenv("FLUFF_APP_CENTER_EXCLUSIONS", exclusionsPath.toUtf8());
+    qputenv("APPCENTER_TEST_CATALOG_CALLS", callsPath.toUtf8());
+    const auto calls = [&] {
+        QFile file(callsPath); if (!file.open(QIODevice::ReadOnly)) return 0;
+        return int(file.readAll().count('\n'));
+    };
+    {
+        FlatpakManager cold({}); cold.loadCatalog(cachePath);
+        assert(cold.catalogLoading() && cold.catalog().isEmpty());
+        until([&] { return !cold.catalogLoading() && !cold.installedLoading(); });
+        assert(calls() == 1 && QFileInfo::exists(cachePath));
+    }
+    {
+        FlatpakManager warm({}); warm.loadCatalog(cachePath);
+        assert(!warm.catalogLoading() && warm.catalog().size() == 1);
+        until([&] { return !warm.installedLoading(); });
+        warm.initializeSources(); until([&] { return !warm.busy(); });
+        assert(!warm.catalogLoading() && calls() == 1); // No redundant startup parse.
+        warm.refreshSources(true);
+        until([&] { return !warm.busy() && !warm.catalogLoading(); });
+        assert(calls() == 2); // Explicit refresh still rebuilds even unchanged data.
+    }
+    auto saved = CatalogCache::read(cachePath, CatalogInputs::fingerprint());
+    assert(saved.valid);
+    assert(CatalogCache::write(cachePath, CatalogInputs::fingerprint(), saved.apps,
+        QDateTime::currentDateTimeUtc().addDays(-2)));
+    {
+        qputenv("APPCENTER_TEST_CATALOG_FAIL", "1");
+        FlatpakManager stale({}); stale.loadCatalog(cachePath);
+        assert(stale.catalogLoading() && stale.catalog().size() == 1);
+        until([&] { return !stale.catalogLoading(); });
+        assert(stale.catalog().size() == 1 && calls() == 3);
+        qunsetenv("APPCENTER_TEST_CATALOG_FAIL");
+    }
+    {
+        FlatpakManager stale({}); stale.loadCatalog(cachePath);
+        assert(stale.catalogLoading() && stale.catalog().size() == 1);
+        until([&] { return !stale.catalogLoading(); });
+        assert(calls() == 4);
+        assert(CatalogCache::fresh(CatalogCache::read(cachePath, CatalogInputs::fingerprint()).savedAt));
+    }
+    QFile exclusions(exclusionsPath); assert(exclusions.open(QIODevice::WriteOnly));
+    exclusions.write("org.example.Cached\n"); exclusions.close();
+    {
+        FlatpakManager changed({}); changed.loadCatalog(cachePath);
+        assert(changed.catalogLoading() && changed.catalog().isEmpty());
+        until([&] { return !changed.catalogLoading(); });
+        assert(calls() == 5); // Exclusion edits cannot reuse a same-day list.
+    }
+    // If inputs change mid-parse, only the subsequent stable result is cached.
+    assert(QFile::remove(cachePath));
+    qputenv("APPCENTER_TEST_CATALOG_DELAY", "200");
+    {
+        FlatpakManager changing({}); changing.loadCatalog(cachePath);
+        assert(exclusions.open(QIODevice::WriteOnly)); exclusions.write("org.example.Other\n"); exclusions.close();
+        until([&] { return !changing.catalogLoading(); });
+        assert(calls() == 7);
+        assert(CatalogCache::read(cachePath, CatalogInputs::fingerprint()).valid);
+    }
+    // Exercise real input discovery against only this test's user repository.
+    auto previous = CatalogInputs::fingerprint(); assert(!previous.isEmpty());
+    QFile config(temporary.filePath("data/flatpak/repo/config"));
+    assert(config.open(QIODevice::WriteOnly | QIODevice::Append)); config.write("\n"); config.close();
+    auto current = CatalogInputs::fingerprint(); assert(!current.isEmpty() && current != previous);
+    previous = current;
+    QFile deployments(temporary.filePath("data/flatpak/.changed"));
+    assert(deployments.open(QIODevice::WriteOnly)); deployments.write("changed"); deployments.close();
+    current = CatalogInputs::fingerprint(); assert(!current.isEmpty() && current != previous);
+    qInfo("PASS: cold/warm startup, no duplicate initialization parse, manual refresh, stale fallback, exclusion invalidation and inputs changing during parsing");
     qInfo("PASS: nonblocking startup, deferred app links, failed worker, aggregate failures, partial/empty success, Settings, retry, cached fallback, no update checks");
 }
