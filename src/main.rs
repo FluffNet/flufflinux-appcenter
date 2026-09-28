@@ -79,7 +79,18 @@ fn c_path(path: &Path) -> Result<CString, String> {
 fn run() -> Result<i32, String> {
     let args: Vec<String> = env::args().skip(1).collect();
     if args.first().map(String::as_str) == Some("--catalog") && args.len() <= 2 {
-        let json = appstream::to_json(&appstream::load_catalog());
+        // Keep stdout a single JSON result for existing --catalog consumers.
+        // Emit only changed integer milestones, not one IPC event per app.
+        let mut last_progress = 0;
+        let apps = appstream::load_catalog(|parsed| {
+            let overall = 70 + parsed * 25 / 100;
+            if overall != last_progress {
+                eprintln!("APPCENTER_CATALOG_PROGRESS {overall}");
+                last_progress = overall;
+            }
+        });
+        let json = appstream::to_json(&apps);
+        eprintln!("APPCENTER_CATALOG_PROGRESS 96");
         if args.len() == 2 {
             let json = CString::new(json).map_err(|e| e.to_string())?;
             let request = CString::new(args[1].as_str()).map_err(|e| e.to_string())?;

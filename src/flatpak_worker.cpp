@@ -474,6 +474,7 @@ bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker 
     };
     g_autoptr(GError) error = nullptr;
     if (operation == "initialize" || operation == "refresh") {
+        send({{"type", "catalog-progress"}, {"progress", 5}});
         QSettings settings(Sources::configPath(), QSettings::IniFormat);
         const bool first = !settings.value("Sources/initialized", false).toBool();
         const bool empty = Sources::list().isEmpty();
@@ -529,6 +530,22 @@ bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker 
     // cache) updates every enabled catalog, even if a local copy exists.
     // This runs in the child, never on the GUI thread.
     g_autoptr(GPtrArray) remotes = flatpak_installation_list_remotes(user, w.cancel, nullptr);
+    // Weighted overall work, not elapsed time: source setup 0-10%, source
+    // refreshes 10-70%, then parsing/saving in the separate catalog worker.
+    struct RefreshProgress {
+        int completed = 0, total = 0, last = -1;
+        void report(guint percent) {
+            const int value = 10 + (total ? int((quint64(completed) * 100 + qMin(percent, 100u)) * 60 / (quint64(total) * 100)) : 60);
+            if (value <= last) return;
+            last = value;
+            send({{"type", "catalog-progress"}, {"progress", value}});
+        }
+    } progress;
+    for (guint i = 0; remotes && i < remotes->len; ++i) {
+        auto remote = FLATPAK_REMOTE(g_ptr_array_index(remotes, i));
+        if (!flatpak_remote_get_disabled(remote) && !flatpak_remote_get_noenumerate(remote)) ++progress.total;
+    }
+    progress.report(0);
     for (guint i = 0; remotes && i < remotes->len; ++i) {
         auto remote = FLATPAK_REMOTE(g_ptr_array_index(remotes, i));
         if (flatpak_remote_get_disabled(remote) || flatpak_remote_get_noenumerate(remote)) continue;
@@ -536,14 +553,20 @@ bool repositories(FlatpakInstallation *user, const QJsonObject &request, Worker 
         g_autofree char *path = directory ? g_file_get_path(directory) : nullptr;
         const bool cached = path && (QFileInfo::exists(str(path) + "/appstream.xml.gz")
             || QFileInfo::exists(str(path) + "/appstream.xml"));
-        if (operation != "refresh" && cached) { ++availableCatalogs; continue; }
+        if (operation != "refresh" && cached) {
+            ++availableCatalogs; ++progress.completed; progress.report(0); continue;
+        }
         g_clear_error(&error);
-        if (!flatpak_installation_update_appstream_sync(user, flatpak_remote_get_name(remote), nullptr, nullptr, w.cancel, &error)) {
+        if (!flatpak_installation_update_appstream_full_sync(user, flatpak_remote_get_name(remote), nullptr,
+                [](const char *, guint percent, gboolean estimating, gpointer data) {
+                    if (!estimating) static_cast<RefreshProgress *>(data)->report(percent);
+                }, &progress, nullptr, w.cancel, &error)) {
             if (!w.problem.isEmpty()) w.problem += '\n';
             w.problem += str(flatpak_remote_get_name(remote)) + ": " + str(error->message);
             if (cached) ++availableCatalogs;
             else ++failedCatalogs;
         } else { ++availableCatalogs; ++refreshedCatalogs; }
+        ++progress.completed; progress.report(0);
     }
     reportCatalogs();
     return w.problem.isEmpty();

@@ -518,6 +518,19 @@ measures 20 real GUI open/close cycles, alternating new processes with quick
 reopening before idle exit. It uses the real catalog and a private IPC socket.
 Centered loading, empty and error messages share bold, theme-foreground text,
 including `No results.`; ordinary app descriptions remain secondary text.
+Catalog loading shows only `Loading... 50%`, with no heading, bar or stage text.
+This is weighted overall work progress, not a time estimate: source setup uses
+0-10%, enabled source refreshes share 10-70%, catalog parsing uses 70-95%, and
+serialization/cache finishing uses 96-99%. Only an accepted, completed list
+reaches 100%. Values advance from real worker events, never a timer, and cannot
+move backwards during a load or its bounded parser retries. Fresh-cache startup
+still skips the loading screen entirely.
+`python tests/integration/test_catalog_progress_live.py target/release/flufflinux-appcenter`
+measures a real clean Flathub pull followed by a cached launch in each theme,
+using empty disposable data/config/cache roots and a private single-instance
+socket. It limits only the test processes to two CPUs, records first-frame and
+ready-frame timings, and saves real loading screenshots under `target/loading-*`.
+The user's existing cache, sources, installed apps and desktop theme are untouched.
 
 For live error screenshots, compile `tests/native/network_preview.cpp` with
 Qt6Core/Qt6DBus into `target/network-preview`, then run

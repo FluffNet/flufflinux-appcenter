@@ -29,6 +29,12 @@ int main(int argc, char **argv) {
         if (calls.open(QIODevice::WriteOnly | QIODevice::Append)) calls.write("parse\n");
         QThread::msleep(qEnvironmentVariableIntValue("APPCENTER_TEST_CATALOG_DELAY"));
         if (qEnvironmentVariableIsSet("APPCENTER_TEST_CATALOG_FAIL")) return 1;
+        // Chunked, duplicated and backwards reports must not reset progress.
+        std::cerr << "diagnostic\nAPPCENTER_CATALOG_PROGRESS " << std::flush;
+        QThread::msleep(20);
+        std::cerr << "85\nAPPCENTER_CATALOG_PROGRESS 73\nAPPCENTER_CATALOG_PROGRESS 100\n"
+                  << "APPCENTER_CATALOG_PROGRESS invalid\nAPPCENTER_CATALOG_PROGRESS 98\n" << std::flush;
+        QThread::msleep(20);
         const auto apps = QJsonDocument::fromJson(qEnvironmentVariableIsSet("APPCENTER_TEST_CACHED")
             ? "[{\"id\":\"org.example.Cached\",\"name\":\"Cached\"}]" : "[]");
         if (argc == 3) send(CatalogCache::snapshot(QJsonDocument::fromJson(argv[2]).object(),
@@ -45,6 +51,11 @@ int main(int argc, char **argv) {
         if (operations.open(QIODevice::WriteOnly | QIODevice::Append))
             operations.write(request["operation"].toString().toUtf8() + '\n');
         send({{"type", "sources"}, {"sources", QJsonArray{QJsonObject{{"id", "fixture"}}}}});
+        if (!listing) {
+            send({{"type", "catalog-progress"}, {"progress", 5}});
+            send({{"type", "catalog-progress"}, {"progress", 50}});
+            send({{"type", "catalog-progress"}, {"progress", 30}});
+        }
         QThread::msleep(qEnvironmentVariableIntValue("APPCENTER_TEST_SOURCE_DELAY"));
         if (!listing) send({{"type", "catalog-load"},
             {"available", qEnvironmentVariableIntValue("APPCENTER_TEST_AVAILABLE")},
@@ -131,15 +142,28 @@ int main(int argc, char **argv) {
         return int(file.readAll().count('\n'));
     };
     {
-        FlatpakManager cold({}); cold.loadCatalog(cachePath);
+        FlatpakManager cold({});
+        QList<int> progress;
+        QObject::connect(&cold, &FlatpakManager::catalogProgressChanged, &app, [&] {
+            const int next = cold.catalogProgress();
+            assert(progress.isEmpty() || next >= progress.last());
+            assert(next >= 0 && next <= 100);
+            if (next == 100) assert(!cold.catalogLoading());
+            progress.append(next);
+        });
+        cold.loadCatalog(cachePath);
         assert(cold.catalogLoading() && cold.catalog().isEmpty());
         until([&] { return !cold.catalogLoading() && !cold.installedLoading(); });
         assert(calls() == 1 && QFileInfo::exists(cachePath));
         assert(sourceCalls() == "refresh\n");
+        assert(progress.contains(5) && progress.contains(50) && progress.contains(70)
+            && progress.contains(85) && progress.contains(98) && progress.last() == 100);
+        assert(!progress.contains(30) && !progress.contains(73));
     }
     {
         FlatpakManager warm({}); warm.loadCatalog(cachePath);
         assert(!warm.catalogLoading() && warm.catalog().size() == 1);
+        assert(warm.catalogProgress() == 100);
         until([&] { return !warm.installedLoading(); });
         warm.initializeSources(); until([&] { return !warm.busy(); });
         assert(!warm.catalogLoading() && calls() == 1); // No redundant startup parse.
@@ -158,6 +182,7 @@ int main(int argc, char **argv) {
         assert(stale.catalogLoading() && stale.catalog().isEmpty());
         until([&] { return !stale.catalogLoading(); });
         assert(stale.catalog().isEmpty() && calls() == 3);
+        assert(stale.catalogProgress() < 100); // Failed work never claims completion.
         assert(!CatalogCache::fresh(CatalogCache::read(cachePath, CatalogInputs::fingerprint()).savedAt));
         qunsetenv("APPCENTER_TEST_CATALOG_FAIL");
     }
@@ -180,7 +205,14 @@ int main(int argc, char **argv) {
     assert(QFile::remove(cachePath));
     qputenv("APPCENTER_TEST_CATALOG_DELAY", "200");
     {
-        FlatpakManager changing({}); changing.loadCatalog(cachePath);
+        FlatpakManager changing({});
+        int last = 0;
+        QObject::connect(&changing, &FlatpakManager::catalogProgressChanged, &app, [&] {
+            assert(changing.catalogProgress() >= last);
+            last = changing.catalogProgress();
+            if (last == 100) assert(!changing.catalogLoading());
+        });
+        changing.loadCatalog(cachePath);
         until([&] { return calls() == 6; }); // Inputs change during parsing, not during source refresh.
         assert(exclusions.open(QIODevice::WriteOnly)); exclusions.write("org.example.Other\n"); exclusions.close();
         until([&] { return !changing.catalogLoading(); });
@@ -209,11 +241,13 @@ int main(int argc, char **argv) {
         const auto before = sourceCalls(); offline.loadCatalog(cachePath);
         until([&] { return !offline.installedLoading(); });
         assert(offline.catalog().isEmpty() && !offline.sourcesBusy() && sourceCalls() == before);
+        assert(offline.catalogProgress() == 0);
         qputenv("APPCENTER_TEST_FAILED", "1");
         offline.setCatalogNetworkState("local", true);
         until([&] { return !offline.catalogLoading(); });
         assert(sourceCalls() == before + "refresh\n" && offline.catalog().isEmpty());
         assert(offline.catalogSourcesUnavailable());
+        assert(offline.catalogProgress() < 100);
         assert(!CatalogCache::fresh(CatalogCache::read(cachePath, CatalogInputs::fingerprint()).savedAt));
         const int beforeListing = calls();
         offline.refreshSources(false); until([&] { return !offline.busy(); });
@@ -241,4 +275,5 @@ int main(int argc, char **argv) {
     current = CatalogInputs::fingerprint(); assert(!current.isEmpty() && current != previous);
     qInfo("PASS: 12-hour cache, refresh-before-parse, no stale display, no warm source requests, unchanged local rebuild age, offline deferral, LAN/limited failure/recovery, invalidation and parse races");
     qInfo("PASS: nonblocking startup, deferred app links, failed worker, aggregate failures, partial/empty success, Settings, retry, cached fallback, no update checks");
+    qInfo("PASS: overall progress, chunked IPC, monotonic retries, completion only after success, no false completion on source/parser failure");
 }

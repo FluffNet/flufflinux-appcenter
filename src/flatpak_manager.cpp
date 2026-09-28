@@ -44,6 +44,8 @@ bool active(const QVariantMap &job) { return job.value("active").toBool(); }
 
 FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : QObject(parent) {
     m_catalog = catalog;
+    m_catalogProgress = catalog.isEmpty() ? 0 : 100;
+    connect(&m_catalogProcess, &QProcess::readyReadStandardError, this, &FlatpakManager::readCatalogProgress);
     m_catalogTimeout.setSingleShot(true);
     m_catalogTimeout.setInterval(30000);
     m_catalogTimeout.setParent(this); m_catalogTimeout.setObjectName("catalogWorkTimeout");
@@ -145,6 +147,9 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                 m_repositories = sources;
                 emit repositoriesChanged();
                 if (!m_sourceRefreshCatalog) reloadCatalog();
+            } else if (message["type"] == "catalog-progress") {
+                // Source work owns only the first 70% of the complete load.
+                setCatalogProgress(qBound(0, message["progress"].toInt(), 70));
             } else if (message["type"] == "catalog-load") {
                 m_sourceCatalogReported = true;
                 m_sourceCatalogsRefreshed = message["refreshed"].toInt();
@@ -191,11 +196,13 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
     });
     connect(&m_catalogProcess, qOverload<int, QProcess::ExitStatus>(&QProcess::finished), this,
         [this](int code, QProcess::ExitStatus status) {
+            readCatalogProgress();
             const auto document = QJsonDocument::fromJson(m_catalogProcess.readAllStandardOutput());
             if (m_catalogAwaitingSources || m_catalogRefreshPending) { m_catalogTimeout.stop(); return; }
             const auto apps = document.isArray() ? document.array() : document.object()["apps"].toArray();
-            if (!m_catalogTimedOut && !code && status == QProcess::NormalExit
-                    && (document.isArray() || document.object()["apps"].isArray())) {
+            const bool succeeded = !m_catalogTimedOut && !code && status == QProcess::NormalExit
+                && (document.isArray() || document.object()["apps"].isArray());
+            if (succeeded) {
                 setCatalog(apps.toVariantList());
                 if (!m_catalogCachePath.isEmpty()) {
                     const auto fingerprint = CatalogInputs::fingerprint();
@@ -220,8 +227,11 @@ FlatpakManager::FlatpakManager(const QVariantList &catalog, QObject *parent) : Q
                 const bool force = m_catalogForceAgain;
                 m_catalogAgain = false; m_catalogForceAgain = false; reloadCatalog(force);
             }
-            if (m_catalogProcess.state() == QProcess::NotRunning) m_catalogTimeout.stop();
+            if (m_catalogProcess.state() == QProcess::NotRunning) {
+                m_catalogTimeout.stop();
+            }
             emit catalogChanged();
+            if (succeeded && !catalogLoading()) setCatalogProgress(100);
         });
     connectWorker(m_installWorker);
     connectWorker(m_removalWorker);
@@ -1148,6 +1158,8 @@ void FlatpakManager::runSourceOperation(QVariantMap request) {
     }
     m_sourceListing = request.value("operation") == "list";
     m_sourceRefreshCatalog = request.value("operation") == "refresh";
+    if (m_sourceRefreshCatalog || request.value("operation") == "initialize"
+            || request.value("operation") == "defaults") setCatalogProgress(0, true);
     if (m_sourceRefreshCatalog && !m_catalogCachePath.isEmpty()) {
         m_catalogRefreshPending = false;
         setCatalog({}); m_catalogFingerprint.clear(); m_catalogSavedAt = {};
@@ -1199,6 +1211,29 @@ void FlatpakManager::setCatalog(const QVariantList &catalog) {
         m_metadata[normalizedId(app.value("id").toString())] = app;
     }
 }
+void FlatpakManager::setCatalogProgress(int progress, bool reset) {
+    const int next = reset ? qBound(0, progress, 100) : qBound(m_catalogProgress, progress, 100);
+    if (next == m_catalogProgress) return;
+    m_catalogProgress = next;
+    // Do not emit catalogChanged for every percentage: that rebuilds QML's
+    // catalog bindings and navigation unnecessarily.
+    emit catalogProgressChanged();
+}
+void FlatpakManager::readCatalogProgress() {
+    m_catalogProgressBuffer += m_catalogProcess.readAllStandardError();
+    while (m_catalogProgressBuffer.contains('\n')) {
+        const auto end = m_catalogProgressBuffer.indexOf('\n');
+        const auto line = m_catalogProgressBuffer.left(end);
+        m_catalogProgressBuffer.remove(0, end + 1);
+        constexpr auto prefix = "APPCENTER_CATALOG_PROGRESS ";
+        if (!line.startsWith(prefix) || m_catalogAwaitingSources || m_catalogRefreshPending || m_catalogTimedOut) continue;
+        bool valid = false;
+        const int progress = line.mid(int(sizeof("APPCENTER_CATALOG_PROGRESS ") - 1)).toInt(&valid);
+        if (valid && progress >= 70 && progress <= 99) setCatalogProgress(progress);
+    }
+    // Discard malformed/unterminated diagnostics instead of accumulating them.
+    if (m_catalogProgressBuffer.size() > 4096) m_catalogProgressBuffer.clear();
+}
 void FlatpakManager::setCatalogNetworkState(const QString &state, bool ready) {
     m_catalogNetworkReady = ready; m_catalogOffline = state == "offline";
     startCatalogRefresh();
@@ -1209,6 +1244,7 @@ void FlatpakManager::startCatalogRefresh() {
 }
 void FlatpakManager::loadCatalog(const QString &cachePath) {
     m_catalogCachePath = cachePath;
+    setCatalogProgress(0, true);
     if (!cachePath.isEmpty()) {
         const auto fingerprint = CatalogInputs::fingerprint();
         const auto cache = CatalogCache::read(cachePath, fingerprint);
@@ -1217,6 +1253,7 @@ void FlatpakManager::loadCatalog(const QString &cachePath) {
             setCatalog(cache.apps);
             m_catalogFingerprint = fingerprint; m_catalogSavedAt = cache.savedAt;
             emit catalogChanged();
+            setCatalogProgress(100);
             return;
         }
         // Missing, invalid and expired snapshots all require actual source
@@ -1252,6 +1289,8 @@ void FlatpakManager::reloadCatalog(bool force) {
         {"path", m_catalogCachePath}, {"fingerprint", m_catalogReadFingerprint}, {"resetAge", m_catalogResetAge},
         {"savedAt", m_catalogSavedAt.toUTC().toString(Qt::ISODateWithMs)}}).toJson(QJsonDocument::Compact));
     m_catalogTimedOut = false;
+    m_catalogProgressBuffer.clear();
+    setCatalogProgress(70, !m_catalogTimeout.isActive());
     // Input changes can require another parse, but retries share one deadline.
     if (!m_catalogTimeout.isActive()) m_catalogTimeout.start();
     m_catalogProcess.start(QCoreApplication::applicationFilePath(), arguments);

@@ -52,6 +52,8 @@ ApplicationWindow {
     property string searchCategoryFilter: "All Apps"
     property string searchText: ""
     readonly property bool catalogLoading: !!backend && backend.catalogLoading === true
+    readonly property int catalogProgress: backend && typeof backend.catalogProgress === "number"
+        ? Math.max(0, Math.min(100, backend.catalogProgress)) : 0
     readonly property bool catalogLoaded: !catalogLoading || catalog.length > 0
     DownloadQueue {
         id: downloads

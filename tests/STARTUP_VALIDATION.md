@@ -88,3 +88,43 @@ python3 tests/integration/test_startup_cycles.py /usr/bin/flufflinux-appcenter
 
 The queue test installs only its isolated fixtures, which are removed with its
 temporary directory. It does not change the user's installed Flatpaks or sources.
+
+## Overall loading percentage and clean Flathub pulls
+
+The loading label now reads only `Loading... 50%`, centered in bold theme
+foreground. There is no additional heading, progress bar or stage description.
+Progress is weighted completed work rather than a time estimate: setup 0-10%,
+source refreshes 10-70%, parsing 70-95%, serialization/save 96-99%, and 100%
+only after the manager has accepted the result. Worker callbacks drive updates;
+there is no timer that advances progress while work is stalled.
+
+On 2026-09-28, `test_catalog_progress_live.py` ran two real Flathub pulls, each
+with new empty user/system Flatpak installations and isolated config/cache.
+App Center itself added Flathub inside the measured interval. No existing
+AppStream or app-list cache was available. Each cold run was followed by a
+fresh-process warm launch with the same profile.
+
+| Run | First cold window | Cold list ready | Cached list ready |
+| --- | --- | --- | --- |
+| 1, dark theme | 0.444 s | 42.683 s | 1.464 s |
+| 2, light theme | 0.592 s | 36.940 s | 1.700 s |
+
+Both runs displayed 3,298 real applications. Source setup/refresh reached its
+completion milestone at 34.862 s and 29.019 s respectively. The percentage
+advanced monotonically through source, parser and save work. Neither cached
+launch displayed the loading text, rebuilt the list, or rewrote its cache.
+The run-to-run difference is not evidence of a theme performance difference.
+
+The existing KDE/Wayland VM has about 8 GiB RAM. Only the test processes were
+restricted to two CPUs; the VM and other processes were not reconfigured.
+Captures use the software Qt Quick renderer and the production UI/backend.
+This recreates empty application/source caches, not a freshly booted OS with
+all kernel, DNS and server-side caches cleared. Live network times will vary.
+Real screenshots, complete logs and timing JSON are in `output/loading-progress/`.
+The installed package, normal user cache, sources, apps and theme were untouched.
+
+Verification includes 675 passing QML checks, 28 Rust tests, two source-text
+guards, and native source/cache/manager checks. Progress tests cover split IPC
+messages, backwards/malformed reports, parser retries, failure below 100%, and
+fresh-cache loading-screen suppression. The existing 12-hour HTTP-source test
+also verifies that expiry still downloads genuinely changed metadata.

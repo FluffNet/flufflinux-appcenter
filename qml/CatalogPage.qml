@@ -926,7 +926,7 @@ Page {
                 text: page.installedView && window.installedError ? window.installedError
                       : !page.installedView && window.catalog.length === 0
                           && (window.catalogLoading || (window.backend && window.backend.sourcesBusy))
-                      ? qsTr("Loading...") : qsTr("No results.")
+                      ? qsTr("Loading... %1%").arg(window.catalogProgress) : qsTr("No results.")
                 font.pixelSize: 17
             }
         }

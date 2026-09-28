@@ -43,21 +43,28 @@ pub struct App {
     pub addons: Vec<App>,
 }
 
-pub fn load_catalog() -> Vec<App> {
+pub fn load_catalog(mut progress: impl FnMut(u32)) -> Vec<App> {
+    progress(0);
     let mut apps = HashMap::<String, App>::new();
     let mut addons = Vec::new();
     let exclusions = crate::catalog_exclusions::load();
     let mut roots = Vec::<(PathBuf, String, String)>::new();
     unsafe { fluff_visit_catalogs(catalog_root, &mut roots as *mut _ as *mut c_void); }
+    let mut catalogs = Vec::new();
     for (root, remote, url) in roots {
-      let mut files = Vec::new();
-      collect_files(&root, 0, &mut files);
-      files.sort();
-      for path in files {
+        let mut files = Vec::new();
+        collect_files(&root, 0, &mut files);
+        files.sort();
+        catalogs.extend(files.into_iter().map(|path| (path, remote.clone(), url.clone())));
+    }
+    let file_count = catalogs.len().max(1);
+    for (file_index, (path, remote, url)) in catalogs.into_iter().enumerate() {
         let Some(text) = read_metadata(&path) else {
             continue;
         };
-        for component in blocks(&text, "component") {
+        let components = blocks(&text, "component");
+        for (index, component) in components.iter().enumerate() {
+            progress(((file_index * 100 + index * 100 / components.len().max(1)) * 95 / (file_count * 100)) as u32);
             let addon = attribute(component.split('>').next().unwrap_or_default(), "type").as_deref() == Some("addon");
             if !addon && !component.contains("type=\"desktop")
                 && !component.contains("type='desktop")
@@ -89,14 +96,18 @@ pub fn load_catalog() -> Vec<App> {
                     .or_insert(app);
             }
         }
-      }
+        progress(((file_index + 1) * 95 / file_count) as u32);
     }
+    progress(95);
     let mut result: Vec<_> = apps.into_values().collect();
-    for app in &mut result {
+    let count = result.len().max(1);
+    for (index, app) in result.iter_mut().enumerate() {
         attach_addons(app, &addons);
         for source in &mut app.sources { attach_addons(source, &addons); }
+        progress(95 + ((index + 1) * 4 / count) as u32);
     }
     result.sort_by_key(|app| app.name.to_lowercase());
+    progress(100);
     result
 }
 

@@ -25,6 +25,7 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(QVariantMap updates READ updates NOTIFY updatesChanged)
     Q_PROPERTY(QVariantList catalog READ catalog NOTIFY catalogChanged)
     Q_PROPERTY(bool catalogLoading READ catalogLoading NOTIFY catalogChanged)
+    Q_PROPERTY(int catalogProgress READ catalogProgress NOTIFY catalogProgressChanged)
     Q_PROPERTY(bool catalogSourcesUnavailable READ catalogSourcesUnavailable NOTIFY catalogChanged)
     Q_PROPERTY(QVariantList repositories READ repositories NOTIFY repositoriesChanged)
     Q_PROPERTY(bool sourcesBusy READ sourcesBusy NOTIFY repositoriesChanged)
@@ -67,6 +68,7 @@ public:
     Q_INVOKABLE void launchApp(QVariantMap app);
     QVariantList catalog() const { return m_catalog; }
     bool catalogLoading() const { return m_catalogRefreshPending || m_catalogAwaitingSources || m_catalogProcess.state() != QProcess::NotRunning; }
+    int catalogProgress() const { return m_catalogProgress; }
     // Closing the window must not kill a post-transaction cache write. A
     // refresh deferred for offline connectivity is not active background work.
     bool backgroundWorkPending() const { return busy() || m_catalogProcess.state() != QProcess::NotRunning; }
@@ -95,6 +97,7 @@ signals:
     void appAddonsChanged();
     void updatesChanged();
     void catalogChanged();
+    void catalogProgressChanged();
     void repositoriesChanged();
 private slots:
     void refreshThemeIcons(int group);
@@ -124,6 +127,8 @@ private:
     void runSourceOperation(QVariantMap request);
     void reloadCatalog(bool force = false);
     void setCatalog(const QVariantList &catalog);
+    void setCatalogProgress(int progress, bool reset = false);
+    void readCatalogProgress();
     void startCatalogRefresh();
     void drainApplicationLinks();
     void drainInstalledApplicationLinks();
@@ -166,6 +171,8 @@ private:
     QProcess m_sourceProcess, m_catalogProcess;
     QTimer m_catalogTimeout;
     bool m_catalogTimedOut = false;
+    int m_catalogProgress = 0;
+    QByteArray m_catalogProgressBuffer;
     QByteArray m_sourceBuffer;
     QString m_sourcesError;
     bool m_catalogLoadsFailed = false;

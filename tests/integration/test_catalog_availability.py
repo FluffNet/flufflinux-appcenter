@@ -51,6 +51,9 @@ with tempfile.TemporaryDirectory(prefix="appcenter-catalog-load-") as directory:
                 child.wait()
         reports = [event for event in events if event["type"] == "catalog-load"]
         assert reports == [{"type": "catalog-load", "available": available, "failed": failed, "refreshed": refreshed}], events
+        progress = [event["progress"] for event in events if event["type"] == "catalog-progress"]
+        assert progress == sorted(set(progress)), progress
+        assert progress and 0 <= progress[0] <= progress[-1] == 70, progress
         assert not any(event["type"] in ("review", "updates", "plan") for event in events), events
 
     for scope in ("user", "system"):

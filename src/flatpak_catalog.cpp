@@ -21,8 +21,10 @@ extern "C" int fluff_catalog_cache_result(const char *json, const char *request)
     if (!apps.isArray()) return 1;
     // All potentially blocking cache writes stay in this killable worker,
     // never on the GUI thread. QSaveFile commits atomically or preserves the old file.
+    std::cerr << "APPCENTER_CATALOG_PROGRESS 98" << std::endl;
     const auto result = CatalogCache::snapshot(QJsonDocument::fromJson(request).object(),
         apps.array().toVariantList(), CatalogInputs::fingerprint());
+    std::cerr << "APPCENTER_CATALOG_PROGRESS 99" << std::endl;
     std::cout << QJsonDocument(result).toJson(QJsonDocument::Compact).constData() << std::endl;
     return 0;
 }

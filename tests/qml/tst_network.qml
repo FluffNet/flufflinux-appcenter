@@ -27,6 +27,7 @@ TestCase {
         property bool catalogSourcesUnavailable: false
         property bool sourcesBusy: false
         property bool catalogLoading: false
+        property int catalogProgress: 0
         property int refreshes: 0
         function refreshSources(catalogs) {
             if (catalogs) refreshes++
@@ -71,7 +72,7 @@ TestCase {
         try {
             main.palette.window = data.background; main.palette.windowText = data.foreground
             main.catalog = []; backend.catalogLoading = true; settle()
-            status("catalogEmptyMessage"); compare(control("catalogEmptyMessage").text, "Loading...")
+            status("catalogEmptyMessage"); compare(control("catalogEmptyMessage").text, "Loading... 0%")
             backend.catalogLoading = false; settle()
             status("catalogEmptyMessage"); compare(control("catalogEmptyMessage").text, "No results.")
             root().openCategory("Installed"); backend.installedError = "Could not read installed apps."; settle()
@@ -96,7 +97,7 @@ TestCase {
         main.catalog = []
         backend.catalogLoading = true
         settle()
-        compare(control("catalogEmptyMessage").text, "Loading...")
+        compare(control("catalogEmptyMessage").text, "Loading... 0%")
         verify(control("catalogEmptyMessage").visible)
         backend.catalogLoading = false
         settle()
@@ -111,9 +112,35 @@ TestCase {
         main.catalog = [app("org.example.One", "One"), app("us.zoom.Zoom", "Zoom")]
         backend.updates = {state:"idle", items:[]}; backend.busy = false
         backend.jobs = []
+        backend.catalogLoading = false; backend.catalogProgress = 0
         backend.catalogSourcesUnavailable = false; backend.sourcesBusy = false; backend.refreshes = 0
         backend.checks = 0; backend.installs = 0; backend.cancelled = 0
         settle(); stats.requests = 0
+    }
+    function test_loading_percentage_data() {
+        return test_page_status_foreground_data()
+    }
+    function test_loading_percentage(data) {
+        const background = main.palette.window, foreground = main.palette.windowText
+        try {
+            main.palette.window = data.background; main.palette.windowText = data.foreground
+            main.catalog = []; backend.catalogLoading = true
+            for (const percent of [0, 5, 10, 50, 70, 85, 95, 98, 99]) {
+                backend.catalogProgress = percent; settle()
+                const label = control("catalogEmptyMessage")
+                verify(label.visible && label.font.bold)
+                compare(label.color, main.textColor)
+                compare(label.text, "Loading... " + percent + "%")
+                compare(label.horizontalAlignment, Text.AlignHCenter)
+                fuzzyCompare(label.y + label.height / 2, label.parent.height / 2, 1)
+            }
+            // A populated warm cache must not flash the loading percentage.
+            backend.catalogLoading = false; backend.catalogProgress = 100
+            main.catalog = [app("org.example.Cached", "Cached")]; settle()
+            verify(!control("catalogEmptyMessage").visible)
+        } finally {
+            main.palette.window = background; main.palette.windowText = foreground
+        }
     }
     function test_offline_categories_data() {
         return ["All Apps", "Audio & Video", "Development", "Education", "Games", "Graphics", "Internet",
@@ -234,7 +261,7 @@ TestCase {
         root().openCategory("All Apps"); settle()
         mouseClick(findChild(notice, "retryCatalogSourcesButton")); settle()
         compare(backend.refreshes, 1); compare(backend.checks, 0)
-        verify(!notice.visible); compare(control("catalogEmptyMessage").text, "Loading...")
+        verify(!notice.visible); compare(control("catalogEmptyMessage").text, "Loading... 0%")
         backend.sourcesBusy = false; main.catalog = [app("org.example.One", "One")]; settle()
         verify(control("catalogGrid").visible); verify(!notice.visible)
     }
