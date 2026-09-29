@@ -126,6 +126,9 @@ Discover's public navigation and input options are supported:
   `--author`, `--license`: terminal output without initializing the GUI.
 - `--desktopfile NAME`: override a new window's desktop-entry base name;
   the default remains `org.kde.discover` to preserve taskbar pins.
+- `--feedback`: silent compatibility no-op for KDE feedback probes. Exits
+  successfully without launching or activating App Center, starting its service,
+  or loading sources. The same applies through all three Discover aliases.
 
 Options also accept `--name=value`; `--` ends option parsing. Multiple initial
 destinations follow Discover's priority: application, MIME, category, mode;
@@ -140,7 +143,7 @@ Generic Qt debugging flags are not emulated; use Qt environment variables such
 as `QT_QPA_PLATFORM` and `QT_QUICK_CONTROLS_STYLE`. App Center is a Flatpak GUI,
 not a replacement for the `flatpak` or `pacman` terminal administration tools.
 
-Tests: `python3 tests/integration/test_cli.py`,
+Tests: `python3 tests/integration/test_cli.py`, `python3 tests/integration/test_feedback.py`,
 `tests/qml/tst_cli_navigation.qml`, `tests/native/test_application_links.cpp`,
 and the existing legacy-launch/package/handler suites. CLI tests use isolated
 config/cache/socket directories and never update or install apps.

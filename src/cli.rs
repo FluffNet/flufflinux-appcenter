@@ -3,6 +3,7 @@ use std::path::Path;
 
 #[derive(Debug, PartialEq)]
 pub enum Command {
+    NoOp,
     Print(String),
     Launch { actions: Vec<(String, String)>, desktop_file: String },
 }
@@ -35,6 +36,7 @@ Options (also supported by plasma-discover, discover and flufflinux-discover):\n
   --local-filename <file>     Review a local Flatpak file (does not install it)\n\
   --desktop-open             Desktop AppStream links open installed apps only\n\
   --desktopfile <name>        Override the desktop ID for a new window\n\
+  --feedback                 Compatibility no-op; exit without opening a window\n\
   --catalog                  Print the local catalog as JSON\n\
   -h, --help, --help-all      Show this help\n\
   -v, --version              Show version\n\
@@ -131,7 +133,7 @@ fn parse_command(args: &[String], cwd: &Path) -> Result<Command, ParseError> {
         let (key, inline) = arg.split_once('=').map_or((arg.as_str(), None), |(k, v)| (k, Some(v)));
         match key {
             "-h" | "--help" | "--help-all" | "-v" | "--version" | "--author" | "--license"
-            | "--listmodes" | "--listbackends" | "--updates" | "--headless-update" | "--desktop-open" => {
+            | "--listmodes" | "--listbackends" | "--updates" | "--headless-update" | "--desktop-open" | "--feedback" => {
                 if inline.is_some() { return Err(ParseError::Syntax); }
                 options.insert(key.to_string(), String::new());
             }
@@ -161,6 +163,8 @@ fn parse_command(args: &[String], cwd: &Path) -> Result<Command, ParseError> {
     if has("--listbackends") { return Ok(Command::Print("Available backends:\n * flatpak-backend\n".into())); }
     if has("--headless-update") { return Err(ParseError::Rejected("--headless-update is not supported. Open App Updates with --mode update to review and install updates.".into())); }
     if has("--test") { return Err(ParseError::Rejected("Discover's --test QML framework is not supported by App Center. Use App Center's tests/ and FLUFF_APP_CENTER_QML developer fixtures.".into())); }
+    // KDE's feedback probe must not launch or activate the software center.
+    if has("--feedback") { return Ok(Command::NoOp); }
     let desktop_file = options.get("--desktopfile").map(|name| name.trim_end_matches(".desktop")).unwrap_or("org.kde.discover");
     if desktop_file.is_empty() || !desktop_file.chars().all(|c| c.is_ascii_alphanumeric() || "._-".contains(c)) {
         return Err("--desktopfile requires a desktop-entry base name, not a path.".into());
@@ -256,6 +260,18 @@ mod tests {
         for flag in ["-h", "--help", "--help-all", "-v", "--version", "--author", "--license", "--listmodes", "--listbackends"] {
             assert!(matches!(parse_args(&[flag]).unwrap(), Command::Print(_)));
         }
+    }
+    #[test] fn feedback_probe_is_a_silent_noop() {
+        for args in [vec!["--feedback"], vec!["--feedback", "--feedback"],
+            vec!["--desktopfile", "org.kde.discover.desktop", "--feedback"],
+            vec!["--feedback", "--mode=Update"], vec!["--search=telegram", "--feedback"]] {
+            assert_eq!(parse_args(&args).unwrap(), Command::NoOp, "{args:?}");
+        }
+        for args in [vec!["--", "--feedback"], vec!["--search=--feedback"]] {
+            assert_eq!(actions(&args), [("search".into(), "--feedback".into())]);
+        }
+        assert_eq!(actions(&["--feedback=yes"]), [("search".into(), "--feedback=yes".into())]);
+        assert!(matches!(parse_args(&["--feedback", "--help"]).unwrap(), Command::Print(_)));
     }
     #[test] fn invalid_unsupported_and_oversized_inputs_fail() {
         for args in [vec!["--headless-update"], vec!["--test", "old.qml"]] {

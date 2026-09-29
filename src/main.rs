@@ -123,6 +123,7 @@ fn run() -> Result<i32, String> {
         return Ok(unsafe { fluff_transaction_worker(request.as_ptr()) });
     }
     let (actions, desktop_file) = match cli::parse(&args, &env::current_dir().map_err(|e| e.to_string())?)? {
+        cli::Command::NoOp => return Ok(0),
         cli::Command::Print(text) => { print!("{text}"); return Ok(0); }
         cli::Command::Launch { actions, desktop_file } => (actions, CString::new(desktop_file).map_err(|e| e.to_string())?),
     };
