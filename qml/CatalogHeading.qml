@@ -27,8 +27,10 @@ ColumnLayout {
             Accessible.name: qsTr("Sort installed apps")
         }
         FluffComboBox {
+            id: catalogSort
             objectName: "catalogSort"
-            visible: catalogPage.catalogView; hoverEnabled: true
+            visible: catalogPage.catalogView && !catalogPage.catalogListLoading; hoverEnabled: true
+            onVisibleChanged: { if (!visible) popup.close() }
             Layout.preferredWidth: 240; Layout.preferredHeight: 42
             model: catalogPage.catalogSortOptions
             currentIndex: catalogPage.activeCatalogSortIndex
@@ -48,7 +50,7 @@ ColumnLayout {
     Label {
         objectName: "catalogSortDescription"
         Layout.fillWidth: true
-        visible: catalogPage.catalogView && catalogPage.activeCatalogSortIndex >= 2 && text.length > 0
+        visible: catalogSort.visible && catalogPage.activeCatalogSortIndex >= 2 && text.length > 0
         text: catalogPage.sortDescription
         color: window.mutedTextColor; wrapMode: Text.WordWrap
     }

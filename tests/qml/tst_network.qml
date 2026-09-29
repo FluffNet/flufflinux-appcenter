@@ -103,6 +103,45 @@ TestCase {
         settle()
         compare(control("catalogEmptyMessage").text, "No results.")
     }
+    function test_sort_hidden_while_loading_data() {
+        return test_offline_categories_data()
+    }
+    function test_sort_hidden_while_loading(data) {
+        root().openCategory(data.category)
+        root().setCatalogSort(4); settle()
+        verify(control("catalogSort").visible)
+        verify(control("catalogSortDescription").visible)
+
+        main.catalog = []; backend.sourcesBusy = true; settle()
+        compare(control("catalogEmptyMessage").text, "Loading... 0%")
+        verify(!control("catalogSort").visible, "Hide sorting during source setup")
+        verify(!control("catalogSortDescription").visible)
+
+        backend.catalogLoading = true; backend.sourcesBusy = false
+        backend.catalogProgress = 38; settle()
+        compare(control("catalogEmptyMessage").text, "Loading... 38%")
+        verify(!control("catalogSort").visible, "Hide sorting during catalog loading")
+        verify(!control("catalogSortDescription").visible)
+
+        main.catalog = [app("org.example.Cached", "Cached")]
+        backend.catalogLoading = false; backend.catalogProgress = 100; settle()
+        verify(control("catalogSort").visible)
+        verify(control("catalogSortDescription").visible)
+        compare(control("catalogSort").currentIndex, 4, "Preserve the selected sort order")
+
+        backend.sourcesBusy = true; settle()
+        verify(control("catalogSort").visible, "Source management must not hide sorting for a loaded list")
+    }
+    function test_loading_closes_sort_popup() {
+        const sort = control("catalogSort")
+        sort.popup.open(); tryCompare(sort.popup, "visible", true)
+        backend.catalogLoading = true; settle()
+        verify(!sort.visible)
+        tryCompare(sort.popup, "visible", false)
+        backend.catalogLoading = false; settle()
+        verify(sort.visible)
+        verify(!sort.popup.visible)
+    }
     function init() {
         failOnWarning(/(ReferenceError|TypeError|Binding loop|Cannot assign)/)
         network.state = "online"; network.ready = true
@@ -131,6 +170,8 @@ TestCase {
                 verify(label.visible && label.font.bold)
                 compare(label.color, main.textColor)
                 compare(label.text, "Loading... " + percent + "%")
+                verify(!control("catalogSort").visible)
+                verify(!control("catalogSortDescription").visible)
                 compare(label.horizontalAlignment, Text.AlignHCenter)
                 fuzzyCompare(label.y + label.height / 2, label.parent.height / 2, 1)
             }
@@ -138,6 +179,7 @@ TestCase {
             backend.catalogLoading = false; backend.catalogProgress = 100
             main.catalog = [app("org.example.Cached", "Cached")]; settle()
             verify(!control("catalogEmptyMessage").visible)
+            verify(control("catalogSort").visible)
         } finally {
             main.palette.window = background; main.palette.windowText = foreground
         }

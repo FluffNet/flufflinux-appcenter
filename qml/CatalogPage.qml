@@ -17,6 +17,8 @@ Page {
     readonly property string cliFilterTitle: cliMimeType ? qsTr("Apps for %1").arg(cliMimeType) : cliCategory
     readonly property bool homeView: window.selectedCategory === "All Apps" && !window.searchText && !cliMimeType && !cliCategory
     readonly property bool catalogView: !installedView && !updatesView && !window.searchText
+    readonly property bool catalogListLoading: window.catalogLoading
+        || (window.catalog.length === 0 && !!window.backend && window.backend.sourcesBusy === true)
     readonly property bool networkBlocked: window.networkOffline && !installedView && !updatesView
     readonly property bool sourcesBlocked: window.catalogSourcesUnavailable === true && !installedView && !updatesView
     readonly property bool catalogBlocked: networkBlocked || sourcesBlocked
@@ -925,7 +927,7 @@ Page {
                                             : page.visibleApps.length === 0)
                 text: page.installedView && window.installedError ? window.installedError
                       : !page.installedView && window.catalog.length === 0
-                          && (window.catalogLoading || (window.backend && window.backend.sourcesBusy))
+                          && page.catalogListLoading
                       ? qsTr("Loading... %1%").arg(window.catalogProgress) : qsTr("No results.")
                 font.pixelSize: 17
             }
