@@ -1,0 +1,15 @@
+[package]
+name = "flufflinux-appcenter"
+version = "2026.9.0-beta"
+edition = "2021"
+license = "MIT"
+description = "A small native application catalog for Fluff Linux"
+categories = ["gui"]
+keywords = ["fluff-linux", "arch-linux", "kde", "wayland", "appstream"]
+
+[dependencies]
+
+[profile.release]
+lto = true
+strip = true
+codegen-units = 1

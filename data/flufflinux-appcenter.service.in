@@ -1,0 +1,15 @@
+[Unit]
+Description=App Center session and background app queue
+PartOf=graphical-session.target
+After=graphical-session.target
+
+[Service]
+Type=simple
+ExecStart=@PREFIX@/bin/flufflinux-appcenter
+Environment=FLUFF_APP_CENTER_SESSION_SERVICE=1
+KillMode=control-group
+TimeoutStopSec=20
+# Never replay an interrupted transaction after a crash or logout.
+Restart=no
+
+# On demand only: no login autostart and no background update checks.

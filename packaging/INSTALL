@@ -1,0 +1,27 @@
+# Copied to fakeroot/.INSTALL. Direct make install uses these same hooks.
+# Prefix overrides are only for direct, non-package source installations.
+appcenter_refresh() {
+    update-desktop-database "${APPCENTER_PREFIX:-/usr}/share/applications"
+    gtk-update-icon-cache -f -t "${APPCENTER_PREFIX:-/usr}/share/icons/hicolor"
+    if [ "${APPCENTER_PREFIX:-/usr}" = /usr ] && [ -x /usr/share/libalpm/scripts/systemd-hook ]; then
+        # Reload existing user managers, but never enable/start the queue service.
+        /usr/share/libalpm/scripts/systemd-hook daemon-reload-user
+    fi
+}
+
+post_install() {
+    "${APPCENTER_PREFIX:-/usr}/lib/flufflinux-appcenter/register-flatpak-handler" "${APPCENTER_SYSCONFDIR:-/etc}/xdg/mimeapps.list"
+    appcenter_refresh
+}
+
+post_upgrade() {
+    post_install
+}
+
+pre_remove() {
+    "${APPCENTER_PREFIX:-/usr}/lib/flufflinux-appcenter/register-flatpak-handler" "${APPCENTER_SYSCONFDIR:-/etc}/xdg/mimeapps.list" remove
+}
+
+post_remove() {
+    appcenter_refresh
+}

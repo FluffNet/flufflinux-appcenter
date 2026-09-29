@@ -1,0 +1,20 @@
+[Desktop Entry]
+Name=App Center
+Comment=Browse, Discover and install applications
+Exec=flufflinux-appcenter --desktop-open %U
+Icon=flufflinux-appcenter
+Terminal=false
+Type=Application
+NoDisplay=false
+OnlyShowIn=KDE;
+Categories=Qt;KDE;System;PackageManager;Network;
+Keywords=Discover;software;apps;applications;catalog;store;
+SingleMainWindow=true
+StartupNotify=true
+Actions=Updates;
+MimeType=application/vnd.flatpak;application/vnd.flatpak.ref;application/vnd.flatpak.repo;x-scheme-handler/flatpak;x-scheme-handler/flatpak+https;x-scheme-handler/appstream;
+
+[Desktop Action Updates]
+Name=App Updates
+Icon=flufflinux-appcenter
+Exec=flufflinux-appcenter --updates
