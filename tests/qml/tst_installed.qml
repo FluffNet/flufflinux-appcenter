@@ -1,0 +1,132 @@
+import QtQuick
+import QtTest
+import "../../qml" as AppCenter
+
+TestCase {
+    name: "Installed"
+    when: main.visible
+    AppCenter.Main { id: main; visible: true }
+    function test_compact_vertical_padding_data() {
+        return [{tag:"wide", width:1180, version:"156.0.1", date:"24/09/2026 12:39"},
+                {tag:"narrow-wrapped", width:720, version:"2026.09.28.1234567890.1234567890.1234567890", date:"24 September 2026 12:39"}]
+    }
+    function test_compact_vertical_padding(data) {
+        const previousWidth = main.width
+        const stack = findChild(main, "navigationStack")
+        try {
+            main.width = data.width
+            main.showCatalog(); tryCompare(stack, "busy", false)
+            main.selectedCategory = "Installed"
+            main.installedApps = [{id:"org.mozilla.firefox", name:"Firefox", developer:"Mozilla", icon:"",
+                installedVersion:data.version, installedSize:"321.08 MiB", installedOrigin:"flathub",
+                installation:"system", updatedDate:data.date}]
+            const list = findChild(stack.currentItem, "installedList")
+            tryVerify(function() { return list.itemAtIndex(0) !== null })
+            const row = list.itemAtIndex(0)
+            waitForPolish(row)
+            compare(row.topPadding, 12); compare(row.bottomPadding, 12)
+            compare(row.leftPadding, 16); compare(row.rightPadding, 16)
+            compare(row.height, Math.max(108, row.contentItem.implicitHeight + 24))
+            const last = findChild(row, "installedUpdatedDateValue")
+            verify(last.visible)
+            verify(last.mapToItem(row, 0, last.height).y <= row.height - row.bottomPadding + 1)
+            const button = findChild(row, "uninstallButton")
+            compare(button.width, 44); compare(button.height, 44)
+            verify(button.mapToItem(row, 0, 0).y >= row.topPadding)
+            verify(button.mapToItem(row, 0, button.height).y <= row.height - row.bottomPadding)
+        } finally {
+            main.width = previousWidth
+            main.installedApps = []
+            main.selectedCategory = "All Apps"
+        }
+    }
+    function test_installation_date_only_when_recorded() {
+        const app = {id: "org.example.Dated", name: "Dated app", icon: "", summary: "", description: "",
+            category: "", license: "", homepage: "https://example.org", developer: "", screenshots: [],
+            installedSize: "10 MB", installedVersion: "1.0", installation: "user",
+            installedBranch: "stable", installedArch: "x86_64"}
+        const stack = findChild(main, "navigationStack")
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        main.selectedCategory = "Installed"
+        main.installedApps = [app]
+        const list = findChild(stack.currentItem, "installedList")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        verify(!findChild(list.itemAtIndex(0), "installedDateCaption").visible)
+        verify(!findChild(list.itemAtIndex(0), "installedDateValue").visible)
+        for (const updatedDate of [undefined, null, ""]) {
+            main.installedApps = [Object.assign({}, app, {updatedDate:updatedDate})]
+            tryVerify(function() { return list.itemAtIndex(0) !== null })
+            verify(!findChild(list.itemAtIndex(0), "installedUpdatedDateCaption").visible)
+            verify(!findChild(list.itemAtIndex(0), "installedUpdatedDateValue").visible)
+            compare(findChild(list.itemAtIndex(0), "installedUpdatedDateValue").text, "")
+        }
+        main.openApp(app); tryCompare(stack, "busy", false)
+        verify(!findChild(stack.currentItem, "appInstalledDateCaption").visible)
+        verify(!findChild(stack.currentItem, "appInstalledDateValue").visible)
+        verify(!findChild(stack.currentItem, "appUpdatedDateCaption").visible)
+        verify(!findChild(stack.currentItem, "appUpdatedDateValue").visible)
+        main.installedApps = [Object.assign({}, app, {installedDate: "16 September 2026", updatedDate: "23 September 2026"})]
+        compare(findChild(stack.currentItem, "appInstalledDateValue").text, "16 September 2026")
+        verify(findChild(stack.currentItem, "appInstalledDateCaption").visible)
+        verify(findChild(stack.currentItem, "appInstalledDateValue").visible)
+        compare(findChild(stack.currentItem, "appUpdatedDateValue").text, "23 September 2026")
+        verify(findChild(stack.currentItem, "appUpdatedDateCaption").visible)
+        verify(findChild(stack.currentItem, "appUpdatedDateValue").visible)
+        waitForPolish(stack.currentItem)
+        const website = findChild(stack.currentItem, "appWebsiteLink")
+        const updated = findChild(stack.currentItem, "appUpdatedDateValue")
+        tryVerify(function() { return updated.mapToItem(stack.currentItem, 0, 0).y >= website.mapToItem(stack.currentItem, 0, website.height).y }, 5000,
+               "Last updated follows Website in the details grid")
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const date = findChild(list.itemAtIndex(0), "installedDateValue")
+        verify(date.visible && date.font.bold)
+        compare(date.text, "16 September 2026")
+        compare(findChild(list.itemAtIndex(0), "installedUpdatedDateValue").text, "23 September 2026")
+        verify(findChild(list.itemAtIndex(0), "installedUpdatedDateCaption").visible)
+        verify(findChild(list.itemAtIndex(0), "installedUpdatedDateValue").visible)
+        const formerlyInstalled = main.installedApps[0]
+        main.openApp(formerlyInstalled); tryCompare(stack, "busy", false)
+        main.installedApps = [app]
+        verify(!findChild(stack.currentItem, "appUpdatedDateCaption").visible)
+        verify(!findChild(stack.currentItem, "appUpdatedDateValue").visible)
+        main.showCatalog(); tryCompare(stack, "busy", false)
+        main.installedApps = []
+        compare(main.detailsFor(formerlyInstalled).installedDate, undefined)
+        compare(main.detailsFor(formerlyInstalled).updatedDate, undefined)
+        main.selectedCategory = "All Apps"
+    }
+    function test_installed_navigation_and_information() {
+        main.installedApps = [{id: "org.example.Offline", name: "Offline app", icon: "",
+            summary: "An installed app without catalog metadata", description: "Installed locally",
+            category: "", license: "", homepage: "", developer: "", screenshots: [],
+            installedSize: "125 MB", installedOrigin: "local", installation: "user",
+            installedBranch: "stable", installedArch: "x86_64"}]
+        const stack = findChild(main, "navigationStack")
+        const catalog = stack.currentItem
+        main.searchText = "unrelated"
+        waitForRendering(catalog)
+        mouseClick(findChild(catalog, "installedButton"))
+        compare(stack.depth, 1)
+        tryCompare(main, "searchText", "")
+        compare(main.selectedCategory, "Installed")
+        const list = findChild(catalog, "installedList")
+        tryCompare(list, "count", 1)
+        verify(list.visible)
+        verify(findChild(catalog, "searchField").visible)
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const row = list.itemAtIndex(0)
+        compare(findChild(row, "uninstallButton").enabled, false)
+        mouseClick(row, 90, 30)
+        tryCompare(stack, "busy", false)
+        compare(stack.depth, 2)
+        compare(main.selectedApp.id, "org.example.Offline")
+        main.showCatalog()
+        tryCompare(stack, "busy", false)
+        compare(stack.currentItem, catalog)
+        compare(main.selectedCategory, "Installed")
+        verify(list.visible)
+        catalog.openCategory("All Apps")
+        verify(!list.visible)
+    }
+}

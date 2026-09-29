@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE policyconfig PUBLIC "-//freedesktop//DTD PolicyKit Policy Configuration 1.0//EN" "http://www.freedesktop.org/software/polkit/policyconfig-1.dtd">
+<policyconfig>
+  <vendor>FluffNet LLC</vendor>
+  <icon_name>flufflinux-appcenter</icon_name>
+  <action id="com.flufflinux.appcenter">
+    <description>Remove a system-wide Flatpak source</description>
+    <message>Administrator authentication is required to remove a system-wide software source in App Center.</message>
+    <defaults>
+      <allow_any>no</allow_any>
+      <allow_inactive>no</allow_inactive>
+      <allow_active>auth_admin</allow_active>
+    </defaults>
+    <annotate key="org.freedesktop.policykit.exec.path">@PREFIX@/lib/flufflinux-appcenter/source-helper</annotate>
+  </action>
+</policyconfig>
