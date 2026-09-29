@@ -122,6 +122,32 @@ TestCase {
         compare(page().catalogSortIndex, 5)
         compare(preferences.homeSort, "release-asc")
     }
+    function test_popularity_loading_has_no_message_data() {
+        const rows = []
+        for (const category of ["All Apps", "Utilities"])
+            for (const cached of [false, true])
+                for (const order of [2, 3])
+                    rows.push({tag:category + "-" + cached + "-" + order,
+                        category:category, cached:cached, order:order})
+        return rows
+    }
+    function test_popularity_loading_has_no_message(data) {
+        selectCategory(data.category)
+        if (!data.cached) stats.counts = {}
+        stats.state = "loading"
+        page().setCatalogSort(data.order)
+        waitForPolish(page())
+        verify(findChild(page(), "catalogSort").visible)
+        compare(page().sortDescription, "")
+        verify(!findChild(page(), "catalogSortDescription").visible)
+        compare(page().visibleApps[0].name, !data.cached ? "Alpha" : data.order === 2 ? "Beta" : "Zero")
+
+        stats.counts = {"org.example.Alpha":100, "org.example.Beta":5, "org.example.Zero":0}
+        stats.state = "ready"
+        compare(page().visibleApps[0].name, data.order === 2 ? "Alpha" : "Zero")
+        compare(findChild(page(), "catalogSort").currentIndex, data.order)
+        verify(!findChild(page(), "catalogSortDescription").visible)
+    }
     function test_details_back_preserves_active_visit() {
         selectCategory("Utilities"); page().setCatalogSort(1)
         main.openApp(main.catalog[0])

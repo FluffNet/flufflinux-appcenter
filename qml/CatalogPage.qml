@@ -40,7 +40,6 @@ Page {
         if (activeCatalogSortIndex === 2 || activeCatalogSortIndex === 3) {
             const state = window.catalogStats ? window.catalogStats.state : "unavailable"
             const cached = Object.keys(popularityCounts).length > 0
-            if (state === "loading") return cached ? qsTr("Refreshing Flathub popularity; using saved counts…") : qsTr("Loading Flathub popularity…")
             if (state === "unavailable" || state === "idle") return cached ? qsTr("Offline - using saved Flathub popularity.") : qsTr("Popularity unavailable - showing Name: A-Z.")
             return ""
         }
