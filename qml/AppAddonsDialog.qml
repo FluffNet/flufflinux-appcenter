@@ -54,10 +54,11 @@ Dialog {
     contentItem: ColumnLayout {
         spacing: 16
         Label {
+            objectName: "addonsInstallFirstMessage"
             Layout.fillWidth: true
             visible: dialog.addonData.state === "not-installed"
             text: qsTr("Install this app first to manage its add-ons.")
-            color: window.mutedTextColor; wrapMode: Text.Wrap
+            color: window.textColor; wrapMode: Text.Wrap
         }
         Label {
             Layout.fillWidth: true

@@ -85,10 +85,26 @@ TestCase {
         compare(button.icon.name, "dialog-cancel")
         compare(button.text, "Cancel"); mouseClick(button); compare(backend.action.cancel, 3)
     }
-    function test_uninstalled_parent_cannot_change_addons() {
-        open(); backend.appAddons = {state:"not-installed", items:[addon]}
-        waitForPolish(dialog().contentItem)
-        verify(!findChild(row(), "addonActionButton").visible)
+    function test_uninstalled_parent_cannot_change_addons_data() {
+        return [{tag:"dark", background:"#202326", foreground:"#ffffff"},
+            {tag:"light", background:"#eff0f1", foreground:"#232629"}]
+    }
+    function test_uninstalled_parent_cannot_change_addons(data) {
+        const background = main.palette.window, foreground = main.palette.windowText
+        try {
+            main.palette.window = data.background; main.palette.windowText = data.foreground
+            open(); backend.appAddons = {state:"not-installed", items:[addon]}
+            waitForPolish(dialog().contentItem)
+            verify(!findChild(row(), "addonActionButton").visible)
+            const message = findChild(dialog(), "addonsInstallFirstMessage")
+            verify(message.visible)
+            compare(message.text, "Install this app first to manage its add-ons.")
+            compare(message.color, main.textColor)
+            backend.appAddons = {state:"ready", items:[addon]}
+            verify(!message.visible)
+        } finally {
+            main.palette.window = background; main.palette.windowText = foreground
+        }
     }
     function test_parent_metadata_refresh_keeps_dialog_open() {
         open(); backend.appAddons = {state:"ready", items:[addon]}
