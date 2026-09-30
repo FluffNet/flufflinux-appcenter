@@ -67,6 +67,7 @@ with ExitStack() as stack:
         assert entry["Comment"] == "Browse, Discover and install applications"
         assert {"System", "PackageManager", "Network"} <= set(entry["Categories"].split(";"))
         assert {"discover", "software"} <= set(entry["Keywords"].lower().split(";"))
+        assert {"flatpak", "Flatpak"} <= set(entry["Keywords"].split(";"))
         assert entry["Icon"] == "flufflinux-appcenter"
         assert entry["Exec"] == "flufflinux-appcenter --desktop-open %U"
         assert "x-scheme-handler/appstream" in entry["MimeType"].split(";")
