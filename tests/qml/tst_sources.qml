@@ -165,7 +165,7 @@ TestCase {
         compare(status.text, "Updating software sources…"); verify(spinner.running)
         backend.sourcesBusy = false; backend.sourcesError = "Source update failed"
         compare(status.text, "Source update failed"); verify(status.visible); verify(!spinner.running)
-        compare(status.color, main.accentColor)
+        compare(status.color, main.accentTextColor)
     }
     function test_information_never_autofocuses_close(data) {
         main.showSettings(); tryCompare(stack(), "busy", false)

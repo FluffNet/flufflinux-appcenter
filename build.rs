@@ -41,8 +41,8 @@ fn main() {
     let mut cflags_arguments = vec!["--cflags"];
     cflags_arguments.extend(QT_PACKAGES);
     let kde_prefix = command_output("pkg-config", &["--variable=prefix", "KF6CoreAddons"]);
-    let cflags = format!("{} -I{}/include/KF6/KJobWidgets -I{}/include/KF6/KStatusNotifierItem",
-        command_output("pkg-config", &cflags_arguments), kde_prefix.trim(), kde_prefix.trim());
+    let cflags = format!("{} -I{}/include/KF6/KJobWidgets -I{}/include/KF6/KStatusNotifierItem -I{}/include/KF6/KIconThemes",
+        command_output("pkg-config", &cflags_arguments), kde_prefix.trim(), kde_prefix.trim(), kde_prefix.trim());
 
     let moc =
         PathBuf::from(command_output("pkg-config", &["--variable=libexecdir", "Qt6Core"]).trim())
@@ -72,6 +72,10 @@ fn main() {
         .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
         .status().expect("failed to run Qt moc").success());
     let mut objects = Vec::new();
+    let theme_generated = output_dir.join("moc_desktop_theme.cpp");
+    assert!(Command::new(&moc).arg("src/desktop_theme.h").arg("-o").arg(&theme_generated)
+        .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
+        .status().expect("failed to run Qt moc").success());
     let network_generated = output_dir.join("moc_network_status.cpp");
     assert!(Command::new(&moc).arg("src/network_status.h").arg("-o").arg(&network_generated)
         .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
@@ -93,6 +97,7 @@ fn main() {
         stats_generated,
         preferences_generated,
         network_generated,
+        theme_generated,
     ] {
         let object = output_dir
             .join(source.file_stem().unwrap())
@@ -123,6 +128,7 @@ fn main() {
     println!("cargo:rustc-link-lib=dylib=stdc++");
     println!("cargo:rustc-link-lib=dylib=KF6JobWidgets");
     println!("cargo:rustc-link-lib=dylib=KF6StatusNotifierItem");
+    println!("cargo:rustc-link-lib=dylib=KF6IconThemes");
 
     let mut libs_arguments = vec!["--libs"];
     libs_arguments.extend(QT_PACKAGES);
@@ -137,6 +143,7 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=src/qt_bridge.cpp");
+    println!("cargo:rerun-if-changed=src/desktop_theme.h");
     println!("cargo:rerun-if-changed=src/background_queue.cpp");
     println!("cargo:rerun-if-changed=src/background_queue.h");
     println!("cargo:rerun-if-changed=src/sleep_inhibitor.h");

@@ -64,7 +64,7 @@ Dialog {
             Layout.fillWidth: true
             visible: text.length > 0
             text: dialog.addonData.error || ""
-            color: window.accentColor; wrapMode: Text.Wrap
+            color: window.accentTextColor; wrapMode: Text.Wrap
         }
         Item {
             id: viewport
@@ -141,7 +141,7 @@ Dialog {
                                     Layout.fillWidth: true
                                     visible: !!card.job && (card.job.active || card.job.failed)
                                     text: !card.job ? "" : card.job.failed ? card.job.error : card.job.queued ? qsTr("Queued...") : card.job.status
-                                    color: card.job && card.job.failed ? window.accentColor : window.textColor
+                                    color: card.job && card.job.failed ? window.accentTextColor : window.textColor
                                     wrapMode: Text.Wrap
                                 }
                                 InstallationProgress {

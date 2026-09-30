@@ -82,7 +82,7 @@ Dialog {
                     objectName: "permissionsError"
                     Layout.fillWidth: true; visible: !dialog.loading && !dialog.ready
                     text: dialog.permissionData.message || qsTr("Permission information is unavailable.")
-                    textFormat: Text.PlainText; color: window.accentColor; wrapMode: Text.Wrap
+                    textFormat: Text.PlainText; color: window.accentTextColor; wrapMode: Text.Wrap
                 }
                 FluffButton {
                     objectName: "retryPermissionsButton"

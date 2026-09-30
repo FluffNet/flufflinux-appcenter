@@ -356,6 +356,7 @@ Page {
                     spacing: 12
 
                     Image {
+                        objectName: "headerAppIcon"
                         Layout.preferredWidth: 44
                         Layout.preferredHeight: 44
                         source: window.appIconUrl

@@ -75,7 +75,7 @@ Page {
                     text: page.inputStatus || (window.backend && window.backend.sourcesBusy ? qsTr("Updating software sources…")
                           : window.backend && window.backend.sourcesError || "")
                     textFormat: Text.PlainText; wrapMode: Text.Wrap
-                    color: page.sourceWorkPending ? window.mutedTextColor : window.accentColor
+                    color: page.sourceWorkPending ? window.mutedTextColor : window.accentTextColor
                     Accessible.role: Accessible.StaticText
                 }
             }
@@ -116,10 +116,10 @@ Page {
                                 border.width: 2
                                 border.color: sourceEnabled.checked ? window.accentColor
                                     : Qt.tint(window.surfaceColor, Qt.rgba(window.textColor.r, window.textColor.g, window.textColor.b, 0.4))
-                                Image {
-                                    anchors.centerIn: parent; width: 16; height: 16
+                                ThemeCheckMark {
+                                    objectName: "sourceCheckMark"
+                                    anchors.fill: parent
                                     visible: sourceEnabled.checked
-                                    source: "check-white.svg"; sourceSize: Qt.size(16, 16)
                                 }
                             }
                             checked: sourceRow.modelData.enabled

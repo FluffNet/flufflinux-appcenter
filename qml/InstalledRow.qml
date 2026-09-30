@@ -108,7 +108,7 @@ AbstractButton {
                       : row.removing && !row.removalFailed ? qsTr("Uninstalling…")
                       : row.job ? row.job.status + (row.job.error ? "\n" + row.job.error : "") : ""
                 textFormat: Text.PlainText; wrapMode: Text.Wrap
-                color: row.removalFailed ? window.accentColor : window.mutedTextColor
+                color: row.removalFailed ? window.accentTextColor : window.mutedTextColor
             }
             FluffProgressBar {
                 objectName: "installedRemovalProgress"

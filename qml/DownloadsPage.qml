@@ -186,7 +186,7 @@ Page {
                                   : modelData.queued ? qsTr("Pending…")
                                   : !(modelData.operations || []).length ? qsTr("Preparing…") : ""
                             textFormat: Text.PlainText; wrapMode: Text.Wrap
-                            color: modelData.failed ? window.accentColor : window.mutedTextColor
+                            color: modelData.failed ? window.accentTextColor : window.mutedTextColor
                         }
                         InstallationProgress {
                             objectName: "downloadJobProgress"
@@ -197,7 +197,7 @@ Page {
                             objectName: "downloadJobError"
                             Layout.fillWidth: true; visible: !!modelData.error
                             text: modelData.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap
-                            color: window.accentColor
+                            color: window.accentTextColor
                         }
                     }
                 }

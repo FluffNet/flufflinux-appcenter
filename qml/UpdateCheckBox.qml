@@ -21,21 +21,11 @@ CheckBox {
         color: control.checked ? window.accentColor : window.surfaceColor
         border.color: control.visualFocus || control.checked ? window.accentColor : window.mutedTextColor
         border.width: control.visualFocus ? 2 : 1
-        Canvas {
-            id: checkCanvas
+        ThemeCheckMark {
+            objectName: "updateCheckMark"
             anchors.fill: parent
             visible: control.checkState !== Qt.Unchecked
-            onVisibleChanged: requestPaint()
-            Connections { target: control; function onCheckStateChanged() { checkCanvas.requestPaint() } }
-            onPaint: {
-                const ctx = getContext("2d")
-                ctx.clearRect(0, 0, width, height)
-                ctx.strokeStyle = "white"; ctx.lineWidth = 2; ctx.lineCap = "round"
-                ctx.beginPath()
-                if (control.checkState === Qt.PartiallyChecked) { ctx.moveTo(6, 11); ctx.lineTo(16, 11) }
-                else { ctx.moveTo(5, 11); ctx.lineTo(9, 15); ctx.lineTo(17, 7) }
-                ctx.stroke()
-            }
+            partial: control.checkState === Qt.PartiallyChecked
         }
     }
 }

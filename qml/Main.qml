@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "ThemeColors.js" as ThemeColors
 
 ApplicationWindow {
     id: window
@@ -16,7 +17,11 @@ ApplicationWindow {
     color: backgroundColor
 
     readonly property bool darkMode: palette.window.hslLightness < 0.5
-    readonly property color accentColor: darkMode ? "#e05562" : "#820101"
+    // KDE supplies separate selection and colored-text roles so bright
+    // accents remain readable in both light and dark color schemes.
+    readonly property color accentColor: palette.highlight
+    readonly property color accentTextColor: ThemeColors.readableText(palette.link, [backgroundColor, surfaceColor], textColor)
+    readonly property color accentForegroundColor: palette.highlightedText
     readonly property color textColor: palette.windowText
     readonly property color mutedTextColor: palette.placeholderText
     // Two opaque, theme-derived levels. No independent blue-gray/translucent
@@ -30,8 +35,9 @@ ApplicationWindow {
     // background tint only; hovering must not look like keyboard focus.
     readonly property color hoverColor: Qt.tint(surfaceColor, Qt.rgba(textColor.r, textColor.g, textColor.b, 0.085))
     readonly property int cornerRadius: 8
-    readonly property url appIconUrl: typeof fluffAppIconUrl !== "undefined"
-                                      ? fluffAppIconUrl : ""
+    readonly property int iconThemeRevision: typeof fluffDesktopTheme !== "undefined"
+        ? fluffDesktopTheme.revision : 0
+    readonly property url appIconUrl: iconSource("flufflinux-appcenter")
 
     property var catalog: typeof fluffInitialCatalog !== "undefined"
                           ? fluffInitialCatalog : []
@@ -87,8 +93,9 @@ ApplicationWindow {
         let source = icon || "application-x-executable"
         if (source.indexOf("://") < 0)
             source = source.indexOf("/") >= 0 ? "file://" + source : "image://icon/" + source
-        return source.startsWith("image://icon/") || source.startsWith("file://")
-            ? source + "?revision=" + iconRevision : source
+        if (source.startsWith("image://icon/"))
+            return source + "?revision=" + iconRevision + "&theme=" + iconThemeRevision
+        return source.startsWith("file://") ? source + "?revision=" + iconRevision : source
     }
     function installApp(app) { if (backend) backend.installApp(app) }
     function publisherFor(app) {
@@ -259,6 +266,7 @@ ApplicationWindow {
         contentItem: ColumnLayout {
             spacing: 16
             Image {
+                objectName: "aboutAppIcon"
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 72; Layout.preferredHeight: 72
                 source: window.appIconUrl; fillMode: Image.PreserveAspectFit

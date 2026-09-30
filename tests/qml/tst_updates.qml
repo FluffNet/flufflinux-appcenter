@@ -297,7 +297,7 @@ TestCase {
         verify(!label.font.bold); compare(label.color, main.mutedTextColor)
         backend.jobs = [Object.assign({}, queued, {active:false, queued:false, failed:true, status:"Failed", error:"Connection lost"})]
         verify(!progress.visible); compare(label.text, "Failed\nConnection lost")
-        verify(!label.font.bold); compare(label.color, main.accentColor)
+        verify(!label.font.bold); compare(label.color, main.accentTextColor)
         backend.jobs = [Object.assign({}, queued, {active:false, queued:false, status:"Complete"})]
         verify(!progress.visible); compare(label.text, "Complete")
         backend.jobs = []
