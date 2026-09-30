@@ -545,7 +545,7 @@ Page {
                         // Plain text starts at the same value-column edge as
                         // the other details. Long URLs stay inside the column.
                         width: Math.min(parent.width, implicitWidth)
-                        linkColor: window.accentColor
+                        linkColor: window.accentTextColor
                         onActivated: function(url) { Qt.openUrlExternally(url) }
                     }
                 }

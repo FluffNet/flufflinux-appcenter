@@ -46,6 +46,7 @@ install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter
 	install -m644 LICENSE "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/LICENSE"
 	install -Dm644 LICENSE "$(DESTDIR)$(PREFIX)/share/licenses/flufflinux-appcenter/LICENSE"
 	install -m644 qml/*.qml "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/"
+	install -m644 qml/*.js "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/"
 	install -m644 qml/*.svg "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/"
 	install -m644 assets/flufflinux-appcenter.svg "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/flufflinux-appcenter.svg"
 	install -m644 assets/flufflinux-appcenter.svg "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/flufflinux-appcenter.svg"

@@ -6,6 +6,7 @@
 #include "window_preferences.h"
 #include "ui_typography.h"
 #include "background_queue.h"
+#include "desktop_theme.h"
 #include <QDBusInterface>
 #include <QDBusReply>
 #include <QDBusObjectPath>
@@ -29,20 +30,6 @@
 #include <cstdio>
 #include <memory>
 #include <unistd.h>
-
-class ThemeIconProvider final : public QQuickImageProvider {
-public:
-    ThemeIconProvider() : QQuickImageProvider(QQuickImageProvider::Pixmap) {}
-    QPixmap requestPixmap(const QString &request, QSize *size, const QSize &requested) override {
-        const auto id = request.section('?', 0, 0);
-        const QSize target = requested.isValid() ? requested : QSize(64, 64);
-        QIcon icon = QIcon::fromTheme(id);
-        if (icon.isNull()) icon = QIcon::fromTheme("application-x-executable");
-        const auto pixmap = icon.pixmap(target);
-        if (size) *size = pixmap.size();
-        return pixmap;
-    }
-};
 
 extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
                               int input_count, const char *const *inputs, const char *desktop_file) {
@@ -74,7 +61,8 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     // Keep existing Plasma Discover pins associated with this window. The
     // package owns this legacy desktop ID, with App Center's name and icon.
     QGuiApplication::setDesktopFileName(QString::fromUtf8(desktop_file));
-    application.setWindowIcon(QIcon(QString::fromUtf8(icon_path)));
+    const QIcon fallbackIcon(QString::fromUtf8(icon_path));
+    DesktopTheme desktopTheme(fallbackIcon);
     QJsonArray incoming;
     for (int i = 0; i < input_count && i < 16; ++i)
         incoming.append(QJsonDocument::fromJson(inputs[i]).object());
@@ -150,12 +138,12 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     std::unique_ptr<WindowPreferences> windowPreferences;
     if (manageWindow) windowPreferences = std::make_unique<WindowPreferences>();
     QQmlApplicationEngine engine;
-    engine.addImageProvider("icon", new ThemeIconProvider);
+    engine.addImageProvider("icon", new ThemeIconProvider(fallbackIcon));
     engine.rootContext()->setContextProperty("fluffBackend", &manager);
     engine.rootContext()->setContextProperty("fluffCatalogStats", &catalogStats);
     engine.rootContext()->setContextProperty("fluffNetworkStatus", &networkStatus);
     engine.rootContext()->setContextProperty("fluffCatalogPreferences", &catalogPreferences);
-    engine.rootContext()->setContextProperty("fluffAppIconUrl", QUrl::fromLocalFile(QString::fromUtf8(icon_path)));
+    engine.rootContext()->setContextProperty("fluffDesktopTheme", &desktopTheme);
     engine.rootContext()->setContextProperty("fluffInitialCatalog", manager.catalog());
     engine.rootContext()->setContextProperty("fluffWindowManaged", manageWindow);
     if (manageWindow) QTimer::singleShot(0, &manager, &FlatpakManager::initializeSources);

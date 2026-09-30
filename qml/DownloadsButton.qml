@@ -68,7 +68,8 @@ ToolButton {
             anchors.centerIn: parent
             text: control.unreadResult ? (window.downloadQueue.hasError ? "×" : "✓")
                                       : window.downloadQueue.activeCount
-            color: "white"; font.pixelSize: 12; font.bold: true
+            color: control.unreadResult && !window.downloadQueue.hasError ? "white" : window.accentForegroundColor
+            font.pixelSize: 12; font.bold: true
         }
     }
 }

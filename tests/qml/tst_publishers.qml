@@ -48,7 +48,7 @@ TestCase {
         verify(label)
         compare(label.text, publisher)
         compare(label.visible, !!publisher)
-        compare(label.color, main.accentColor)
+        compare(label.color, main.accentTextColor)
         compare(label.font.weight, Font.DemiBold)
         compare(label.textFormat, Text.PlainText)
     }
@@ -109,6 +109,17 @@ TestCase {
         main.catalog = []
         backend.installedApps = [installed("Installed publisher")]
         compare(main.publisherFor({id:stable.id, flatpakRef:stable.flatpakRef, remote:"flathub"}), "Installed publisher")
+    }
+    function test_publisher_follows_live_palette_on_home_and_details() {
+        const original = main.palette.link
+        for (const color of ["#00d3b8", "#746300", "#b875dc"]) {
+            main.palette.link = color
+            checkLabel(findChild(page(), "recommendedAppPublisher"), "Discord Inc.")
+            main.openApp(main.catalog[0]); tryCompare(stack(), "busy", false)
+            checkLabel(findChild(stack().currentItem, "appDeveloper"), "Discord Inc.")
+            main.showCatalog(); tryCompare(stack(), "busy", false)
+        }
+        main.palette.link = original
     }
     function test_recommended_layout_data() {
         return [{tag:"narrow", width:720, height:520}, {tag:"short", width:1180, height:520},

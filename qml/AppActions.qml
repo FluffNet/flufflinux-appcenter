@@ -43,6 +43,6 @@ ColumnLayout {
               : actions.running && actions.removing && !actions.job.failed ? qsTr("Uninstalling…")
               : actions.job ? actions.job.status + (actions.job.error ? "\n" + actions.job.error : "") : ""
         textFormat: Text.PlainText; wrapMode: Text.Wrap
-        color: actions.job && actions.job.failed ? window.accentColor : window.mutedTextColor
+        color: actions.job && actions.job.failed ? window.accentTextColor : window.mutedTextColor
     }
 }

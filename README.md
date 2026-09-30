@@ -79,7 +79,7 @@ sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative \
     qt6-svg qt6-wayland flatpak ostree polkit gzip kirigami \
     qqc2-desktop-style breeze-icons plasma-integration xdg-desktop-portal \
     xdg-desktop-portal-kde xdg-utils desktop-file-utils gtk-update-icon-cache \
-    kcoreaddons kwindowsystem kjobwidgets kstatusnotifieritem systemd
+    kcoreaddons kiconthemes kwindowsystem kjobwidgets kstatusnotifieritem systemd
 ```
 
 The Fluff Linux package also requires `flufflinux-update`. App Center uses

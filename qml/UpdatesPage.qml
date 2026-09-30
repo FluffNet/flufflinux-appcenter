@@ -111,7 +111,7 @@ Page {
         Label {
             objectName: "updatesError"; visible: !!page.updateData.error
             Layout.fillWidth: true; maximumLineCount: 3
-            text: page.updateData.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap; elide: Text.ElideRight; color: window.accentColor
+            text: page.updateData.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap; elide: Text.ElideRight; color: window.accentTextColor
         }
         Label {
             objectName: "updatesSkipped"
@@ -207,7 +207,7 @@ Page {
                                 visible: !modelData.runtime && modelData.permissions.state !== "unchanged"
                                 text: modelData.permissions.state === "changed" ? qsTr("Permissions changed")
                                     : modelData.permissions.state === "unchanged" ? "" : qsTr("Permission comparison unavailable")
-                                color: window.accentColor
+                                color: window.accentTextColor
                                 Layout.fillWidth: true; wrapMode: Text.Wrap
                             }
                             FluffButton {
@@ -228,7 +228,7 @@ Page {
                                     + (job.error ? "\n" + job.error : "") : ""
                                 textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.Wrap
                                 font.bold: queuedStatus
-                                color: job && job.failed ? window.accentColor : queuedStatus ? window.textColor : window.mutedTextColor
+                                color: job && job.failed ? window.accentTextColor : queuedStatus ? window.textColor : window.mutedTextColor
                             }
                             InstallationProgress {
                                 id: updateProgress

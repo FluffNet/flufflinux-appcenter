@@ -9,7 +9,7 @@ Label {
         : String(app && app.developer || "").trim()
     visible: text.length > 0
     textFormat: Text.PlainText
-    color: window.accentColor
+    color: window.accentTextColor
     font.weight: Font.DemiBold
     font.pixelSize: 14
     fontSizeMode: Text.HorizontalFit

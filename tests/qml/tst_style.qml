@@ -1,6 +1,7 @@
 import QtQuick
 import QtTest
 import "../../qml" as AppCenter
+import "../../qml/ThemeColors.js" as ThemeColors
 
 TestCase {
     name: "Style"
@@ -78,6 +79,35 @@ TestCase {
         compare(title.text, "All Apps")
         compare(title.font.family, main.font.family)
         verify(!findChild(main, "catalogCountLabel"))
+    }
+    function test_live_palette_roles() {
+        const oldHighlight = main.palette.highlight, oldLink = main.palette.link
+        const oldHighlightedText = main.palette.highlightedText
+        for (const colors of [["#059a88", "#00d3b8", "#000000"],
+                              ["#b39500", "#746300", "#ffffff"],
+                              ["#b875dc", "#ad4de0", "#000000"]]) {
+            main.palette.highlight = colors[0]
+            main.palette.link = colors[1]
+            main.palette.highlightedText = colors[2]
+            compare(main.accentColor, colors[0])
+            compare(main.accentTextColor, ThemeColors.readableText(main.palette.link,
+                [main.backgroundColor, main.surfaceColor], main.textColor))
+            verify(ThemeColors.contrast(main.accentTextColor, main.surfaceColor) >= 4.49)
+            compare(main.accentForegroundColor, colors[2])
+            const search = findChild(main, "searchField")
+            main.requestActivate()
+            search.forceActiveFocus()
+            tryCompare(search, "activeFocus", true)
+            compare(search.background.border.color, colors[0])
+        }
+        main.palette.highlight = oldHighlight
+        main.palette.link = oldLink
+        main.palette.highlightedText = oldHighlightedText
+    }
+    function test_brand_icons_use_shared_theme_url() {
+        verify(main.appIconUrl.toString().startsWith("image://icon/flufflinux-appcenter?"))
+        compare(findChild(main, "headerAppIcon").source, main.appIconUrl)
+        compare(findChild(main, "aboutAppIcon").source, main.appIconUrl)
     }
     function test_navigation_hover_uses_shared_color() {
         main.requestActivate()
