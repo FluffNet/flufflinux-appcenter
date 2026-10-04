@@ -17,7 +17,7 @@ for line in metadata.splitlines():
         values.setdefault(key, []).append(value)
 assert values["pkgname"] == ["flufflinux-appcenter"]
 assert values["pkgbase"] == ["flufflinux-appcenter"]
-assert values["pkgver"] == ["2026.9b-1"]
+assert values["pkgver"] == ["2026.10b-1"]
 assert values["pkgdesc"] == ["App Center for Fluff Linux"]
 assert values["packager"] == ["FluffNet LLC"]
 assert int(values["size"][0]) > 0 and int(values["builddate"][0]) >= 0
@@ -29,6 +29,8 @@ assert "kjobwidgets>=6.18" in values["depend"]
 assert "kstatusnotifieritem" in values["depend"]
 assert "kwindowsystem" in values["depend"]
 assert "kiconthemes" in values["depend"]
+assert "ca-certificates" in values["depend"]
+assert "kirigami" in values["depend"]
 assert values["backup"] == ["etc/flufflinux-appcenter/exclusions.conf"]
 with ExitStack() as stack:
     root = package
@@ -81,4 +83,6 @@ with ExitStack() as stack:
     assert (root / "usr/lib/flufflinux-appcenter/register-flatpak-handler").stat().st_mode & 0o111
     assert (root / "usr/share/licenses/flufflinux-appcenter/LICENSE").is_file()
     assert (root / "usr/share/flufflinux-appcenter/qml/ThemeColors.js").is_file()
+    assert (root / "usr/share/flufflinux-appcenter/qml/PageWheelScroll.qml").is_file()
+    assert not (root / "usr/share/flufflinux-appcenter/qml/NaturalWheelScroll.qml").exists()
 print("PASS: pacman identity/dependencies/replacements/config backup, executable and icon aliases, one visible legacy launcher, no notifier/shared MIME ownership")

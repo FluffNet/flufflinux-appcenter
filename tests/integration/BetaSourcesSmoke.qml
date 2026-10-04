@@ -42,7 +42,7 @@ AppCenter.Main {
             if (main.stage < 0 || stack.busy || main.installedLoading || main.backend.sourcesBusy) return
             if (main.stage === 0) { main.showAbout(); main.stage = 1 }
             else if (main.stage === 1) {
-                if (probe.findChild(main, "aboutVersion").text !== "Version 2026.09 (Beta)") { Qt.exit(2); return }
+                if (probe.findChild(main, "aboutVersion").text !== "Version 2026.10 (Beta)") { Qt.exit(2); return }
                 main.capture("about", 2)
             } else if (main.stage === 2) {
                 probe.findChild(main, "aboutDialog").close(); main.showSettings(); main.stage = 3

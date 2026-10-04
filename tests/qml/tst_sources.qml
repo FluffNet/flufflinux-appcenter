@@ -52,6 +52,11 @@ TestCase {
         backend.repositories = backend.initialRepositories
         main.requestActivate(); wait(50)
     }
+    function cleanup() {
+        const about = findChild(main, "aboutDialog")
+        about.close()
+        tryCompare(about, "visible", false)
+    }
     function test_menu_layout_data() { return [{tag:"wide", width:1180}, {tag:"narrow", width:720}] }
     function test_menu_layout(data) {
         main.width = data.width
@@ -75,7 +80,7 @@ TestCase {
         menu.itemAt(1).triggered(); menu.close()
         const about = findChild(main, "aboutDialog")
         tryCompare(about, "opened", true)
-        compare(findChild(about, "aboutVersion").text, "Version 2026.09 (Beta)")
+        compare(findChild(about, "aboutVersion").text, "Version 2026.10 (Beta)")
         const copyright = findChild(about, "aboutCopyright")
         compare(copyright.text, "Copyright © 2026 FluffNet LLC - MIT License")
         compare(copyright.lineCount, 1)
