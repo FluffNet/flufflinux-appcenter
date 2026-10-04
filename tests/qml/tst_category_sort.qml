@@ -88,6 +88,28 @@ TestCase {
         compare(findChild(page(), "catalogSort").currentIndex, 5)
         compare(preferences.homeSort, "release-asc")
     }
+    function test_multimedia_aliases_and_cached_categories_data() {
+        return ["Multimedia", "AudioVideo", "Audio & Video", "Audio/Video"].map(name => ({tag:name, name:name}))
+    }
+    function test_multimedia_aliases_and_cached_categories(data) {
+        main.catalog = [app("org.example.Old", "Old", "Audio & Video", ""),
+            app("org.example.New", "New", "Multimedia", ""),
+            app("org.example.Other", "Other", "Office", "")]
+        page().openCliFilter("category", data.name)
+        waitForPolish(page())
+        compare(main.selectedCategory, "Multimedia")
+        compare(page().cliCategory, "")
+        compare(names(), "New,Old")
+        compare(findChild(page(), "catalogTitleLabel").text, "Multimedia")
+        compare(findChild(page(), "categoryButton-Multimedia").text, "Multimedia")
+
+        main.searchText = "test"
+        main.searchCategoryFilter = "Multimedia"
+        const filter = findChild(page(), "searchCategoryFilter")
+        compare(filter.displayText, "Category: Multimedia")
+        compare(filter.textAt(1), "Multimedia")
+        compare(names(), "New,Old")
+    }
     function test_category_popularity_loads_and_keeps_recommendations() {
         main.catalog = catalog("Utilities").concat([app("com.discordapp.Discord", "Discord", "Utilities", "")])
         selectCategory("Utilities")
@@ -163,7 +185,7 @@ TestCase {
     }
     function test_layout(data) {
         main.width = data.width; main.height = data.height
-        selectCategory("Audio & Video"); page().setCatalogSort(4)
+        selectCategory("Multimedia"); page().setCatalogSort(4)
         waitForPolish(page())
         const sort = findChild(page(), "catalogSort"), grid = findChild(page(), "catalogGrid")
         verify(sort.visible && sort.width >= 210)

@@ -167,7 +167,7 @@ Page {
     onInstalledSortIndexChanged: installedList.positionViewAtBeginning()
     readonly property var categories: [
         { name: "All Apps", label: qsTr("Home"), icon: "go-home" },
-        { name: "Audio & Video", label: qsTr("Audio & Video"), icon: "applications-multimedia" },
+        { name: "Multimedia", label: qsTr("Multimedia"), icon: "applications-multimedia" },
         { name: "Development", label: qsTr("Development"), icon: "applications-development" },
         { name: "Education", label: qsTr("Education"), icon: "applications-education" },
         { name: "Games", label: qsTr("Games"), icon: "applications-games" },
@@ -194,7 +194,9 @@ Page {
         const compactQuery = page.compactSearchText(query)
         const activeCategory = query ? window.searchCategoryFilter : window.selectedCategory
         const matches = window.catalog.filter(function(app) {
-            const categoryMatches = activeCategory === "All Apps" || app.category === activeCategory
+            // Keep still-fresh catalogs from before the display-name change usable.
+            const appCategory = app.category === "Audio & Video" ? "Multimedia" : app.category
+            const categoryMatches = activeCategory === "All Apps" || appCategory === activeCategory
             const compactNameMatches = compactQuery.length > 0
                     && page.compactSearchText(app.searchName).indexOf(compactQuery) >= 0
             const compactDescriptionMatches = compactQuery.length > 0
@@ -244,7 +246,8 @@ Page {
         } else if (kind === "mime") {
             cliMimeType = value.toLowerCase()
         } else if (kind === "category") {
-            const aliases = { "audiovideo": "Audio & Video", "game": "Games", "network": "Internet", "utility": "Utilities" }
+            const aliases = { "audiovideo": "Multimedia", "audio & video": "Multimedia", "audio/video": "Multimedia",
+                "game": "Games", "network": "Internet", "utility": "Utilities" }
             const name = aliases[value.toLowerCase()] || value
             const category = categories.find(item => item.name.toLowerCase() === name.toLowerCase()
                                                    || item.label.toLowerCase() === name.toLowerCase())

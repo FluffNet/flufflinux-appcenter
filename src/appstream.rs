@@ -322,8 +322,8 @@ fn display_category(values: &[String]) -> &'static str {
         ("game", "Games"),
         ("development", "Development"),
         ("graphics", "Graphics"),
-        ("audio", "Audio & Video"),
-        ("video", "Audio & Video"),
+        ("audio", "Multimedia"),
+        ("video", "Multimedia"),
         ("network", "Internet"),
         ("office", "Office"),
         ("education", "Education"),
@@ -794,6 +794,18 @@ mod tests {
         let app = parse_component(xml, Path::new("/tmp/appstream.xml")).unwrap();
         assert_eq!(app.name, "Test & App");
         assert_eq!(app.category, "Utilities");
+    }
+
+    #[test]
+    fn multimedia_display_name_preserves_appstream_categories() {
+        for category in ["AudioVideo", "Audio", "Video"] {
+            let xml = format!(
+                "<component type=\"desktop-application\"><id>org.example.Player</id><name>Player</name><categories><category>{category}</category></categories></component>"
+            );
+            let app = parse_component(&xml, Path::new("/tmp/appstream.xml")).unwrap();
+            assert_eq!(app.category, "Multimedia");
+            assert_eq!(app.categories, [category]);
+        }
     }
 
     #[test]
