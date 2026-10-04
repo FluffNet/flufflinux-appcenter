@@ -120,7 +120,9 @@ TestCase {
         waitForPolish(grid); wait(50)
         verify(grid.atYBeginning, "Header reflow preserves the top")
         verify(heading.mapToItem(grid, 0, 0).y >= 0)
-        findChild(fresh, "catalogNaturalScroll").scrollBy(180, false)
+        fresh.requestActivate(); tryCompare(fresh, "active", true)
+        mouseWheel(grid, grid.width / 2, grid.height / 2, 0, -240)
+        wait(500)
         fresh.width = 1280
         waitForPolish(grid); wait(50)
         verify(!grid.atYBeginning, "Do not reset a deliberate scroll on resize")
@@ -297,7 +299,8 @@ TestCase {
             verify(!findChild(card, "recommendedAppName").truncated, pick.name + " should remain readable")
         }
         grid.positionViewAtEnd(); wait(30)
-        findChild(page(), "catalogNaturalScroll").scrollBy(-10000, false)
+        findChild(page(), "catalogNaturalScroll").scrollUp(10000)
+        wait(500)
         wait(30)
         verify(heading.mapToItem(grid, 0, 0).y >= -1, "Mouse wheel reaches recommendations again")
     }

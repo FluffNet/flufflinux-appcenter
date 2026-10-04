@@ -6,7 +6,11 @@ Built with Rust, Qt 6 and QML, it provides a fast, straightforward way to
 browse, discover and install Flatpak applications. It integrates with KDE
 Plasma and replaces Discover while keeping existing shortcuts working.
 
-The current release is **2026.09 (Beta)**.
+Application state, Flatpak operations, queue management and caching are written
+in Rust. Small native adapters connect Qt/QML and KDE desktop services. Page
+scrolling uses Kirigami while screenshot gestures keep their existing behavior.
+
+The current release is **2026.10 (Beta)**.
 
 ## Screenshots
 
@@ -75,7 +79,7 @@ session is Wayland; macOS and Windows builds are not supported.
 Install the build and desktop runtime requirements:
 
 ```sh
-sudo pacman -S --needed base-devel pkgconf rust qt6-base qt6-declarative \
+sudo pacman -S --needed base-devel pkgconf rust ca-certificates qt6-base qt6-declarative \
     qt6-svg qt6-wayland flatpak ostree polkit gzip kirigami \
     qqc2-desktop-style breeze-icons plasma-integration xdg-desktop-portal \
     xdg-desktop-portal-kde xdg-utils desktop-file-utils gtk-update-icon-cache \
@@ -147,6 +151,8 @@ Run the core and interface checks on the supported Linux environment:
 
 ```sh
 cargo test
+sh tests/run_adapter.sh
+sh tests/run_background.sh
 sh tests/run_qml_suite.sh
 ```
 

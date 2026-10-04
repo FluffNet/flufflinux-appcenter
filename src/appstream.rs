@@ -2,20 +2,6 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::ffi::{CStr, CString, c_char, c_void};
-
-unsafe extern "C" {
-    fn fluff_visit_catalogs(visit: unsafe extern "C" fn(*const c_char, *const c_char, *const c_char, *mut c_void), data: *mut c_void);
-    fn fluff_catalog_download_size(remote: *const c_char, url: *const c_char, flatpak_ref: *const c_char) -> f64;
-    fn fluff_catalog_app_installed(id: *const c_char) -> bool;
-}
-unsafe extern "C" fn catalog_root(path: *const c_char, remote: *const c_char, url: *const c_char, data: *mut c_void) {
-    if path.is_null() { return; }
-    let roots = unsafe { &mut *(data as *mut Vec<(PathBuf, String, String)>) };
-    roots.push((PathBuf::from(unsafe { CStr::from_ptr(path) }.to_string_lossy().into_owned()),
-        unsafe { CStr::from_ptr(remote) }.to_string_lossy().into_owned(),
-        unsafe { CStr::from_ptr(url) }.to_string_lossy().into_owned()));
-}
 
 #[derive(Clone, Default)]
 pub struct App {
@@ -48,14 +34,17 @@ pub fn load_catalog(mut progress: impl FnMut(u32)) -> Vec<App> {
     let mut apps = HashMap::<String, App>::new();
     let mut addons = Vec::new();
     let exclusions = crate::catalog_exclusions::load();
-    let mut roots = Vec::<(PathBuf, String, String)>::new();
-    unsafe { fluff_visit_catalogs(catalog_root, &mut roots as *mut _ as *mut c_void); }
+    let inputs = crate::backend::catalog::inputs();
     let mut catalogs = Vec::new();
-    for (root, remote, url) in roots {
+    for (root, remote, url) in inputs.roots {
         let mut files = Vec::new();
         collect_files(&root, 0, &mut files);
         files.sort();
-        catalogs.extend(files.into_iter().map(|path| (path, remote.clone(), url.clone())));
+        catalogs.extend(
+            files
+                .into_iter()
+                .map(|path| (path, remote.clone(), url.clone())),
+        );
     }
     let file_count = catalogs.len().max(1);
     for (file_index, (path, remote, url)) in catalogs.into_iter().enumerate() {
@@ -64,17 +53,26 @@ pub fn load_catalog(mut progress: impl FnMut(u32)) -> Vec<App> {
         };
         let components = blocks(&text, "component");
         for (index, component) in components.iter().enumerate() {
-            progress(((file_index * 100 + index * 100 / components.len().max(1)) * 95 / (file_count * 100)) as u32);
-            let addon = attribute(component.split('>').next().unwrap_or_default(), "type").as_deref() == Some("addon");
-            if !addon && !component.contains("type=\"desktop")
+            progress(
+                ((file_index * 100 + index * 100 / components.len().max(1)) * 95
+                    / (file_count * 100)) as u32,
+            );
+            let addon = attribute(component.split('>').next().unwrap_or_default(), "type")
+                .as_deref()
+                == Some("addon");
+            if !addon
+                && !component.contains("type=\"desktop")
                 && !component.contains("type='desktop")
                 && !component.contains("<launchable")
             {
                 continue;
             }
             if let Some(mut app) = parse_component(component, &path) {
-                if exclusions.should_hide(&app.id, &app.flatpak_ref, |id| CString::new(id).ok()
-                    .is_some_and(|id| unsafe { fluff_catalog_app_installed(id.as_ptr()) })) { continue; }
+                if exclusions.should_hide(&app.id, &app.flatpak_ref, |id| {
+                    inputs.installed.contains(id)
+                }) {
+                    continue;
+                }
                 app.remote = remote.clone();
                 app.source_url = url.clone();
                 if addon {
@@ -83,14 +81,17 @@ pub fn load_catalog(mut progress: impl FnMut(u32)) -> Vec<App> {
                     }
                     continue;
                 }
-                if let (Ok(remote), Ok(url), Ok(reference)) = (CString::new(remote.as_str()),
-                        CString::new(url.as_str()), CString::new(app.flatpak_ref.as_str())) {
-                    let size = unsafe { fluff_catalog_download_size(remote.as_ptr(), url.as_ptr(), reference.as_ptr()) };
-                    if size >= 0.0 { app.download_bytes = Some(size as u64); }
-                }
+                app.download_bytes = inputs
+                    .sizes
+                    .get(&(remote.clone(), url.clone(), app.flatpak_ref.clone()))
+                    .copied();
                 let variant = app.clone();
                 app.sources.push(variant);
-                let key = app.id.strip_suffix(".desktop").unwrap_or(&app.id).to_string();
+                let key = app
+                    .id
+                    .strip_suffix(".desktop")
+                    .unwrap_or(&app.id)
+                    .to_string();
                 apps.entry(key)
                     .and_modify(|current| merge(current, &app))
                     .or_insert(app);
@@ -103,7 +104,9 @@ pub fn load_catalog(mut progress: impl FnMut(u32)) -> Vec<App> {
     let count = result.len().max(1);
     for (index, app) in result.iter_mut().enumerate() {
         attach_addons(app, &addons);
-        for source in &mut app.sources { attach_addons(source, &addons); }
+        for source in &mut app.sources {
+            attach_addons(source, &addons);
+        }
         progress(95 + ((index + 1) * 4 / count) as u32);
     }
     result.sort_by_key(|app| app.name.to_lowercase());
@@ -113,13 +116,22 @@ pub fn load_catalog(mut progress: impl FnMut(u32)) -> Vec<App> {
 
 fn attach_addons(app: &mut App, addons: &[App]) {
     let id = app.id.strip_suffix(".desktop").unwrap_or(&app.id);
-    app.addons = addons.iter().filter(|addon| addon.remote == app.remote
-        && addon.source_url == app.source_url
-        && addon.extends.iter().any(|parent| parent.strip_suffix(".desktop").unwrap_or(parent) == id))
-        .cloned().collect();
+    app.addons = addons
+        .iter()
+        .filter(|addon| {
+            addon.remote == app.remote
+                && addon.source_url == app.source_url
+                && addon
+                    .extends
+                    .iter()
+                    .any(|parent| parent.strip_suffix(".desktop").unwrap_or(parent) == id)
+        })
+        .cloned()
+        .collect();
     app.addons.sort_by_key(|addon| addon.name.to_lowercase());
     let mut seen = HashSet::new();
-    app.addons.retain(|addon| seen.insert(addon.flatpak_ref.clone()));
+    app.addons
+        .retain(|addon| seen.insert(addon.flatpak_ref.clone()));
 }
 
 fn collect_files(directory: &Path, depth: u8, files: &mut Vec<PathBuf>) {
@@ -172,8 +184,10 @@ fn read_metadata(path: &Path) -> Option<String> {
             // A deployment can change between enumeration and reading, or its
             // plain copy may be unreadable. Retain the compressed fallback.
             let compressed = path.with_extension("xml.gz");
-            (path.extension().and_then(|value| value.to_str()) == Some("xml") && compressed.is_file())
-                .then(|| read_metadata(&compressed)).flatten()
+            (path.extension().and_then(|value| value.to_str()) == Some("xml")
+                && compressed.is_file())
+            .then(|| read_metadata(&compressed))
+            .flatten()
         })
     }
 }
@@ -199,9 +213,12 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         .collect();
     let category = display_category(&categories).to_string();
     let mut seen_mime = HashSet::new();
-    let mime_types = blocks(xml, "mediatype").into_iter().chain(blocks(xml, "mimetype"))
+    let mime_types = blocks(xml, "mediatype")
+        .into_iter()
+        .chain(blocks(xml, "mimetype"))
         .map(|value| clean_markup(value).to_ascii_lowercase())
-        .filter(|value| value.contains('/') && seen_mime.insert(value.clone())).collect();
+        .filter(|value| value.contains('/') && seen_mime.insert(value.clone()))
+        .collect();
     let developer = base_text(xml, "developer_name")
         .or_else(|| base_text(xml, "developer-name"))
         .or_else(|| element(xml, "developer").and_then(|value| base_text(value, "name")))
@@ -211,7 +228,9 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
     let version = release_version(xml);
     let release = first_release(xml).unwrap_or_default();
     let release_date = attribute(release, "date").unwrap_or_default();
-    let release_timestamp = attribute(release, "timestamp").and_then(|value| value.parse::<u64>().ok()).filter(|value| *value > 0);
+    let release_timestamp = attribute(release, "timestamp")
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0);
     let mut seen_screenshots = HashSet::new();
     let screenshots = blocks(xml, "screenshot")
         .into_iter()
@@ -241,7 +260,10 @@ fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
         remote,
         source_url: String::new(),
         sources: Vec::new(),
-        extends: blocks(xml, "extends").into_iter().map(clean_markup).collect(),
+        extends: blocks(xml, "extends")
+            .into_iter()
+            .map(clean_markup)
+            .collect(),
         addons: Vec::new(),
     })
 }
@@ -262,8 +284,11 @@ fn preferred_screenshot(screenshot: &str) -> Option<String> {
 
 fn merge(current: &mut App, incoming: &App) {
     for source in &incoming.sources {
-        if !current.sources.iter().any(|existing| existing.remote == source.remote
-            && existing.source_url == source.source_url && existing.flatpak_ref == source.flatpak_ref) {
+        if !current.sources.iter().any(|existing| {
+            existing.remote == source.remote
+                && existing.source_url == source.source_url
+                && existing.flatpak_ref == source.flatpak_ref
+        }) {
             current.sources.push(source.clone());
         }
     }
@@ -376,12 +401,18 @@ fn release_version(xml: &str) -> String {
 
 fn first_release(xml: &str) -> Option<&str> {
     let releases = element(xml, "releases")?;
-    releases.match_indices("<release").filter(|(offset, _)| {
-        releases.as_bytes().get(offset + 8).is_some_and(u8::is_ascii_whitespace)
-    }).find_map(|(offset, _)| {
-        let rest = &releases[offset..];
-        Some(&rest[..=rest.find('>')?])
-    })
+    releases
+        .match_indices("<release")
+        .filter(|(offset, _)| {
+            releases
+                .as_bytes()
+                .get(offset + 8)
+                .is_some_and(u8::is_ascii_whitespace)
+        })
+        .find_map(|(offset, _)| {
+            let rest = &releases[offset..];
+            Some(&rest[..=rest.find('>')?])
+        })
 }
 
 fn blocks<'a>(input: &'a str, tag: &str) -> Vec<&'a str> {
@@ -531,9 +562,20 @@ pub fn to_json(apps: &[App]) -> String {
             app.download_bytes.map(|value| value.to_string()).unwrap_or("null".into())
         ));
         output.pop();
-        output.push_str(&format!(",\"categories\":[{}],\"mimeTypes\":[{}],\"addons\":{}}}",
-            app.categories.iter().map(|v| escape_json(v)).collect::<Vec<_>>().join(","),
-            app.mime_types.iter().map(|v| escape_json(v)).collect::<Vec<_>>().join(","), to_json(&app.addons)));
+        output.push_str(&format!(
+            ",\"categories\":[{}],\"mimeTypes\":[{}],\"addons\":{}}}",
+            app.categories
+                .iter()
+                .map(|v| escape_json(v))
+                .collect::<Vec<_>>()
+                .join(","),
+            app.mime_types
+                .iter()
+                .map(|v| escape_json(v))
+                .collect::<Vec<_>>()
+                .join(","),
+            to_json(&app.addons)
+        ));
     }
     output.push(']');
     output
@@ -544,48 +586,91 @@ mod tests {
     use super::*;
     #[test]
     fn addons_match_parent_and_source_without_entering_app_lists() {
-        let mut parent = App { id: "org.example.Parent.desktop".into(), remote: "stable".into(),
-            source_url: "https://example.org/repo".into(), ..App::default() };
+        let mut parent = App {
+            id: "org.example.Parent.desktop".into(),
+            remote: "stable".into(),
+            source_url: "https://example.org/repo".into(),
+            ..App::default()
+        };
         let mut addon = parse_component("<component type='addon'><id>org.example.Parent.Plugin.One</id><name>Plugin One</name><extends>org.example.Parent</extends><bundle type='flatpak'>runtime/org.example.Parent.Plugin.One/x86_64/stable</bundle></component>", Path::new("/tmp/appstream.xml")).unwrap();
-        addon.remote = parent.remote.clone(); addon.source_url = parent.source_url.clone();
-        let other = App { remote: "other".into(), ..addon.clone() };
-        let wrong_url = App { source_url: "https://other.example/repo".into(), ..addon.clone() };
-        let wrong_parent = App { extends: vec!["org.example.Else".into()], ..addon.clone() };
-        attach_addons(&mut parent, &[addon.clone(), other, wrong_url, wrong_parent, addon]);
+        addon.remote = parent.remote.clone();
+        addon.source_url = parent.source_url.clone();
+        let other = App {
+            remote: "other".into(),
+            ..addon.clone()
+        };
+        let wrong_url = App {
+            source_url: "https://other.example/repo".into(),
+            ..addon.clone()
+        };
+        let wrong_parent = App {
+            extends: vec!["org.example.Else".into()],
+            ..addon.clone()
+        };
+        attach_addons(
+            &mut parent,
+            &[addon.clone(), other, wrong_url, wrong_parent, addon],
+        );
         assert_eq!(parent.addons.len(), 1);
         assert_eq!(parent.addons[0].name, "Plugin One");
-        assert!(to_json(&[parent]).contains("\"addons\":[{\"id\":\"org.example.Parent.Plugin.One\""));
+        assert!(
+            to_json(&[parent]).contains("\"addons\":[{\"id\":\"org.example.Parent.Plugin.One\"")
+        );
     }
     #[test]
     fn serializes_release_dates_and_unknown_sizes_without_inventing_values() {
-        let prefix = "<component type='desktop-application'><id>org.example.Date</id><name>Date</name>";
+        let prefix =
+            "<component type='desktop-application'><id>org.example.Date</id><name>Date</name>";
         let app = parse_component(&format!("{prefix}<releases><release version='2' timestamp='1789940480' date='2026-09-21'/><release version='1' date='2020-01-01'/></releases></component>"), Path::new("/tmp/appstream.xml")).unwrap();
         assert_eq!(app.release_timestamp, Some(1789940480));
         assert_eq!(app.release_date, "2026-09-21");
         assert_eq!(app.download_bytes, None);
-        assert!(to_json(&[app.clone()]).contains("\"downloadBytes\":null"));
-        let zero = App { download_bytes: Some(0), ..app };
+        assert!(to_json(std::slice::from_ref(&app)).contains("\"downloadBytes\":null"));
+        let zero = App {
+            download_bytes: Some(0),
+            ..app
+        };
         assert!(to_json(&[zero]).contains("\"downloadBytes\":0"));
-        let missing = parse_component(&format!("{prefix}<releases><release version='1' timestamp='bad'/></releases></component>"), Path::new("/tmp/appstream.xml")).unwrap();
+        let missing = parse_component(
+            &format!(
+                "{prefix}<releases><release version='1' timestamp='bad'/></releases></component>"
+            ),
+            Path::new("/tmp/appstream.xml"),
+        )
+        .unwrap();
         assert_eq!(missing.release_timestamp, None);
         assert!(missing.release_date.is_empty());
     }
     #[test]
     fn keeps_distinct_sources_without_duplicate_catalog_cards() {
-        let base = App { id: "org.example.App".into(), name: "Test".into(), remote: "stable".into(),
-            flatpak_ref: "app/org.example.App/x86_64/stable".into(), version: "1.0".into(),
-            source_url: "https://example.org/stable".into(), ..App::default() };
+        let base = App {
+            id: "org.example.App".into(),
+            name: "Test".into(),
+            remote: "stable".into(),
+            flatpak_ref: "app/org.example.App/x86_64/stable".into(),
+            version: "1.0".into(),
+            source_url: "https://example.org/stable".into(),
+            ..App::default()
+        };
         let mut current = base.clone();
         current.sources.push(base.clone());
-        let mut beta = App { remote: "beta".into(), flatpak_ref: "app/org.example.App/x86_64/beta".into(),
-            source_url: "https://example.org/beta".into(), version: "2.0".into(), ..base.clone() };
+        let mut beta = App {
+            remote: "beta".into(),
+            flatpak_ref: "app/org.example.App/x86_64/beta".into(),
+            source_url: "https://example.org/beta".into(),
+            version: "2.0".into(),
+            ..base.clone()
+        };
         beta.sources.push(beta.clone());
         merge(&mut current, &beta);
         merge(&mut current, &beta); // System/user copies of the same origin collapse.
         assert_eq!(current.sources.len(), 2);
         assert_eq!(current.version, "1.0");
         assert_eq!(current.sources[1].version, "2.0");
-        assert!(current.sources.iter().all(|source| source.sources.is_empty()));
+        assert!(current
+            .sources
+            .iter()
+            .all(|source| source.sources.is_empty()));
         assert!(to_json(&[current]).contains("\"sourceUrl\":\"https://example.org/beta\""));
     }
     #[test]
@@ -606,19 +691,31 @@ mod tests {
 
     #[test]
     fn paired_xml_and_gzip_are_read_once_with_fallback() {
-        let unique = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos();
-        let root = std::env::temp_dir().join(format!("fluff-catalog-formats-{}-{unique}", std::process::id()));
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "fluff-catalog-formats-{}-{unique}",
+            std::process::id()
+        ));
         fs::create_dir(&root).unwrap();
         struct Cleanup(PathBuf);
         impl Drop for Cleanup {
-            fn drop(&mut self) { let _ = fs::remove_dir_all(&self.0); }
+            fn drop(&mut self) {
+                let _ = fs::remove_dir_all(&self.0);
+            }
         }
         let _cleanup = Cleanup(root.clone());
         let plain = root.join("appstream.xml");
         let compressed = root.join("appstream.xml.gz");
         let xml = "<components><component><id>org.example.One</id></component></components>";
         fs::write(&plain, xml).unwrap();
-        let gzip = Command::new("gzip").arg("-nc").arg(&plain).output().unwrap();
+        let gzip = Command::new("gzip")
+            .arg("-nc")
+            .arg(&plain)
+            .output()
+            .unwrap();
         assert!(gzip.status.success());
         fs::write(&compressed, &gzip.stdout).unwrap();
         fs::write(root.join("additional.xml"), "<components/>").unwrap();
@@ -626,13 +723,21 @@ mod tests {
         let mut files = Vec::new();
         collect_files(&root, 0, &mut files);
         files.sort();
-        assert_eq!(files, vec![root.join("additional.xml"), plain.clone(), root.join("compressed-only.xml.gz")]);
+        assert_eq!(
+            files,
+            vec![
+                root.join("additional.xml"),
+                plain.clone(),
+                root.join("compressed-only.xml.gz")
+            ]
+        );
         assert_eq!(read_metadata(&plain).as_deref(), Some(xml));
         fs::write(&plain, [0xff, 0xfe]).unwrap();
         assert_eq!(read_metadata(&plain).as_deref(), Some(xml)); // Unreadable text falls back.
         fs::remove_file(&plain).unwrap();
         assert_eq!(read_metadata(&plain).as_deref(), Some(xml)); // Replaced during reading.
-        files.clear(); collect_files(&root, 0, &mut files);
+        files.clear();
+        collect_files(&root, 0, &mut files);
         assert!(files.contains(&compressed) && !files.contains(&plain));
         assert_eq!(read_metadata(&compressed).as_deref(), Some(xml));
         fs::write(&compressed, "broken gzip").unwrap();
@@ -696,12 +801,22 @@ mod tests {
         let xml = r#"<component type="desktop-application"><id>org.example.Viewer</id><name>PDF</name><categories><category>Office</category><category>Viewer</category></categories><provides><mediatype>application/pdf</mediatype><mediatype>image/png</mediatype></provides><mimetypes><mimetype>APPLICATION/PDF</mimetype><mimetype>image/jpeg</mimetype></mimetypes></component>"#;
         let app = parse_component(xml, Path::new("/tmp/appstream.xml")).unwrap();
         assert_eq!(app.categories, ["Office", "Viewer"]);
-        assert_eq!(app.mime_types, ["application/pdf", "image/png", "image/jpeg"]);
-        let json = to_json(&[app.clone()]);
+        assert_eq!(
+            app.mime_types,
+            ["application/pdf", "image/png", "image/jpeg"]
+        );
+        let json = to_json(std::slice::from_ref(&app));
         assert!(json.contains("\"categories\":[\"Office\",\"Viewer\"]"));
         assert!(json.contains("\"mimeTypes\":[\"application/pdf\",\"image/png\",\"image/jpeg\"]"));
-        let mut missing = App { id: app.id.clone(), name: "PDF editor".into(), ..App::default() };
-        assert!(missing.mime_types.is_empty(), "Never infer MIME support from an app's name");
+        let mut missing = App {
+            id: app.id.clone(),
+            name: "PDF editor".into(),
+            ..App::default()
+        };
+        assert!(
+            missing.mime_types.is_empty(),
+            "Never infer MIME support from an app's name"
+        );
         merge(&mut missing, &app);
         assert_eq!(missing.categories, app.categories);
         assert_eq!(missing.mime_types, app.mime_types);

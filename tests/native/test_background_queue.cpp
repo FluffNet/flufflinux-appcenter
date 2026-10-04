@@ -1,7 +1,6 @@
 // Real manager/controller and KDE libraries on an isolated test D-Bus.
 // Workers and power/job services are fixtures; no real apps are changed.
-#include "../../src/catalog_inputs.h"
-#include "../../src/catalog_cache.h"
+#include "rust_cache_fixture.h"
 #include "../../src/background_queue.h"
 #include "../../src/flatpak_manager.h"
 #include <QApplication>
@@ -52,11 +51,17 @@ public:
         return true;
     }
 };
+static FlatpakManager *testedManager = nullptr;
 static void waitFor(const std::function<bool()> &condition) {
     static int checkpoint = 0; ++checkpoint;
     QElapsedTimer timer; timer.start();
     while (!condition() && timer.elapsed() < 6000) { QCoreApplication::processEvents(); QThread::msleep(5); }
-    if (!condition()) qFatal("Background test timed out at checkpoint %d", checkpoint);
+    if (!condition()) {
+        if (testedManager) std::cerr << "catalog=" << testedManager->catalogLoading() << " busy=" << testedManager->busy()
+            << " sources=" << testedManager->sourcesBusy() << " error=" << testedManager->sourcesError().toStdString()
+            << " pending=" << testedManager->backgroundWorkPending() << std::endl;
+        qFatal("Background test timed out at checkpoint %d", checkpoint);
+    }
 }
 static void write(const QString &path, const QByteArray &data, bool executable = false) {
     QFile file(path); assert(file.open(QIODevice::WriteOnly)); file.write(data); file.close();
@@ -125,6 +130,7 @@ int main(int argc, char **argv) {
     assert(bus.registerVirtualObject("/org/freedesktop/PowerManagement/Inhibit", &desktop));
     assert(bus.registerVirtualObject("/org/freedesktop/Notifications", &desktop));
     FlatpakManager manager({}); QWindow window; window.show();
+    testedManager = &manager;
     BackgroundQueue background(&manager, &window, [&] { window.show(); });
     waitFor([&] { return !manager.installedLoading(); });
     auto install = [&](const QString &id) { manager.installApp({{"id", id}, {"name", id}}); };
@@ -266,11 +272,11 @@ int main(int argc, char **argv) {
     assert(savedBeforeQuit);
     // A stuck parse/write cannot extend the background service indefinitely.
     window.show();
-    const auto timeout = manager.findChild<QTimer *>("catalogWorkTimeout"); assert(timeout);
-    timeout->setInterval(150);
     write(exclusions, "org.example.OtherHidden\n");
     manager.refreshSources(false);
     waitFor([&] { return manager.catalogLoading(); });
+    const auto timeout = manager.findChild<QTimer *>("catalogWorkTimeout"); assert(timeout);
+    timeout->start(150);
     const auto remaining = timeout->remainingTime();
     window.close(); window.show(); window.close();
     assert(manager.backgroundWorkPending() && background.closed());

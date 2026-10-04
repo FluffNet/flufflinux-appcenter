@@ -1,15 +1,14 @@
 #pragma once
 #include <QObject>
 #include <QVariant>
-#include <QProcess>
-#include <QTimer>
-#include <QElapsedTimer>
-#include <QHash>
 #include <QJsonObject>
-#include <QDateTime>
-#include "install_history.h"
-#include "download_rate.h"
+#include <QHash>
+#include <QQueue>
+#include <QTimer>
+#include <memory>
 
+// Presentation and Qt event-loop transport. The opaque Rust object owns all
+// application state, validation, queue policy and persistence.
 class FlatpakManager final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList jobs READ jobs NOTIFY jobsChanged)
@@ -34,64 +33,63 @@ class FlatpakManager final : public QObject {
 public:
     explicit FlatpakManager(const QVariantList &catalog, QObject *parent = nullptr);
     ~FlatpakManager() override;
-    QVariantList jobs() const;
-    QVariantMap installSizes() const { return m_installSizes; }
-    QVariantMap appPermissions() const { return m_appPermissions; }
-    QVariantMap appAddons() const { return m_appAddons; }
-    Q_INVOKABLE int requestAppAddons(QVariantMap app);
-    Q_INVOKABLE void cancelAppAddons(int token = 0);
-    Q_INVOKABLE void changeAddon(QString reference, bool install);
-    QVariantMap updates() const;
-    Q_INVOKABLE void checkForUpdates();
-    Q_INVOKABLE void cancelUpdateCheck();
-    Q_INVOKABLE void selectUpdate(QString key, bool selected);
-    Q_INVOKABLE void selectAllUpdates(bool selected);
-    Q_INVOKABLE void installSelectedUpdates();
-    Q_INVOKABLE int requestAppPermissions(QVariantMap app);
-    Q_INVOKABLE void cancelAppPermissions(int token = 0);
-    QVariantMap review() const { return m_review; }
-    bool busy() const;
-    QVariantList installedApps() const { return m_installed; }
-    bool installedLoading() const { return m_loading; }
-    QString installedError() const { return m_installedError; }
-    int iconRevision() const { return m_iconRevision; }
-    Q_INVOKABLE void installApp(QVariantMap app);
-    Q_INVOKABLE void requestInstallInfo(QVariantMap app);
-    Q_INVOKABLE void uninstallApp(QVariantMap app);
-    Q_INVOKABLE void openSource(QString source);
-    void openInstalledApplication(QString source);
-    Q_INVOKABLE void answerReview(int token, bool accept);
-    Q_INVOKABLE void cancelJob(int index);
-    Q_INVOKABLE void cancelAll();
-    Q_INVOKABLE void clearDownloadHistory();
-    Q_INVOKABLE void refreshInstalled();
-    Q_INVOKABLE void launchApp(QVariantMap app);
-    QVariantList catalog() const { return m_catalog; }
-    bool catalogLoading() const { return m_catalogRefreshPending || m_catalogAwaitingSources || m_catalogProcess.state() != QProcess::NotRunning; }
-    int catalogProgress() const { return m_catalogProgress; }
-    // Closing the window must not kill a post-transaction cache write. A
-    // refresh deferred for offline connectivity is not active background work.
-    bool backgroundWorkPending() const { return busy() || m_catalogProcess.state() != QProcess::NotRunning; }
-    void loadCatalog(const QString &cachePath = {});
-    void setCatalogNetworkState(const QString &state, bool ready);
-    // Usable cached applications remain browsable even if refreshing fails.
-    bool catalogSourcesUnavailable() const { return m_catalogLoadsFailed && m_catalog.isEmpty(); }
-    QVariantList repositories() const { return m_repositories; }
-    bool sourcesBusy() const { return m_sourceProcess.state() != QProcess::NotRunning; }
-    QString sourceInputStatus() const;
-    QString sourcesError() const { return m_sourcesError; }
-    void initializeSources();
-    Q_INVOKABLE void refreshSources(bool refreshCatalogs = false);
-    Q_INVOKABLE void setSourceEnabled(QVariantMap source, bool enabled);
-    Q_INVOKABLE void removeSource(QVariantMap source);
-    Q_INVOKABLE void addDefaultSources();
+    QVariantList jobs() const { return m_state.value("jobs").toList(); }
+    QVariantMap review() const { return m_state.value("review").toMap(); }
+    bool busy() const { return m_state.value("busy").toBool(); }
+    QVariantList installedApps() const { return m_state.value("installedApps").toList(); }
+    bool installedLoading() const { return m_state.value("installedLoading").toBool(); }
+    QString installedError() const { return m_state.value("installedError").toString(); }
+    int iconRevision() const { return m_state.value("iconRevision").toInt(); }
+    QVariantMap installSizes() const { return m_state.value("installSizes").toMap(); }
+    QVariantMap appPermissions() const { return m_state.value("appPermissions").toMap(); }
+    QVariantMap appAddons() const { return m_state.value("appAddons").toMap(); }
+    QVariantMap updates() const { return m_state.value("updates").toMap(); }
+    QVariantList catalog() const { return m_state.value("catalog").toList(); }
+    bool catalogLoading() const { return m_state.value("catalogLoading").toBool(); }
+    int catalogProgress() const { return m_state.value("catalogProgress").toInt(); }
+    bool catalogSourcesUnavailable() const { return m_state.value("catalogSourcesUnavailable").toBool(); }
+    QVariantList repositories() const { return m_state.value("repositories").toList(); }
+    bool sourcesBusy() const { return m_state.value("sourcesBusy").toBool(); }
+    QString sourceInputStatus() const { return m_state.value("sourceInputStatus").toString(); }
+    QString sourcesError() const { return m_state.value("sourcesError").toString(); }
+    Q_INVOKABLE int requestAppAddons(QVariantMap app) { return dispatch("requestAppAddons", {app}).toInt(); }
+    Q_INVOKABLE void cancelAppAddons(int token = 0) { dispatch("cancelAppAddons", {token}); }
+    Q_INVOKABLE void changeAddon(QString reference, bool install) { dispatch("changeAddon", {reference, install}); }
+    Q_INVOKABLE void checkForUpdates() { dispatch("checkForUpdates", {}); }
+    Q_INVOKABLE void cancelUpdateCheck() { dispatch("cancelUpdateCheck", {}); }
+    Q_INVOKABLE void selectUpdate(QString key, bool selected) { dispatch("selectUpdate", {key, selected}); }
+    Q_INVOKABLE void selectAllUpdates(bool selected) { dispatch("selectAllUpdates", {selected}); }
+    Q_INVOKABLE void installSelectedUpdates() { dispatch("installSelectedUpdates", {}); }
+    Q_INVOKABLE int requestAppPermissions(QVariantMap app) { return dispatch("requestAppPermissions", {app}).toInt(); }
+    Q_INVOKABLE void cancelAppPermissions(int token = 0) { dispatch("cancelAppPermissions", {token}); }
+    Q_INVOKABLE void installApp(QVariantMap app) { dispatch("installApp", {app}); }
+    Q_INVOKABLE void requestInstallInfo(QVariantMap app) { dispatch("requestInstallInfo", {app}); }
+    Q_INVOKABLE void uninstallApp(QVariantMap app) { dispatch("uninstallApp", {app}); }
+    Q_INVOKABLE void openSource(QString source) { dispatch("openSource", {source}); }
+    Q_INVOKABLE void answerReview(int token, bool accept) { dispatch("answerReview", {token, accept}); }
+    Q_INVOKABLE void cancelJob(int index) { dispatch("cancelJob", {index}); }
+    Q_INVOKABLE void cancelAll() { dispatch("cancelAll", {}); }
+    Q_INVOKABLE void clearDownloadHistory() { dispatch("clearDownloadHistory", {}); }
+    Q_INVOKABLE void refreshInstalled() { dispatch("refreshInstalled", {}); }
+    Q_INVOKABLE void launchApp(QVariantMap app) { dispatch("launchApp", {app}); }
+    Q_INVOKABLE void refreshSources(bool refreshCatalogs = false) { dispatch("refreshSources", {refreshCatalogs}); }
+    Q_INVOKABLE void setSourceEnabled(QVariantMap source, bool enabled) { dispatch("setSourceEnabled", {source, enabled}); }
+    Q_INVOKABLE void removeSource(QVariantMap source) { dispatch("removeSource", {source}); }
+    Q_INVOKABLE void addDefaultSources() { dispatch("addDefaultSources", {}); }
+    void openInstalledApplication(QString source) { dispatch("openInstalledApplication", {source}); }
+    void loadCatalog(const QString &path = {}) { dispatch("loadCatalog", {path}); }
+    void setCatalogNetworkState(const QString &state, bool ready) { dispatch("setCatalogNetworkState", {state, ready}); }
+    void initializeSources() { dispatch("initializeSources"); }
+    bool backgroundWorkPending() const { return m_state.value("backgroundWorkPending").toBool(); }
+    QVariantMap popularity() const { return m_state.value("popularity").toMap(); }
+    void loadPopularity() { dispatch("loadPopularity"); }
+    void enableBackground() { dispatch("backgroundEnable"); }
+    void setBackgroundClosed(bool closed) { dispatch("backgroundClosed", {closed}); }
+    void backgroundIdle() { dispatch("backgroundIdle"); }
 signals:
     void jobsChanged();
     void reviewChanged();
     void installedChanged();
-    void appOpened(QVariantMap app);
-    void homeRequested();
-    void inputError(QString message);
     void installSizesChanged();
     void appPermissionsChanged();
     void appAddonsChanged();
@@ -99,91 +97,27 @@ signals:
     void catalogChanged();
     void catalogProgressChanged();
     void repositoriesChanged();
+    void appOpened(QVariantMap app);
+    void homeRequested();
+    void inputError(QString message);
+    void popularityChanged();
+    void backgroundCommand(QVariantMap command);
 private slots:
     void refreshThemeIcons(int group);
 private:
-    struct WorkerState {
-        QProcess process;
-        QTimer cancelTimeout;
-        QByteArray buffer, diagnostics;
-        int current = -1;
-        bool resultReceived = false;
-    };
-    void connectWorker(WorkerState &worker);
-    WorkerState *workerForJob(int index);
-    void queueReview(QVariantMap review, int index);
-    void showNextReview();
-    void clearReviewsForJob(int index);
-    void enqueue(QVariantMap request);
-    void startNext();
-    void receive(WorkerState &worker);
-    void handleMessage(WorkerState &worker, const QJsonObject &message);
-    void patchJob(int index, const QVariantMap &values);
-    QVariantMap downloadRateValues(const QVariantMap &job);
-    void refreshCaches();
-    void refreshNextCache();
-    QVariantMap installRequest(const QVariantMap &app) const;
-    QVariantMap metadata(const QString &id) const;
-    void runSourceOperation(QVariantMap request);
-    void reloadCatalog(bool force = false);
-    void setCatalog(const QVariantList &catalog);
-    void setCatalogProgress(int progress, bool reset = false);
-    void readCatalogProgress();
-    void startCatalogRefresh();
-    void drainApplicationLinks();
-    void drainInstalledApplicationLinks();
-    QStringList m_pendingApplicationLinks;
-    QStringList m_pendingInstalledApplicationLinks;
-    QVariantList m_jobs, m_requests, m_installed, m_pendingReviews;
-    quint64 m_queueBatch = 0;
-    QVariantMap m_review;
-    QVariantMap m_installSizes, m_sizeApp;
-    QVariantMap m_appPermissions;
-    QProcess *m_permissionsProcess = nullptr;
-    int m_permissionsToken = 0;
-    QVariantMap m_appAddons;
-    QProcess *m_addonsProcess = nullptr;
-    int m_addonsToken = 0;
-    InstallHistory m_installHistory;
-    InstallHistory m_updateHistory{QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/update-dates.json"};
-    QProcess m_updatesProcess;
-    QTimer m_updatesTimeout;
-    QByteArray m_updatesBuffer;
-    QVariantList m_updates;
-    QStringList m_updatesSkipped;
-    bool m_updateSourcesChanged = false;
-    QString m_updatesState = "idle", m_updatesStatus, m_updatesError, m_lastChecked;
-    bool m_updatesResult = false;
-    QHash<QString, QVariantMap> m_sources;
-    QHash<QString, QVariantMap> m_metadata;
-    WorkerState m_installWorker, m_removalWorker;
-    QProcess m_installedProcess, m_cache;
-    QTimer m_installedTimeout, m_cacheTimeout, m_downloadRateTimer;
-    QElapsedTimer m_downloadClock;
-    DownloadRate m_downloadRate;
-    QList<QStringList> m_cacheCommands;
-    int m_iconRevision = 0, m_nextReviewToken = 0;
-    int m_installedRevision = 0, m_installedReadRevision = 0;
-    bool m_loading = true, m_stopping = false;
-    bool m_refreshingCaches = false, m_cacheRefreshPending = false, m_installedRefreshPending = false;
-    QString m_installedError;
-    QVariantList m_catalog, m_repositories;
-    QProcess m_sourceProcess, m_catalogProcess;
-    QTimer m_catalogTimeout;
-    bool m_catalogTimedOut = false;
-    int m_catalogProgress = 0;
-    QByteArray m_catalogProgressBuffer;
-    QByteArray m_sourceBuffer;
-    QString m_sourcesError;
-    bool m_catalogLoadsFailed = false;
-    QString m_catalogCachePath, m_catalogFingerprint, m_catalogReadFingerprint;
-    QDateTime m_catalogSavedAt;
-    bool m_catalogForceAgain = false, m_sourceRefreshCatalog = false;
-    bool m_catalogAwaitingSources = false, m_catalogResetAge = false;
-    bool m_catalogHasRefreshedSources = false;
-    bool m_catalogRefreshPending = false, m_catalogNetworkReady = true, m_catalogOffline = false;
-    bool m_sourceSucceeded = false, m_sourceCatalogReported = false;
-    int m_sourceCatalogsRefreshed = 0;
-    QStringList m_pendingInputs;
-    bool m_sourceResult = false, m_sourceListing = false, m_catalogAgain = false, m_sourcesRefreshPending = false;
+    struct Process;
+    QVariant dispatch(const QString &action, const QVariantList &arguments = {});
+    QVariant apply(char *reply);
+    void applyResponse(const QJsonObject &response);
+    void execute(const QJsonObject &command);
+    void readOutput(const std::shared_ptr<Process> &process, bool diagnostics);
+    void finish(const std::shared_ptr<Process> &process, int code, bool crashed);
+    void processEvent(const std::shared_ptr<Process> &process, QJsonObject message);
+    void *m_backend = nullptr;
+    QVariantMap m_state;
+    QQueue<QJsonObject> m_responses;
+    QHash<quint64, std::shared_ptr<Process>> m_processes;
+    QHash<QString, QTimer *> m_timers;
+    bool m_stopping = false;
+    bool m_applying = false;
 };

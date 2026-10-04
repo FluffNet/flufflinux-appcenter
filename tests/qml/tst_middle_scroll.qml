@@ -13,7 +13,7 @@ TestCase {
             id: view
             anchors.fill: parent; contentWidth: width; contentHeight: 2400; clip: true
             boundsBehavior: Flickable.StopAtBounds
-            AppCenter.NaturalWheelScroll { id: wheel; scrollTarget: view; middleScrollIdleZ: -1 }
+            AppCenter.PageWheelScroll { id: wheel; scrollTarget: view; middleScrollIdleZ: -1 }
             Button { id: action; x: 20; y: 200; width: 200; height: 50; text: "Test action" }
             Flickable {
                 id: strip
@@ -28,7 +28,8 @@ TestCase {
     SignalSpy { id: clicked; target: action; signalName: "clicked" }
     function init() {
         failOnWarning(/(ReferenceError|TypeError|Binding loop|Cannot assign)/)
-        popup.close(); tip.close(); wheel.middleMouseScroll.stop(); horizontal.stop(); wheel.stopSmoothScroll()
+        popup.close(); tip.close(); wheel.middleMouseScroll.stop(); horizontal.stop()
+        wheel.enabled = false; view.cancelFlick(); wheel.enabled = true
         view.visible = true; view.contentHeight = 2400; view.contentY = 0; strip.contentX = 0
         clicked.clear(); win.requestActivate(); tryCompare(win, "active", true)
         waitForPolish(view); wait(30)
@@ -69,7 +70,8 @@ TestCase {
     function test_wheel_and_visibility_stop() {
         start()
         mouseWheel(view, 300, 150, 0, -120)
-        verify(!wheel.middleMouseScroll.scrolling); compare(view.contentY, 100)
+        verify(!wheel.middleMouseScroll.scrolling); tryVerify(() => view.contentY > 0)
+        wait(500)
         start(); view.visible = false
         verify(!wheel.middleMouseScroll.scrolling)
     }
@@ -96,9 +98,8 @@ TestCase {
         tryVerify(() => view.contentY > 20)
         tip.close(); keyClick(Qt.Key_Escape)
     }
-    function test_page_exit_and_smooth_wheel_stop() {
-        wheel.applyTouchpadDelta(250, false)
-        start(); verify(!wheel.smoothScrolling)
+    function test_page_exit_stops_middle_scroll() {
+        start()
         mouseMove(win.contentItem, 599, 499)
         // Leaving the window/view cancels the latch.
         mouseMove(win.contentItem, -5, -5)

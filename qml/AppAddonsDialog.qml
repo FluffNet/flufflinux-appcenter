@@ -96,7 +96,7 @@ Dialog {
                     surfaceColor: window.raisedSurfaceColor
                     Accessible.name: qsTr("Scroll app add-ons")
                 }
-                NaturalWheelScroll { scrollTarget: scroll }
+                PageWheelScroll { scrollTarget: scroll }
                 ColumnLayout {
                     id: entries
                     width: parent.width - 16; spacing: 12

@@ -67,7 +67,7 @@ Dialog {
                 surfaceColor: window.raisedSurfaceColor
                 Accessible.name: qsTr("Scroll app permissions")
             }
-            NaturalWheelScroll { scrollTarget: permissionScroll }
+            PageWheelScroll { scrollTarget: permissionScroll }
             ColumnLayout {
                 id: body
                 width: permissionScroll.width

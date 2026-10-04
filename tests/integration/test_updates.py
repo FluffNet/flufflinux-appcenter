@@ -16,7 +16,7 @@ import tempfile
 import time
 
 PROJECT = Path(__file__).resolve().parents[2]
-BINARY = PROJECT / "target/release/flufflinux-appcenter"
+BINARY = Path(os.environ.get("APPCENTER_TEST_BINARY", PROJECT / "target/release/flufflinux-appcenter"))
 IDS = ["org.flufflinux.UpdateFixtureAlpha", "org.flufflinux.UpdateFixtureBeta"]
 RUNTIME = "org.flufflinux.UpdateFixtureRuntime"
 

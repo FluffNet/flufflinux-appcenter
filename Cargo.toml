@@ -1,13 +1,44 @@
 [package]
 name = "flufflinux-appcenter"
-version = "2026.9.0-beta"
+version = "2026.10.0-beta"
 edition = "2021"
 license = "MIT"
 description = "A small native application catalog for Fluff Linux"
 categories = ["gui"]
 keywords = ["fluff-linux", "arch-linux", "kde", "wayland", "appstream"]
+default-run = "flufflinux-appcenter"
+
+[lib]
+crate-type = ["rlib", "staticlib"]
+
+[features]
+# Only the native adapter regression harness exports fixture accessors.
+native-tests = []
+
+[[example]]
+name = "backend-fixture"
+path = "tests/fixtures/backend.rs"
+required-features = ["native-tests"]
+
+[[bin]]
+name = "flufflinux-appcenter-source-helper"
+path = "src/bin/source_helper.rs"
 
 [dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+url = "2"
+percent-encoding = "2"
+chrono = { version = "0.4", features = ["serde"] }
+libc = "0.2"
+glib = "0.21"
+gio = "0.21"
+libflatpak = { version = "0.7", features = ["v1_13"] }
+ureq = { version = "3", features = ["json", "platform-verifier"] }
+
+[dev-dependencies]
+tempfile = "3"
 
 [profile.release]
 lto = true

@@ -6,6 +6,7 @@
 #include <QJsonDocument>
 #include <QJsonArray>
 #include <QThread>
+#include <QTemporaryDir>
 #include <cassert>
 #include <functional>
 #include <iostream>
@@ -23,6 +24,7 @@ static void until(const std::function<bool()> &condition) {
     assert(condition());
 }
 int main(int argc, char **argv) {
+    if (argc == 2 && QByteArray(argv[1]) == "--catalog") { std::cout << "[]"; return 0; }
     if (argc == 3 && QByteArray(argv[1]) == "--transaction-worker") {
         QCoreApplication child(argc, argv);
         const auto id = QJsonDocument::fromJson(argv[2]).object()["id"].toString();
@@ -43,6 +45,10 @@ int main(int argc, char **argv) {
         });
         return child.exec();
     }
+    if (argc > 1) return 2; // Unknown worker modes must not rerun the test.
+    QTemporaryDir temporary; assert(temporary.isValid());
+    for (const auto variable : {"XDG_DATA_HOME", "XDG_CONFIG_HOME", "XDG_CACHE_HOME"})
+        qputenv(variable, temporary.path().toUtf8());
     QGuiApplication app(argc, argv);
     app.setApplicationName("appcenter-cancel-worker-test");
     FlatpakManager manager({});
@@ -77,5 +83,15 @@ int main(int argc, char **argv) {
     manager.cancelJob(activeIndex); // Clearing history must not invalidate cancellation IDs.
     until([&] { return !manager.busy(); });
     assert(manager.jobs().isEmpty());
-    qInfo("PASS: immediate cancellation, forced worker exit, ignored late progress, safe next worker, genuine crash retained");
+    bool cancelledFromSignal = false;
+    const auto immediateCancel = QObject::connect(&manager, &FlatpakManager::jobsChanged, &manager, [&] {
+        if (cancelledFromSignal || manager.jobs().isEmpty()) return;
+        cancelledFromSignal = true;
+        manager.cancelJob(manager.jobs().first().toMap()["index"].toInt());
+    });
+    manager.installApp({{"id", "org.example.Reentrant"}, {"name", "Reentrant"}});
+    until([&] { return cancelledFromSignal && !manager.busy(); });
+    assert(manager.jobs().isEmpty());
+    QObject::disconnect(immediateCancel);
+    qInfo("PASS: immediate and signal-reentrant cancellation, forced worker exit, ignored late progress, safe next worker, genuine crash retained");
 }

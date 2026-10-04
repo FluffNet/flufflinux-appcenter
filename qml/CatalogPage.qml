@@ -670,10 +670,10 @@ Page {
                 objectName: "categoryList"
                 anchors.fill: parent; anchors.topMargin: installedNavigation.height + sidebar.sectionGap
                 spacing: sidebar.navigationGap; clip: true; model: page.categories
-                interactive: false
+                interactive: true
                 boundsBehavior: Flickable.StopAtBounds
                 onHeightChanged: contentY = 0
-                NaturalWheelScroll {
+                PageWheelScroll {
                     objectName: "categoryNaturalScroll"
                     scrollTarget: categoryList
                 }
@@ -864,7 +864,7 @@ Page {
                         visible: catalogGrid.visible && size < 1
                         onPressedChanged: { if (pressed) catalogGrid.releaseTopAnchor() }
                     }
-                    NaturalWheelScroll {
+                    PageWheelScroll {
                         objectName: "catalogNaturalScroll"
                         scrollTarget: catalogGrid
                         onScrollStarted: catalogGrid.releaseTopAnchor()
@@ -894,7 +894,7 @@ Page {
                         anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
                         visible: installedList.visible && size < 1
                     }
-                    NaturalWheelScroll { scrollTarget: installedList }
+                    PageWheelScroll { scrollTarget: installedList }
                     delegate: InstalledRow {
                         required property var modelData
                         width: ListView.view.width

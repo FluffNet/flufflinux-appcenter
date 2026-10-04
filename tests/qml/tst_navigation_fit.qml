@@ -25,7 +25,7 @@ TestCase {
         compare(brand.x, 16)
         fuzzyCompare(brand.y + brand.height / 2, brand.parent.height / 2, 0.01)
         verify(brand.x + brand.width <= brand.parent.width)
-        compare(list.count, 12); verify(!list.interactive)
+        compare(list.count, 12); verify(list.interactive)
         compare(list.contentY, 0)
         verify(list.contentHeight <= list.height + 0.5)
         verify(sidebar.navigationFontSize > 0)

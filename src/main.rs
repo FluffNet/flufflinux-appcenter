@@ -1,6 +1,5 @@
-mod appstream;
-mod catalog_exclusions;
 mod cli;
+use flufflinux_appcenter::{appstream, backend};
 
 #[cfg(not(target_os = "linux"))]
 compile_error!("App Center supports Fluff Linux/Arch Linux only.");
@@ -18,11 +17,6 @@ unsafe extern "C" {
         inputs: *const *const i8,
         desktop_file: *const i8,
     ) -> i32;
-    fn fluff_transaction_worker(request: *const i8) -> i32;
-    fn fluff_permissions_worker(request: *const i8) -> i32;
-    fn fluff_addons_worker(request: *const i8) -> i32;
-    fn fluff_updates_worker(request: *const i8) -> i32;
-    fn fluff_catalog_cache_result(json: *const i8, request: *const i8) -> i32;
 }
 
 fn installed_assets(executable: &Path) -> Option<PathBuf> {
@@ -78,7 +72,18 @@ fn c_path(path: &Path) -> Result<CString, String> {
 
 fn run() -> Result<i32, String> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.as_slice() == ["--popularity-worker"] {
+        if unsafe { libc::geteuid() } == 0 {
+            return Err("Run App Center as your desktop user.".into());
+        }
+        backend::process::parent_death_signal()?;
+        println!("{}", backend::popularity::fetch()?);
+        return Ok(0);
+    }
     if args.first().map(String::as_str) == Some("--catalog") && args.len() <= 2 {
+        if args.len() == 2 {
+            backend::process::parent_death_signal()?;
+        }
         // Keep stdout a single JSON result for existing --catalog consumers.
         // Emit only changed integer milestones, not one IPC event per app.
         let mut last_progress = 0;
@@ -92,41 +97,81 @@ fn run() -> Result<i32, String> {
         let json = appstream::to_json(&apps);
         eprintln!("APPCENTER_CATALOG_PROGRESS 96");
         if args.len() == 2 {
-            let json = CString::new(json).map_err(|e| e.to_string())?;
-            let request = CString::new(args[1].as_str()).map_err(|e| e.to_string())?;
-            return Ok(unsafe { fluff_catalog_cache_result(json.as_ptr(), request.as_ptr()) });
+            let request = serde_json::from_str(&args[1]).map_err(|e| e.to_string())?;
+            let apps = serde_json::from_str(&json).map_err(|e| e.to_string())?;
+            eprintln!("APPCENTER_CATALOG_PROGRESS 98");
+            let result = backend::catalog::snapshot(&request, apps);
+            eprintln!("APPCENTER_CATALOG_PROGRESS 99");
+            println!("{result}");
+            return Ok(0);
         }
         println!("{json}");
         return Ok(0);
     }
     // The unprivileged worker doesn't parse the catalog or initialize a GUI.
     if args.first().map(String::as_str) == Some("--updates-worker") {
-        if args.len() != 2 { return Err("Missing updates request".into()); }
-        let request = CString::new(args[1].as_str()).map_err(|e| e.to_string())?;
-        return Ok(unsafe { fluff_updates_worker(request.as_ptr()) });
+        if args.len() != 2 {
+            return Err("Missing updates request".into());
+        }
+        if unsafe { libc::geteuid() } == 0 {
+            return Err("Run App Center as your desktop user.".into());
+        }
+        backend::process::parent_death_signal()?;
+        let request = serde_json::from_str(&args[1]).map_err(|e| e.to_string())?;
+        let result = backend::updates::scan(&request, backend::transaction::send);
+        println!("{result}");
+        return Ok(0);
     }
     if args.first().map(String::as_str) == Some("--permissions-worker") {
-        if args.len() != 2 { return Err("Missing permissions request".into()); }
-        let request = CString::new(args[1].as_str()).map_err(|e| e.to_string())?;
-        return Ok(unsafe { fluff_permissions_worker(request.as_ptr()) });
+        if args.len() != 2 {
+            return Err("Missing permissions request".into());
+        }
+        backend::process::parent_death_signal()?;
+        let request = serde_json::from_str(&args[1]).map_err(|e| e.to_string())?;
+        let result = if unsafe { libc::geteuid() } == 0 {
+            backend::permissions::error("Run App Center as your desktop user.")
+        } else {
+            backend::permissions::read(&request)
+        };
+        println!("{result}");
+        return Ok(0);
     }
     if args.first().map(String::as_str) == Some("--addons-worker") {
-        if args.len() != 2 { return Err("Missing add-ons request".into()); }
-        let request = CString::new(args[1].as_str()).map_err(|error| error.to_string())?;
-        return Ok(unsafe { fluff_addons_worker(request.as_ptr()) });
+        if args.len() != 2 {
+            return Err("Missing add-ons request".into());
+        }
+        backend::process::parent_death_signal()?;
+        let request = serde_json::from_str(&args[1]).map_err(|e| e.to_string())?;
+        let result = if unsafe { libc::geteuid() } == 0 {
+            backend::addons::error("Run App Center as your desktop user.")
+        } else {
+            backend::addons::read(&request, None, false)
+        };
+        println!("{result}");
+        return Ok(0);
     }
     if args.first().map(String::as_str) == Some("--transaction-worker") {
         if args.len() != 2 {
             return Err("Missing transaction request".into());
         }
-        let request = CString::new(args[1].as_str()).map_err(|e| e.to_string())?;
-        return Ok(unsafe { fluff_transaction_worker(request.as_ptr()) });
+        let request = serde_json::from_str(&args[1]).map_err(|e| e.to_string())?;
+        return Ok(backend::transaction::run(request));
     }
-    let (actions, desktop_file) = match cli::parse(&args, &env::current_dir().map_err(|e| e.to_string())?)? {
-        cli::Command::NoOp => return Ok(0),
-        cli::Command::Print(text) => { print!("{text}"); return Ok(0); }
-        cli::Command::Launch { actions, desktop_file } => (actions, CString::new(desktop_file).map_err(|e| e.to_string())?),
-    };
+    let (actions, desktop_file) =
+        match cli::parse(&args, &env::current_dir().map_err(|e| e.to_string())?)? {
+            cli::Command::NoOp => return Ok(0),
+            cli::Command::Print(text) => {
+                print!("{text}");
+                return Ok(0);
+            }
+            cli::Command::Launch {
+                actions,
+                desktop_file,
+            } => (
+                actions,
+                CString::new(desktop_file).map_err(|e| e.to_string())?,
+            ),
+        };
     let main_qml = find_main_qml().ok_or("The App Center QML files could not be found.")?;
     let icon = find_icon().ok_or("The App Center icon could not be found.")?;
     let qml_path = c_path(&main_qml)?;
@@ -135,7 +180,9 @@ fn run() -> Result<i32, String> {
     // for the duration of the call.
     let inputs: Vec<CString> = actions
         .iter()
-        .map(|(kind, value)| CString::new(format!("{{\"type\":{},\"value\":{}}}", appstream::escape_json(kind), appstream::escape_json(value))))
+        .map(|(kind, value)| {
+            CString::new(serde_json::json!({"type":kind,"value":value}).to_string())
+        })
         .collect::<Result<_, _>>()
         .map_err(|e| e.to_string())?;
     if inputs.iter().map(|s| s.as_bytes().len() + 1).sum::<usize>() > 120 * 1024 {

@@ -11,19 +11,15 @@ endif
 
 .PHONY: build fakeroot install uninstall clean set-default-handler
 
-build: target/release/flufflinux-appcenter-source-helper
+build:
 	cargo build --release
 
 # Stage only. Creating and installing a package remains a manual step.
 fakeroot: build
 	sh scripts/prepare-fakeroot.sh "$(EXCLUSIONS_FILE)"
 
-target/release/flufflinux-appcenter: Cargo.toml Cargo.lock VERSION build.rs data/exclusions.conf $(wildcard src/*.rs src/*.cpp src/*.h)
+target/release/flufflinux-appcenter target/release/flufflinux-appcenter-source-helper &: Cargo.toml Cargo.lock VERSION build.rs data/exclusions.conf $(wildcard src/*.rs src/backend/*.rs src/backend/manager/*.rs src/bin/*.rs src/*.cpp src/*.h)
 	cargo build --release
-
-target/release/flufflinux-appcenter-source-helper: src/source_helper.cpp src/source_removal.h src/flatpak_sources.h
-	mkdir -p target/release
-	$(CXX) -std=c++17 -O2 -fPIC -Wall -Wextra src/source_helper.cpp -o $@ $$(pkg-config --cflags --libs Qt6Core flatpak ostree-1)
 
 install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter-source-helper
 	@if [ -z "$(DESTDIR)" ] && [ "$(PREFIX)" = /usr ] && command -v pacman >/dev/null 2>&1; then \

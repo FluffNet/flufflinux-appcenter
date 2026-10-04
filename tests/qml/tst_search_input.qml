@@ -274,11 +274,11 @@ TestCase {
         verify(catalogGrid !== null)
         verify(naturalScroll !== null)
         verify(categoryScroll !== null)
-        compare(naturalScroll.wheelStep, 100)
-        compare(naturalScroll.touchpadStep, 42)
-        compare(naturalScroll.touchpadPixelScale, 2.15)
-        compare(categoryScroll.touchpadPixelScale, 2.15)
-        compare(categoryScroll.smoothScrolling, false)
+        compare(naturalScroll.target, catalogGrid)
+        compare(naturalScroll.blockTargetWheel, true)
+        compare(naturalScroll.scrollFlickableTarget, true)
+        compare(categoryScroll.blockTargetWheel, true)
+        compare(categoryScroll.filterMouseEvents, false)
     }
 
     function test_category_sidebar_grows_for_translated_labels() {

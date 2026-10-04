@@ -293,7 +293,7 @@ Page {
         // the image DragHandler's grab after the drag threshold is crossed.
         interactive: !screenshotPreview.visible
         ScrollBar.vertical: ScrollBar {}
-        NaturalWheelScroll {
+        PageWheelScroll {
             id: detailsWheelScroll
             objectName: "detailsNaturalScroll"
             scrollTarget: detailsFlickable
@@ -764,7 +764,6 @@ Page {
             // after its opening animation. Preserve both scroll positions.
             detailsFlickable.cancelFlick()
             screenshotList.cancelFlick()
-            detailsWheelScroll.stopSmoothScroll()
             detailsWheelScroll.middleMouseScroll.stop()
             screenshotMiddleScroll.stop()
             width = desiredWidth

@@ -1,6 +1,5 @@
 #include "flatpak_manager.h"
 #include "catalog_stats.h"
-#include "catalog_cache.h"
 #include "catalog_preferences.h"
 #include "network_status.h"
 #include "window_preferences.h"
@@ -125,9 +124,9 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     // Read-only UI fixtures keep the local-only worker unless explicitly
     // opting into the full startup flow with isolated source/cache paths.
     const bool cacheStartup = manageWindow || qEnvironmentVariableIntValue("FLUFF_APP_CENTER_CATALOG_TEST") == 1;
-    manager.loadCatalog(cacheStartup ? CatalogCache::defaultPath() : QString());
+    manager.loadCatalog(cacheStartup ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/application-list.json" : QString());
     if (!manager.catalogLoading()) trace("catalog-cache-ready");
-    CatalogStats catalogStats;
+    CatalogStats catalogStats(&manager);
     // Custom QML is used by read-only UI fixtures; it must not read/write the
     // desktop user's window preferences or override fixture geometry.
     // Explicitly opt-in live fixtures exercise this exact controller using an
