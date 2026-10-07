@@ -6,6 +6,35 @@ use libflatpak::{prelude::*, Installation, TransactionOperation};
 use serde_json::{json, Value};
 use std::{io::Read, path::Path, sync::mpsc, time::Duration};
 
+// Cached AppStream icons inside the disposable repository must outlive preview.
+// Only copy the selected icon, not its repository or source registration.
+pub fn retain_icon(app: &mut Value, directory: &Path) -> Result<(), String> {
+    let icon = Path::new(text(app, "icon"));
+    if !icon.starts_with(directory) {
+        return Ok(());
+    }
+    let mut data = Vec::new();
+    std::fs::File::open(icon)
+        .and_then(|file| file.take(4 * 1024 * 1024 + 1).read_to_end(&mut data))
+        .map_err(|e| e.to_string())?;
+    if data.len() > 4 * 1024 * 1024 {
+        return Err("The app icon exceeds 4 MiB.".into());
+    }
+    let extension = icon.extension().and_then(|s| s.to_str()).unwrap_or("png");
+    let path = storage::cache_dir().join("local-icons").join(format!(
+        "{}.{}",
+        sources::token(&data),
+        extension
+    ));
+    storage::atomic_write(&path, &data).map_err(|e| e.to_string())?;
+    app["icon"] = path.to_string_lossy().into_owned().into();
+    // Keep the single resolved source variant consistent with the main details.
+    for source in app["sources"].as_array_mut().into_iter().flatten() {
+        source["icon"] = path.to_string_lossy().into_owned().into();
+    }
+    Ok(())
+}
+
 pub fn reference_hint(key: &glib::KeyFile) -> App {
     let value = |name| {
         key.string("Flatpak Ref", name)

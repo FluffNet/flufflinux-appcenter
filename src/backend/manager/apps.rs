@@ -13,7 +13,7 @@ impl Manager {
             let mut request = source.clone();
             merge(
                 &mut request,
-                &json!({"prepareOnly":false,"hidden":false,"id":id,"name":app["name"]}),
+                &json!({"prepareOnly":false,"hidden":false,"id":id,"name":app["name"],"sourceReviewed":true}),
             );
             return Some(request);
         }
@@ -40,7 +40,17 @@ impl Manager {
         self.size_app = app.clone();
         let result = self
             .install_request(&app)
-            .map(|request| sizes::local(&request))
+            .map(|request| {
+                let mut result = sizes::local(&request);
+                // A preview can resolve the app size without adding its source.
+                // Keep an unknown dependency total unknown until installation.
+                if result["state"] == "unavailable" {
+                    if let Some(size) = request["previewAppBytes"].as_u64() {
+                        result = json!({"state":"partial","appBytes":size,"appSize":crate::backend::bytes(size)});
+                    }
+                }
+                result
+            })
             .unwrap_or_else(|| json!({"state":"unavailable"}));
         self.set("installSizes", json!({id:result}));
     }

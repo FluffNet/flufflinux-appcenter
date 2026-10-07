@@ -60,6 +60,44 @@ TestCase {
         return [{tag: "user", message: "If you proceed, Calculator and its app data will be removed."},
                 {tag: "system", message: "If you proceed, Calculator will be removed for all users, and its app data for this account will be deleted."}]
     }
+    function test_local_source_note_data() {
+        return [{tag: "dark", background: "#202326", foreground: "white", width: 1180},
+                {tag: "light-narrow", background: "#eff0f1", foreground: "#202326", width: 720}]
+    }
+    function test_local_source_note(data) {
+        const previousWindow = main.palette.window
+        const previousText = main.palette.windowText
+        main.palette.window = data.background; main.palette.windowText = data.foreground
+        main.width = data.width
+        const app = {id: "org.example.Local", name: "Local file", summary: "Preview", description: "About the app",
+            icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "",
+            localSource: "file:///tmp/example.flatpakref", sourceUrl: "https://storage.googleapis.com/pieces-flatpak-repo"}
+        try {
+            main.openApp(app)
+            const stack = findChild(main, "navigationStack")
+            tryCompare(stack, "busy", false)
+            const page = stack.currentItem
+            waitForPolish(page)
+            const note = findChild(page, "localSourceNote")
+            const label = findChild(page, "localSourceNoteText")
+            const hero = findChild(page, "appHeroCard")
+            const about = findChild(page, "appAboutCard")
+            verify(note.visible)
+            verify(label.text.includes(app.sourceUrl) && label.text.includes("receive updates"))
+            compare(label.textFormat, Text.PlainText)
+            compare(label.color, main.textColor)
+            verify(note.y >= hero.y + hero.height, "The note belongs below the main app section")
+            verify(about.y >= note.y + note.height, "The note belongs above About this app")
+            verify(label.height >= label.implicitHeight, "The source note must wrap without clipping")
+            main.openApp(Object.assign({}, app, {localSource: ""}))
+            tryCompare(stack, "busy", false)
+            verify(!findChild(stack.currentItem, "localSourceNote").visible, "Regular catalog apps need no file-source note")
+        } finally {
+            main.showCatalog(); tryCompare(findChild(main, "navigationStack"), "busy", false)
+            main.width = 1180
+            main.palette.window = previousWindow; main.palette.windowText = previousText
+        }
+    }
     function test_version_stack_data() {
         return [{tag: "with-version", version: "0.28.0", total: "1.77 GiB", width: 1180},
                 {tag: "dependencies", version: "1.0", total: "2.35 GiB", width: 1180},

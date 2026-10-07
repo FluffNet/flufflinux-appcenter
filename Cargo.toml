@@ -36,8 +36,6 @@ glib = "0.21"
 gio = "0.21"
 libflatpak = { version = "0.7", features = ["v1_13"] }
 ureq = { version = "3", features = ["json", "platform-verifier"] }
-
-[dev-dependencies]
 tempfile = "3"
 
 [profile.release]

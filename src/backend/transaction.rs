@@ -100,6 +100,7 @@ struct State {
     plan_ready: bool,
     preview_plan: Option<Value>,
     preview_hint: crate::appstream::App,
+    isolated_preview: bool,
     declined: bool,
     operation_error: bool,
     progress: HashMap<String, libflatpak::TransactionProgress>,
@@ -111,6 +112,9 @@ impl State {
             self.declined = true;
         }
         answer
+    }
+    fn review_source(&mut self, name: &str, url: &str) -> bool {
+        self.ask(json!({"kind":"remote","title":"Trust a new software source?","message":format!("Flatpak needs to add {name} for your user:\n{url}\nOnly continue if you trust this source. It can remain in your account even if you cancel installation later."),"operations":[]}))
     }
     // These fields map directly to the worker's operation progress protocol.
     #[allow(clippy::too_many_arguments)]
@@ -163,6 +167,12 @@ fn running(id: &str) -> bool {
         .iter()
         .any(|i| i.app().as_deref() == Some(id) && i.is_running())
 }
+fn source_reviewed(request: &Value, url: &str) -> bool {
+    request["action"] == "source"
+        && !flag(request, "prepareOnly")
+        && flag(request, "sourceReviewed")
+        && text(request, "sourceUrl") == url
+}
 fn download_status(raw: &str) -> bool {
     for format in [
         "Downloading: %s/%s",
@@ -213,8 +223,14 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
         if w.updating{w.problem="This update needs a new software source. Configure it first, then check for updates again.".into();return false;}
         if flag(&w.request,"estimateOnly"){w.problem="Sizes will be available after the required software source is configured.".into();return false;}
         if !repositories::safe_url(url){w.problem="The new repository must use HTTPS without embedded credentials.".into();return false;}
+        // Only the disposable preview installation may add a source without consent.
+        // A real install needs consent from its app page or a separate review.
+        if w.isolated_preview{return true;}
+        if source_reviewed(&w.request,url){return true;}
         if sources::official_definition(url).is_some(){return true;}
-        w.ask(json!({"kind":"remote","title":"Trust a new software source?","message":format!("Flatpak needs to add {name} for your user:\n{url}\nOnly continue if you trust this source. It can remain in your account even if you cancel installation later."),"operations":[]}))
+        let accepted = w.review_source(name,url);
+        if !accepted { w.control.cancel.cancel(); }
+        accepted
     });
     let s = state.clone();
     tx.connect_new_operation(move |_, op, progress| {
@@ -409,7 +425,48 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
     } else {
         "user"
     };
-    let installation = sources::installation(scope)?;
+    let input = text(&request, "source");
+    let bundle_path = (action == "source")
+        .then(|| repositories::local_path(input))
+        .flatten()
+        .filter(|p| {
+            p.extension()
+                .is_some_and(|e| e.eq_ignore_ascii_case("flatpak"))
+        });
+    // Read references once. A .flatpakrepo explicitly requests source registration,
+    // whereas opening an app reference/bundle must never modify real installations.
+    let source_contents = if action == "source" && bundle_path.is_none() {
+        Some(repositories::read_source(input, &cancel)?)
+    } else {
+        None
+    };
+    let repository_file = source_contents
+        .as_ref()
+        .map(|data| repositories::key_file(data).map(|key| key.has_group("Flatpak Repo")))
+        .transpose()?
+        .unwrap_or(false);
+    let preview_directory =
+        if action == "source" && flag(&request, "prepareOnly") && !repository_file {
+            Some(
+                tempfile::Builder::new()
+                    .prefix("appcenter-preview-")
+                    .tempdir()
+                    .map_err(|e| e.to_string())?,
+            )
+        } else {
+            None
+        };
+    state.borrow_mut().isolated_preview = preview_directory.is_some();
+    let installation = if let Some(directory) = &preview_directory {
+        libflatpak::Installation::for_path(
+            &gio::File::for_path(directory.path()),
+            true,
+            Some(&cancel),
+        )
+        .map_err(|e| e.to_string())?
+    } else {
+        sources::installation(scope)?
+    };
     if action == "repositories" {
         return repositories::operate(&installation, &request, &cancel, send);
     }
@@ -430,10 +487,14 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
     let tx =
         Transaction::for_installation(&installation, Some(&cancel)).map_err(|e| e.to_string())?;
     tx.set_no_interaction(false);
-    if addon {
+    if addon || preview_directory.is_some() {
         tx.set_disable_related(true);
     }
-    if !removing {
+    if preview_directory.is_some() {
+        // App metadata and permissions do not require downloading/resolving runtimes.
+        // Actual installs still resolve dependencies in the real installation.
+        tx.set_disable_dependencies(true);
+    } else if !removing {
         tx.add_default_dependency_sources();
     }
     connect(&tx, state.clone());
@@ -525,24 +586,21 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
         tx.add_install(remote, &reference, &[])
             .map_err(|e| e.to_string())?;
     } else if action == "source" {
-        let input = text(&request, "source");
-        let path = repositories::local_path(input);
-        if let Some(path) = path.filter(|p| {
-            p.extension()
-                .is_some_and(|e| e.eq_ignore_ascii_case("flatpak"))
-        }) {
-            if !state.borrow_mut().ask(json!({"kind":"bundle","title":"Open local Flatpak bundle?","message":format!("Only open bundles from a source you trust. Flatpak may register the bundle's software source for your user while preparing it.\n\n{}",path.display()),"operations":[]})){return Err("Cancelled".into());}
-            if flag(&request, "prepareOnly") {
-                // The bundle contains its own app metadata and permissions.
-                // Preview must not require its runtime or a reachable source.
-                // Actual installation still resolves every required dependency.
-                tx.set_disable_dependencies(true);
-                tx.set_disable_related(true);
+        if let Some(path) = bundle_path {
+            let bundle = libflatpak::BundleRef::new(&gio::File::for_path(&path))
+                .map_err(|e| e.to_string())?;
+            let origin = bundle.origin().unwrap_or_default();
+            if flag(&request, "sourceReviewed")
+                && (text(&request, "sourceUrl") != origin.as_str()
+                    || bundle.format_ref().as_deref() != Some(text(&request, "flatpakRef")))
+            {
+                return Err("The bundle or its source changed. Open it again.".into());
             }
+            if preview_directory.is_none() && !source_reviewed(&request,&origin) && !state.borrow_mut().ask(json!({"kind":"bundle","title":"Install local Flatpak bundle?","message":format!("Only install bundles from a source you trust. Flatpak may register the bundle's software source for your user.\n\n{}",path.display()),"operations":[]})){return Err("Cancelled".into());}
             tx.add_install_bundle(&gio::File::for_path(path), None)
                 .map_err(|e| e.to_string())?;
         } else {
-            let contents = repositories::read_source(input, &cancel)?;
+            let contents = source_contents.ok_or("Missing Flatpak reference contents")?;
             let key = repositories::key_file(&contents)?;
             if key.has_group("Flatpak Repo") {
                 if !id.is_empty() {
@@ -600,6 +658,30 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
             if !id.is_empty() && id != next_id {
                 return Err("The reference now names a different app. Open it again.".into());
             }
+            if !text(&request, "sourceUrl").is_empty()
+                && text(&request, "sourceUrl") != url.as_str()
+            {
+                return Err(
+                    "The reference now points to a different source. Open it again.".into(),
+                );
+            }
+            // Normal app-page installs already acknowledged this exact source.
+            // For requests without that context, ask before giving the file to
+            // Flatpak: declining add-new-remote alone can still create an origin.
+            if preview_directory.is_none()
+                && !source_reviewed(&request, &url)
+                && sources::official_definition(&url).is_none()
+            {
+                let name = key
+                    .string("Flatpak Ref", "SuggestRemoteName")
+                    .unwrap_or_else(|_| "application source".into());
+                let mut w = state.borrow_mut();
+                if !w.review_source(&name, &url) {
+                    return Err("Cancelled".into());
+                }
+                w.request["sourceReviewed"] = true.into();
+                w.request["sourceUrl"] = url.as_str().into();
+            }
             state.borrow_mut().id = next_id.to_string();
             state.borrow_mut().preview_hint = local_preview::reference_hint(&key);
             send(json!({"type":"identity","appId":next_id.as_str()}));
@@ -623,6 +705,9 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
             let details = local_preview::resolve(&installation, &request, &op, &hint, &cancel);
             plan["app"] = details["app"].clone();
             plan["permissions"] = details["permissions"].clone();
+            if let Some(directory) = &preview_directory {
+                local_preview::retain_icon(&mut plan["app"], directory.path())?;
+            }
         }
         if !cancel.is_cancelled() {
             send(plan);
@@ -693,6 +778,7 @@ pub fn run(request: Value) -> i32 {
         plan_ready: false,
         preview_plan: None,
         preview_hint: Default::default(),
+        isolated_preview: false,
         declined: false,
         operation_error: false,
         progress: HashMap::new(),
@@ -702,7 +788,11 @@ pub fn run(request: Value) -> i32 {
     let error = result.err().unwrap_or_default();
     let cancelled =
         state.borrow().declined || control.cancel.is_cancelled() || error == "Cancelled";
-    send(json!({"type":"result","success":success,"cancelled":cancelled,"error":error}));
+    let sources_changed =
+        success && state.borrow().request["action"] == "source" && !state.borrow().isolated_preview;
+    send(
+        json!({"type":"result","success":success,"cancelled":cancelled,"error":error,"sourcesChanged":sources_changed}),
+    );
     // The stdin reader owns no transaction state and is intentionally detached.
     // Process exit must never wait indefinitely for another stdin byte.
     if success {
@@ -717,6 +807,21 @@ pub fn run(request: Value) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn inline_source_consent_only_applies_to_the_reviewed_local_source() {
+        let mut request =
+            json!({"action":"source","sourceReviewed":true,"sourceUrl":"https://example.org/repo"});
+        assert!(source_reviewed(&request, "https://example.org/repo"));
+        assert!(!source_reviewed(&request, "https://other.example/repo"));
+        request["prepareOnly"] = true.into();
+        assert!(!source_reviewed(&request, "https://example.org/repo"));
+        request["prepareOnly"] = false.into();
+        request["action"] = "install".into();
+        assert!(!source_reviewed(&request, "https://example.org/repo"));
+        request["action"] = "source".into();
+        request["sourceReviewed"] = false.into();
+        assert!(!source_reviewed(&request, "https://example.org/repo"));
+    }
     #[test]
     fn only_pull_status_counts_as_download() {
         assert!(download_status("Downloading: 1/2"));

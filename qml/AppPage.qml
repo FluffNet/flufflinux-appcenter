@@ -488,6 +488,25 @@ Page {
                 }
             }
             Rectangle {
+                objectName: "localSourceNote"
+                Layout.fillWidth: true
+                visible: !!(app && app.localSource) && !heroActions.installed
+                implicitHeight: sourceNoteText.implicitHeight + 32
+                radius: window.cornerRadius
+                color: window.surfaceColor; border.color: window.accentColor; border.width: 1
+                Label {
+                    id: sourceNoteText
+                    objectName: "localSourceNoteText"
+                    anchors.fill: parent; anchors.margins: 16
+                    text: app && app.sourceUrl
+                        ? qsTr("This app comes from %1. Installing this app will add this source so the app can receive updates.").arg(app.sourceUrl)
+                        : qsTr("This app comes from a local Flatpak file. Only install it if you trust where it came from.")
+                    textFormat: Text.PlainText
+                    color: window.textColor; wrapMode: Text.Wrap; font.pixelSize: 16
+                }
+            }
+            Rectangle {
+                objectName: "appAboutCard"
                 Layout.fillWidth: true
                 implicitHeight: aboutLayout.implicitHeight + 44; radius: window.cornerRadius
                 color: window.surfaceColor; border.color: window.borderColor; border.width: 1

@@ -25,7 +25,7 @@ BINARY = ROOT / "target/debug/flufflinux-appcenter"
 def transaction(env, request, approve=True):
     events = []
     with subprocess.Popen([str(BINARY), "--transaction-worker", json.dumps(request)],
-                          env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, text=True) as child:
+                          env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, bufsize=0) as child:
         selector = selectors.DefaultSelector()
         selector.register(child.stdout, selectors.EVENT_READ)
         try:
@@ -38,7 +38,7 @@ def transaction(env, request, approve=True):
                 event = json.loads(line)
                 events.append(event)
                 if event["type"] == "review":
-                    child.stdin.write(json.dumps(dict(token=event["token"], accept=approve)) + "\n")
+                    child.stdin.write((json.dumps(dict(token=event["token"], accept=approve)) + "\n").encode())
                     child.stdin.flush()
                 if event["type"] == "result":
                     child.stdin.close()
@@ -53,11 +53,28 @@ def transaction(env, request, approve=True):
 
 
 def prepare(env, path, approve=True):
-    return transaction(env, dict(action="source", source=path.as_uri(), prepareOnly=True), approve)
+    before = command(env, "flatpak", "remotes", "--user", "--show-details")
+    events = transaction(env, dict(action="source", source=path.as_uri(), prepareOnly=True), approve)
+    assert not any(e["type"] in ("review", "operation") for e in events), events
+    assert command(env, "flatpak", "remotes", "--user", "--show-details") == before, "Preview changed configured sources"
+    return events
 
 
 def command(env, *args):
     return subprocess.check_output(args, env=env, text=True, timeout=60)
+
+
+def screenshots(env, root, path):
+    runtime_dir = root / "runtime"
+    runtime_dir.mkdir(mode=0o700)
+    ui_env = dict(env, QT_QPA_PLATFORM="offscreen", QT_QUICK_BACKEND="software",
+                  QT_FORCE_STDERR_LOGGING="1", QT_QPA_PLATFORMTHEME="kde", XDG_RUNTIME_DIR=str(runtime_dir),
+                  FLUFF_APP_CENTER_QML=str(ROOT / "tests/fixtures/LocalPreviewSmoke.qml"))
+    remotes = command(env, "flatpak", "remotes", "--user", "--show-details")
+    subprocess.run([str(BINARY), str(path)], env=ui_env, check=True, timeout=120)
+    after = command(env, "flatpak", "remotes", "--user", "--show-details")
+    assert after == remotes, (remotes, after)
+    assert not command(env, "flatpak", "list", "--user", "--columns=ref").strip()
 
 
 def bundle_test(env, root):
@@ -108,7 +125,7 @@ def bundle_test(env, root):
     assert Path(plan["app"]["icon"]).is_file(), plan["app"]
     assert plan["permissions"]["state"] == "ready", plan
     assert {g["id"] for g in plan["permissions"]["groups"]} >= {"network", "audio", "display", "files"}
-    declined = prepare(env, path, approve=False)
+    declined = transaction(env, dict(action="source", source=path.as_uri(), id=identity), approve=False)
     assert declined[-1]["cancelled"] and not declined[-1]["success"]
     assert not any(e["type"] in ("plan", "operation") for e in declined)
     assert command(env, "flatpak", "list", "--user", "--columns=ref") == before
@@ -133,13 +150,19 @@ def bundle_test(env, root):
         unavailable.rename(root / "repo")
     print("PASS: bundle details and permissions remain readable with its source unavailable", flush=True)
     # A bundle uses Flatpak's app-specific origin. It must point at the embedded
-    # source, remain stable across preview/install, and receive normal updates.
+    # source, be registered only during install, and receive normal updates.
     remotes = command(env, "flatpak", "remotes", "--user", "--columns=name,url")
-    installed = transaction(env, dict(action="source", source=path.as_uri(), id=identity))
+    installed = transaction(env, dict(action="source", source=path.as_uri(), id=identity,
+                                     sourceReviewed=True, sourceUrl=plan["app"]["sourceUrl"],
+                                     flatpakRef=plan["app"]["flatpakRef"]))
     assert installed[-1]["success"], installed
+    assert not any(event["type"] == "review" for event in installed), installed
     origin = command(env, "flatpak", "info", "--user", "--show-origin", identity).strip()
-    assert f"{origin}\t{(root / 'repo').as_uri()}\n" in remotes, (origin, remotes)
-    assert command(env, "flatpak", "remotes", "--user", "--columns=name,url") == remotes
+    after = command(env, "flatpak", "remotes", "--user", "--columns=name,url")
+    assert f"{origin}\t{(root / 'repo').as_uri()}\n" in after, (origin, after)
+    assert origin not in {line.split("\t")[0] for line in remotes.splitlines()}, (origin, remotes)
+    prepare(env, path)
+    assert command(env, "flatpak", "remotes", "--user", "--columns=name,url") == after
     old_commit = command(env, "flatpak", "info", "--user", "--show-commit", identity).strip()
     (root / identity / "files/bin/fixture").write_text("#!/bin/sh\n# New release from the source\nexit 0\n")
     command(env, "flatpak", "build-export", str(root / "repo"), str(root / identity), "stable")
@@ -161,6 +184,7 @@ def main():
     parser.add_argument("--live", action="store_true")
     parser.add_argument("--cached-metadata", action="store_true")
     parser.add_argument("--screenshots", action="store_true")
+    parser.add_argument("--file", type=Path, help="Preview an existing downloaded reference in an isolated installation")
     parser.add_argument("--app", choices=["com.discordapp.Discord", "com.prusa3d.PrusaSlicer"], default="com.discordapp.Discord")
     args = parser.parse_args()
     identity = args.app
@@ -172,6 +196,37 @@ def main():
                    XDG_CACHE_HOME=str(root / "cache"), XDG_DATA_HOME=str(root / "data"),
                    XDG_CONFIG_HOME=str(root / "settings"))
         (root / "config").mkdir()
+        if args.file:
+            key_name = next(line.split("=", 1)[1].strip() for line in args.file.read_text().splitlines() if line.startswith("Name="))
+            events = prepare(env, args.file.resolve())
+            assert events[-1]["success"], events
+            plan = next(event for event in events if event["type"] == "plan")
+            assert plan["app"]["id"] == key_name, plan
+            assert plan["app"]["description"] and plan["app"]["icon"], plan
+            assert plan["permissions"]["state"] == "ready", plan
+            (ROOT / "target/local-preview-downloaded.json").write_text(json.dumps(plan, indent=2))
+            if args.screenshots:
+                screenshots(env, root, args.file.resolve())
+            # Do not resolve/download a real runtime while checking install consent.
+            no_runtime = root / args.file.name
+            no_runtime.write_text("\n".join(line for line in args.file.read_text().splitlines() if not line.startswith("RuntimeRepo=")) + "\n")
+            install = transaction(env, dict(action="source", source=no_runtime.as_uri(), id=key_name), approve=False)
+            assert any(event["type"] == "review" and event.get("kind") == "remote" for event in install), install
+            assert install[-1]["cancelled"] and not install[-1]["success"], install
+            assert not command(env, "flatpak", "remotes", "--user", "--columns=name").strip(), install
+            assert not command(env, "flatpak", "list", "--user", "--columns=ref").strip()
+            # Exercise the page's source consent without installing a real app.
+            # Omit RuntimeRepo in a test copy so the empty installation cannot
+            # resolve its runtime and must stop before download/deployment.
+            reviewed = transaction(env, dict(action="source", source=no_runtime.as_uri(), id=key_name,
+                                           sourceReviewed=True, sourceUrl=plan["app"]["sourceUrl"],
+                                           flatpakRef=plan["app"]["flatpakRef"]))
+            assert not any(event["type"] in ("review", "operation") for event in reviewed), reviewed
+            assert not reviewed[-1]["success"] and "runtime" in reviewed[-1]["error"].lower(), reviewed
+            assert plan["app"]["sourceUrl"] in command(env, "flatpak", "remotes", "--user", "--columns=url")
+            assert not command(env, "flatpak", "list", "--user", "--columns=ref").strip()
+            print("PASS: downloaded reference previews without adding sources; page consent adds its source only on install, without another prompt", flush=True)
+            return
         if not args.live:
             bundle_test(env, root)
             return
@@ -199,7 +254,7 @@ def main():
         assert plan["permissions"]["state"] == "ready", plan["permissions"]
         assert any(g["id"] == "network" for g in plan["permissions"]["groups"])
         remotes = command(env, "flatpak", "remotes", "--user", "--columns=name,url")
-        assert "flathub\thttps://dl.flathub.org/repo/" in remotes, remotes
+        assert not remotes.strip(), remotes
         repeated = prepare(env, path)
         assert repeated[-1]["success"], repeated
         assert command(env, "flatpak", "remotes", "--user", "--columns=name,url") == remotes
@@ -209,14 +264,7 @@ def main():
         mode = "cached-source" if args.cached_metadata else "fresh-source"
         print(f"PASS: {mode} {app['name']} reference has details, images, source and permissions; no app installed ({time.monotonic() - started:.1f}s)", flush=True)
         if args.screenshots:
-            runtime_dir = root / "runtime"
-            runtime_dir.mkdir(mode=0o700)
-            ui_env = dict(env, QT_QPA_PLATFORM="offscreen", QT_QUICK_BACKEND="software",
-                          QT_FORCE_STDERR_LOGGING="1",
-                          QT_QPA_PLATFORMTHEME="kde", XDG_RUNTIME_DIR=str(runtime_dir),
-                          FLUFF_APP_CENTER_QML=str(ROOT / "tests/fixtures/LocalPreviewSmoke.qml"))
-            subprocess.run([str(BINARY), str(path)], env=ui_env, check=True, timeout=120)
-            assert not command(env, "flatpak", "list", "--user", "--columns=ref").strip()
+            screenshots(env, root, path)
 
 
 if __name__ == "__main__":

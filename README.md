@@ -31,6 +31,8 @@ The current release is **2026.10**.
 - Continue active work after closing the window, with native KDE notifications.
 - Reopen App Center to return to the running queue.
 - Manage Flatpak sources and open local Flatpak files or AppStream links.
+  Local file previews do not add sources. The app page identifies the source;
+  clicking Install adds it if needed for future updates.
 - Follow the Plasma light or dark theme and desktop font settings.
 - Reuse a 12-hour application-list cache for faster repeat launches.
 

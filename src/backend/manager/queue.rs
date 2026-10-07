@@ -319,6 +319,7 @@ impl Manager {
                     };
                     prepared["sourceUrl"] = app["sourceUrl"].clone();
                     prepared["previewPermissions"] = message["permissions"].clone();
+                    prepared["previewAppBytes"] = message["appBytes"].clone();
                     app["localSource"] = request["source"].clone();
                     // A preview is not an installed app. Keep installation scope
                     // in the request only, or permissions would query flatpak info.
@@ -390,7 +391,7 @@ impl Manager {
         let ok = flag(message, "success");
         let cancelled = flag(message, "cancelled") || flag(&job, "cancelling");
         let preparation = flag(&self.requests[index], "prepareOnly");
-        if ok && preparation {
+        if ok && flag(message, "sourcesChanged") {
             self.source_refresh_pending = true;
         }
         if ok && !preparation {
@@ -542,7 +543,7 @@ mod tests {
             false,
         );
         manager.job_message("install", &json!({"type":"plan","appId":"a.b.App","app":preview,
-            "permissions":permissions,"operations":[{"ref":"app/a.b.App/x86_64/beta","remote":"local"}]}));
+            "appBytes":12345,"permissions":permissions,"operations":[{"ref":"app/a.b.App/x86_64/beta","remote":"local"}]}));
         let opened = manager
             .signals
             .iter()
@@ -555,6 +556,16 @@ mod tests {
         let request = manager.install_request(&opened).unwrap();
         assert_eq!(request["sourceUrl"], preview["sourceUrl"]);
         assert_eq!(request["source"], "file:///tmp/local.flatpakref");
+        assert_eq!(request["sourceReviewed"], true);
+        assert_eq!(request["previewAppBytes"], 12345);
+        manager.job_message(
+            "install",
+            &json!({"type":"result","success":true,"sourcesChanged":false}),
+        );
+        assert!(
+            !manager.source_refresh_pending,
+            "A preview must not provision or refresh the real sources"
+        );
         manager.request_permissions(opened.clone());
         assert_eq!(manager.properties["appPermissions"], permissions);
         assert!(

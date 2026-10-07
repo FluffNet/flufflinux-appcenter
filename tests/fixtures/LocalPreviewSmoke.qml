@@ -33,17 +33,21 @@ App.Main {
             if (main.stage === 2 && probe.findChild(stack.currentItem, "appPermissionsDialog").visible) return
             if (main.stage === 0) {
                 const app = main.selectedApp
-                if (!app.name || !app.description || !app.screenshots.length || !app.localSource) {
+                if (!app.name || !app.description || !app.localSource) {
                     console.error("LOCAL_PREVIEW incomplete", JSON.stringify(app)); Qt.exit(1); return
                 }
                 const icon = probe.findChild(main, "appHeroIcon")
                 const list = probe.findChild(main, "screenshotList")
                 const first = list.itemAtIndex(0)
                 const image = first && first.contentItem.children[0]
-                if (!icon || icon.status !== Image.Ready || !image || image.status !== Image.Ready) {
+                if (!icon || icon.status !== Image.Ready || (app.screenshots.length && (!image || image.status !== Image.Ready))) {
                     if (++main.imageWait > 250) { console.error("LOCAL_PREVIEW artwork failed to load"); Qt.exit(1) }
                     return
                 }
+                const note = probe.findChild(stack.currentItem, "localSourceNote")
+                if (!note || !note.visible) { console.error("LOCAL_PREVIEW source note missing"); Qt.exit(1); return }
+                const size = probe.findChild(stack.currentItem, "appDownloadSize")
+                if (!size || size.text === "Unavailable") { console.error("LOCAL_PREVIEW app size missing"); Qt.exit(1); return }
                 if (!probe.findChild(stack.currentItem, "installAppButton").enabled) return
             }
             if (main.stage === 1 || main.stage === 3) {
