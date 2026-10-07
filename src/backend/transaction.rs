@@ -586,8 +586,8 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
         tx.add_install(remote, &reference, &[])
             .map_err(|e| e.to_string())?;
     } else if action == "source" {
-        if let Some(path) = bundle_path {
-            let bundle = libflatpak::BundleRef::new(&gio::File::for_path(&path))
+        if let Some(path) = &bundle_path {
+            let bundle = libflatpak::BundleRef::new(&gio::File::for_path(path))
                 .map_err(|e| e.to_string())?;
             let origin = bundle.origin().unwrap_or_default();
             if flag(&request, "sourceReviewed")
@@ -600,8 +600,10 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
             tx.add_install_bundle(&gio::File::for_path(path), None)
                 .map_err(|e| e.to_string())?;
         } else {
-            let contents = source_contents.ok_or("Missing Flatpak reference contents")?;
-            let key = repositories::key_file(&contents)?;
+            let contents = source_contents
+                .as_ref()
+                .ok_or("Missing Flatpak reference contents")?;
+            let key = repositories::key_file(contents)?;
             if key.has_group("Flatpak Repo") {
                 if !id.is_empty() {
                     return Err("The app reference was replaced by a repository file.".into());
@@ -639,7 +641,7 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
                     return repositories::add_official(&installation, name, definition, &cancel);
                 }
                 let remote =
-                    libflatpak::Remote::from_file(name, &glib::Bytes::from_owned(contents))
+                    libflatpak::Remote::from_file(name, &glib::Bytes::from_owned(contents.clone()))
                         .map_err(|e| e.to_string())?;
                 remote.set_gpg_verify(true);
                 if !state.borrow_mut().ask(json!({"kind":"remote","title":"Add software source?","message":format!("{name}\n{url}\nThis source will be available for your user only."),"operations":[]})){return Err("Cancelled".into());}
@@ -685,7 +687,7 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
             state.borrow_mut().id = next_id.to_string();
             state.borrow_mut().preview_hint = local_preview::reference_hint(&key);
             send(json!({"type":"identity","appId":next_id.as_str()}));
-            tx.add_install_flatpakref(&glib::Bytes::from_owned(contents))
+            tx.add_install_flatpakref(&glib::Bytes::from_owned(contents.clone()))
                 .map_err(|e| e.to_string())?;
         }
     } else {
@@ -707,6 +709,28 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
             plan["permissions"] = details["permissions"].clone();
             if let Some(directory) = &preview_directory {
                 local_preview::retain_icon(&mut plan["app"], directory.path())?;
+            }
+        }
+        if !cancel.is_cancelled() {
+            // The metadata-only plan deliberately skipped runtimes. Never report
+            // its app-only sum as a complete dependency total.
+            plan["state"] = "partial".into();
+            plan.as_object_mut().unwrap().remove("totalBytes");
+            plan.as_object_mut().unwrap().remove("totalSize");
+            match local_preview::dependency_sizes(
+                &installation,
+                source_contents.as_deref(),
+                bundle_path.as_deref(),
+                &cancel,
+            ) {
+                Ok(sizes) => plan
+                    .as_object_mut()
+                    .unwrap()
+                    .extend(sizes.as_object().unwrap().clone()),
+                Err(error) => {
+                    eprintln!("Could not resolve local-file dependency sizes: {error}");
+                    plan["sizeError"] = error.into();
+                }
             }
         }
         if !cancel.is_cancelled() {

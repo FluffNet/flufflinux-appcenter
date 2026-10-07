@@ -83,7 +83,7 @@ TestCase {
             const hero = findChild(page, "appHeroCard")
             const about = findChild(page, "appAboutCard")
             verify(note.visible)
-            verify(label.text.includes(app.sourceUrl) && label.text.includes("receive updates"))
+            compare(label.text, "This app comes from " + app.sourceUrl + "\nInstalling this app will add this source so the app can receive updates.")
             compare(label.textFormat, Text.PlainText)
             compare(label.color, main.textColor)
             verify(note.y >= hero.y + hero.height, "The note belongs below the main app section")

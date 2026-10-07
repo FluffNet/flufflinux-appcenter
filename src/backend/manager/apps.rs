@@ -41,13 +41,15 @@ impl Manager {
         let result = self
             .install_request(&app)
             .map(|request| {
-                let mut result = sizes::local(&request);
-                // A preview can resolve the app size without adding its source.
-                // Keep an unknown dependency total unknown until installation.
-                if result["state"] == "unavailable" {
-                    if let Some(size) = request["previewAppBytes"].as_u64() {
-                        result = json!({"state":"partial","appBytes":size,"appSize":crate::backend::bytes(size)});
-                    }
+                // Local-file sizes come from a complete disposable transaction,
+                // not a registered source or the metadata-only preview plan.
+                let preview = &request["previewSizes"];
+                if preview["state"] == "ready" {
+                    return preview.clone();
+                }
+                let result = sizes::local(&request);
+                if result["state"] == "unavailable" && preview["appBytes"].is_u64() {
+                    return preview.clone();
                 }
                 result
             })

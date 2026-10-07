@@ -1,10 +1,87 @@
 //! Details for a resolved local file, independent of the Home catalog's lifetime.
-use super::{permissions, repositories, sources, storage, text};
+use super::{bytes, permissions, repositories, sources, storage, text};
 use crate::appstream::{self, App};
 use gio::prelude::*;
-use libflatpak::{prelude::*, Installation, TransactionOperation};
+use libflatpak::{prelude::*, Installation, Transaction, TransactionOperation};
 use serde_json::{json, Value};
-use std::{io::Read, path::Path, sync::mpsc, time::Duration};
+use std::{cell::RefCell, io::Read, path::Path, rc::Rc, sync::mpsc, time::Duration};
+
+// Use Flatpak's real dependency resolver, but only in the disposable preview
+// installation. Existing user/system runtimes are read-only dependency sources.
+// Abort before authentication, download or deployment, even for a trusted file.
+pub fn dependency_sizes(
+    installation: &Installation,
+    contents: Option<&[u8]>,
+    bundle: Option<&Path>,
+    parent: &gio::Cancellable,
+) -> Result<Value, String> {
+    bounded(parent, Duration::from_secs(45), |cancel| {
+        let dependencies = sources::installations()?;
+        for source in &dependencies {
+            if source.is_user() {
+                // A bundle may omit RuntimeRepo and rely on already-configured
+                // sources. Copy their policy/keys only into the temporary repo.
+                for remote in source
+                    .list_remotes(Some(cancel))
+                    .map_err(|e| e.to_string())?
+                {
+                    sources::mirror(installation, source, &remote, cancel)?;
+                }
+                // Preserve language selection when calculating locale extensions.
+                for key in ["languages", "extra-languages"] {
+                    if let Ok(value) = source.config(key, Some(cancel)) {
+                        installation
+                            .set_config_sync(key, &value, Some(cancel))
+                            .map_err(|e| e.to_string())?;
+                    }
+                }
+            }
+        }
+        let tx =
+            Transaction::for_installation(installation, Some(cancel)).map_err(|e| e.to_string())?;
+        tx.set_no_interaction(true);
+        tx.set_no_deploy(true);
+        for source in &dependencies {
+            tx.add_dependency_source(source);
+        }
+        tx.connect_add_new_remote(|_, _, _, _, url| repositories::safe_url(url));
+        let sizes = Rc::new(RefCell::new(None));
+        let resolved = sizes.clone();
+        tx.connect_ready_pre_auth(move |tx| {
+            let (mut app, mut total) = (0u64, 0u64);
+            for op in tx.operations().into_iter().filter(|op| !op.is_skipped()) {
+                total = total.saturating_add(op.download_size());
+                if op.get_ref().is_some_and(|r| r.starts_with("app/")) {
+                    app = app.saturating_add(op.download_size());
+                }
+            }
+            *resolved.borrow_mut() = Some(json!({"state":"ready", "appBytes":app,
+                "appSize":bytes(app), "totalBytes":total, "totalSize":bytes(total)}));
+            false
+        });
+        if let Some(path) = bundle {
+            tx.add_install_bundle(&gio::File::for_path(path), None)
+        } else {
+            tx.add_install_flatpakref(&glib::Bytes::from_owned(
+                contents
+                    .ok_or("Missing Flatpak reference contents")?
+                    .to_vec(),
+            ))
+        }
+        .map_err(|e| e.to_string())?;
+        let result = tx.run(Some(cancel));
+        if cancel.is_cancelled() {
+            return Err("Dependency size lookup was cancelled or timed out.".into());
+        }
+        let sizes = sizes.borrow_mut().take();
+        sizes.ok_or_else(|| {
+            result
+                .err()
+                .map(|e| e.to_string())
+                .unwrap_or_else(|| "Dependency sizes could not be resolved.".into())
+        })
+    })
+}
 
 // Cached AppStream icons inside the disposable repository must outlive preview.
 // Only copy the selected icon, not its repository or source registration.
@@ -92,31 +169,44 @@ fn cached_app(remote: &libflatpak::Remote, id: &str, reference: &str, arch: &str
     appstream::app_in_catalog(&directory, id, reference)
 }
 
-fn refresh(installation: &Installation, name: &str, arch: &str, parent: &gio::Cancellable) {
-    // Optional artwork/details must not hold an otherwise usable preview forever.
-    // Cancellation is separate from the resolved transaction and never deploys an app.
+fn bounded<T>(
+    parent: &gio::Cancellable,
+    timeout: Duration,
+    operation: impl FnOnce(&gio::Cancellable) -> T,
+) -> T {
+    // Optional metadata must not hold an otherwise usable preview forever.
     let cancel = gio::Cancellable::new();
     let watchdog_cancel = cancel.clone();
-    let parent = parent.clone();
+    let watchdog_parent = parent.clone();
     let (done, receiver) = mpsc::channel();
     let watchdog = std::thread::spawn(move || {
-        for _ in 0..450 {
+        for _ in 0..timeout.as_millis().div_ceil(100) {
             if receiver.recv_timeout(Duration::from_millis(100))
                 != Err(mpsc::RecvTimeoutError::Timeout)
             {
                 return;
             }
-            if parent.is_cancelled() {
+            if watchdog_parent.is_cancelled() {
                 break;
             }
         }
         watchdog_cancel.cancel();
     });
-    if let Err(error) = installation.update_appstream_sync(name, Some(arch), Some(&cancel)) {
-        eprintln!("Could not load local-file app details from {name}: {error}");
+    if parent.is_cancelled() {
+        cancel.cancel();
     }
+    let result = operation(&cancel);
     let _ = done.send(());
     let _ = watchdog.join();
+    result
+}
+
+fn refresh(installation: &Installation, name: &str, arch: &str, parent: &gio::Cancellable) {
+    bounded(parent, Duration::from_secs(45), |cancel| {
+        if let Err(error) = installation.update_appstream_sync(name, Some(arch), Some(cancel)) {
+            eprintln!("Could not load local-file app details from {name}: {error}");
+        }
+    });
 }
 
 pub fn resolve(
@@ -201,4 +291,29 @@ pub fn resolve(
             permissions::error("The source did not provide application permission information.")
         });
     json!({"app":apps[0],"permissions":permissions})
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn optional_preview_queries_time_out_and_respect_cancellation() {
+        let parent = gio::Cancellable::new();
+        let started = std::time::Instant::now();
+        bounded(&parent, Duration::from_millis(100), |cancel| {
+            while !cancel.is_cancelled() {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        });
+        assert!(started.elapsed() < Duration::from_secs(2));
+        assert!(
+            !parent.is_cancelled(),
+            "Optional size failures must not discard the app preview"
+        );
+        parent.cancel();
+        bounded(&parent, Duration::from_secs(45), |cancel| {
+            assert!(cancel.is_cancelled())
+        });
+    }
 }

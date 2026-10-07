@@ -499,7 +499,7 @@ Page {
                     objectName: "localSourceNoteText"
                     anchors.fill: parent; anchors.margins: 16
                     text: app && app.sourceUrl
-                        ? qsTr("This app comes from %1. Installing this app will add this source so the app can receive updates.").arg(app.sourceUrl)
+                        ? qsTr("This app comes from %1\nInstalling this app will add this source so the app can receive updates.").arg(app.sourceUrl)
                         : qsTr("This app comes from a local Flatpak file. Only install it if you trust where it came from.")
                     textFormat: Text.PlainText
                     color: window.textColor; wrapMode: Text.Wrap; font.pixelSize: 16

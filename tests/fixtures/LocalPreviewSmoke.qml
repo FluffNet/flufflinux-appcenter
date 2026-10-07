@@ -48,6 +48,8 @@ App.Main {
                 if (!note || !note.visible) { console.error("LOCAL_PREVIEW source note missing"); Qt.exit(1); return }
                 const size = probe.findChild(stack.currentItem, "appDownloadSize")
                 if (!size || size.text === "Unavailable") { console.error("LOCAL_PREVIEW app size missing"); Qt.exit(1); return }
+                const total = probe.findChild(stack.currentItem, "totalDownloadSize")
+                if (!total || total.text === "Unavailable") { console.error("LOCAL_PREVIEW dependency total missing"); Qt.exit(1); return }
                 if (!probe.findChild(stack.currentItem, "installAppButton").enabled) return
             }
             if (main.stage === 1 || main.stage === 3) {

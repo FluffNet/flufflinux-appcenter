@@ -110,10 +110,21 @@ def bundle_test(env, root):
         (payload / "bin/fixture").chmod(0o755)
         command(env, "flatpak", "build-export", *(["--runtime"] if is_runtime else []), str(root / "repo"), str(build), "stable")
     command(env, "flatpak", "remote-add", "--user", "--no-gpg-verify", "fixture", str(root / "repo"))
-    command(env, "flatpak", "install", "--user", "--noninteractive", "--no-related", "fixture", "runtime/" + runtime)
     path = root / "fixture.flatpak"
     command(env, "flatpak", "build-bundle", "--repo-url=" + (root / "repo").as_uri(),
             str(root / "repo"), str(path), identity, "stable")
+    cold_events = prepare(env, path)
+    cold_plan = next(e for e in cold_events if e["type"] == "plan")
+    assert cold_plan["state"] == "ready" and cold_plan["totalBytes"] > cold_plan["appBytes"], cold_plan
+    cold_env = dict(env, FLATPAK_USER_DIR=str(root / "cold-user"))
+    command(cold_env, "flatpak", "remote-add", "--user", "--no-gpg-verify", "fixture", str(root / "repo"))
+    cold_install = transaction(cold_env, dict(action="source", source=path.as_uri(), id=identity,
+                              sourceReviewed=True, sourceUrl=cold_plan["app"]["sourceUrl"],
+                              flatpakRef=cold_plan["app"]["flatpakRef"]))
+    assert cold_install[-1]["success"], cold_install
+    actual = next(e for e in cold_install if e["type"] == "plan")
+    assert actual["totalBytes"] == cold_plan["totalBytes"], (cold_plan, actual)
+    command(env, "flatpak", "install", "--user", "--noninteractive", "--no-related", "fixture", "runtime/" + runtime)
     before = command(env, "flatpak", "list", "--user", "--columns=ref")
     events = prepare(env, path)
     assert events[-1]["success"], events[-1]
@@ -124,6 +135,8 @@ def bundle_test(env, root):
     assert plan["app"]["screenshots"] == ["https://example.org/preview.png"], plan
     assert Path(plan["app"]["icon"]).is_file(), plan["app"]
     assert plan["permissions"]["state"] == "ready", plan
+    assert plan["state"] == "ready" and plan["totalBytes"] == plan["appBytes"], plan
+    print("PASS: preview total matches real installation and excludes an already-installed runtime", flush=True)
     assert {g["id"] for g in plan["permissions"]["groups"]} >= {"network", "audio", "display", "files"}
     declined = transaction(env, dict(action="source", source=path.as_uri(), id=identity), approve=False)
     assert declined[-1]["cancelled"] and not declined[-1]["success"]
@@ -143,6 +156,7 @@ def bundle_test(env, root):
         assert empty[-1]["success"], empty
         empty_plan = next(event for event in empty if event["type"] == "plan")
         assert empty_plan["permissions"]["state"] == "ready", empty_plan
+        assert empty_plan["state"] == "partial" and "totalBytes" not in empty_plan, empty_plan
         install = transaction(empty_env, dict(action="source", source=path.as_uri(), id=identity))
         assert not install[-1]["success"] and "runtime" in install[-1]["error"], install
         assert not command(empty_env, "flatpak", "list", "--user", "--columns=ref").strip()
@@ -157,6 +171,8 @@ def bundle_test(env, root):
                                      flatpakRef=plan["app"]["flatpakRef"]))
     assert installed[-1]["success"], installed
     assert not any(event["type"] == "review" for event in installed), installed
+    install_plan = next(event for event in installed if event["type"] == "plan")
+    assert install_plan["totalBytes"] == plan["totalBytes"], (plan, install_plan)
     origin = command(env, "flatpak", "info", "--user", "--show-origin", identity).strip()
     after = command(env, "flatpak", "remotes", "--user", "--columns=name,url")
     assert f"{origin}\t{(root / 'repo').as_uri()}\n" in after, (origin, after)
@@ -204,6 +220,7 @@ def main():
             assert plan["app"]["id"] == key_name, plan
             assert plan["app"]["description"] and plan["app"]["icon"], plan
             assert plan["permissions"]["state"] == "ready", plan
+            assert plan["state"] == "ready" and plan["totalBytes"] > plan["appBytes"], plan
             (ROOT / "target/local-preview-downloaded.json").write_text(json.dumps(plan, indent=2))
             if args.screenshots:
                 screenshots(env, root, args.file.resolve())
@@ -252,6 +269,7 @@ def main():
         assert app["sourceUrl"] == "https://dl.flathub.org/repo/", app
         assert app["flatpakRef"].startswith("app/" + identity + "/"), app
         assert plan["permissions"]["state"] == "ready", plan["permissions"]
+        assert plan["state"] == "ready" and plan["totalBytes"] > plan["appBytes"], plan
         assert any(g["id"] == "network" for g in plan["permissions"]["groups"])
         remotes = command(env, "flatpak", "remotes", "--user", "--columns=name,url")
         assert not remotes.strip(), remotes

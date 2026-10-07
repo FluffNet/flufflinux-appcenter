@@ -319,7 +319,20 @@ impl Manager {
                     };
                     prepared["sourceUrl"] = app["sourceUrl"].clone();
                     prepared["previewPermissions"] = message["permissions"].clone();
-                    prepared["previewAppBytes"] = message["appBytes"].clone();
+                    let mut sizes = json!({});
+                    for key in [
+                        "state",
+                        "appBytes",
+                        "appSize",
+                        "totalBytes",
+                        "totalSize",
+                        "sizeError",
+                    ] {
+                        if let Some(value) = message.get(key) {
+                            sizes[key] = value.clone();
+                        }
+                    }
+                    prepared["previewSizes"] = sizes;
                     app["localSource"] = request["source"].clone();
                     // A preview is not an installed app. Keep installation scope
                     // in the request only, or permissions would query flatpak info.
@@ -543,7 +556,8 @@ mod tests {
             false,
         );
         manager.job_message("install", &json!({"type":"plan","appId":"a.b.App","app":preview,
-            "appBytes":12345,"permissions":permissions,"operations":[{"ref":"app/a.b.App/x86_64/beta","remote":"local"}]}));
+            "state":"ready","appBytes":12345,"appSize":"12.06 KiB","totalBytes":23456,"totalSize":"22.91 KiB",
+            "permissions":permissions,"operations":[{"ref":"app/a.b.App/x86_64/beta","remote":"local"}]}));
         let opened = manager
             .signals
             .iter()
@@ -557,7 +571,16 @@ mod tests {
         assert_eq!(request["sourceUrl"], preview["sourceUrl"]);
         assert_eq!(request["source"], "file:///tmp/local.flatpakref");
         assert_eq!(request["sourceReviewed"], true);
-        assert_eq!(request["previewAppBytes"], 12345);
+        assert_eq!(request["previewSizes"]["appBytes"], 12345);
+        manager.install_info(opened.clone());
+        assert_eq!(
+            manager.properties["installSizes"]["a.b.App"]["totalBytes"],
+            23456
+        );
+        assert_eq!(
+            manager.properties["installSizes"]["a.b.App"]["state"],
+            "ready"
+        );
         manager.job_message(
             "install",
             &json!({"type":"result","success":true,"sourcesChanged":false}),
