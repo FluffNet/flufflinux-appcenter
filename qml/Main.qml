@@ -132,8 +132,12 @@ ApplicationWindow {
     function detailsFor(app) {
         const installed = findInstalled(app)
         if (installed) return installed
+        const installedFields = ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedRef", "installedBranch", "installedArch", "installedAt", "installedDate", "updatedAt", "updatedDate"]
+        // Keep the app identity stable when an unrelated installed-list refresh
+        // arrives, so an open permissions dialog is not treated as a new app.
+        if (app && !installedFields.some(field => field in app)) return app
         const clean = Object.assign({}, app)
-        for (const field of ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedRef", "installedBranch", "installedArch", "installedAt", "installedDate", "updatedAt", "updatedDate"])
+        for (const field of installedFields)
             delete clean[field]
         return clean
     }

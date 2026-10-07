@@ -5,6 +5,7 @@ pub mod catalog;
 pub mod ffi;
 mod http;
 pub mod locale;
+mod local_preview;
 pub mod manager;
 pub mod permissions;
 pub mod popularity;

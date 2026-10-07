@@ -1,7 +1,7 @@
 //! Killable, unprivileged Flatpak transactions. UI requests never bypass consent.
 use super::{
-    addons, bytes, flag, number, process, progress, repositories, rows, sources, storage, text,
-    updates, valid_id,
+    addons, bytes, flag, local_preview, number, process, progress, repositories, rows, sources,
+    storage, text, updates, valid_id,
 };
 use gio::prelude::*;
 use libflatpak::{prelude::*, RefKind, Transaction, TransactionOperationType as OpType};
@@ -98,6 +98,8 @@ struct State {
     addon: bool,
     updating: bool,
     plan_ready: bool,
+    preview_plan: Option<Value>,
+    preview_hint: crate::appstream::App,
     declined: bool,
     operation_error: bool,
     progress: HashMap<String, libflatpak::TransactionProgress>,
@@ -193,8 +195,10 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
         }
         if w.updating&&!progress::matches_plan(rows(&w.request["plan"]),&operations){w.problem="The update or its dependencies changed. Check for updates again before continuing.".into();return false;}
         send(json!({"type":"identity","appId":w.id}));
-        send(json!({"type":"plan","appId":w.id,"operations":operations,"appBytes":app_size,"totalBytes":total,"appSize":bytes(app_size),"totalSize":bytes(total),"state":"ready"}));w.plan_ready=true;
-        if flag(&w.request,"estimateOnly")||flag(&w.request,"prepareOnly"){return false;}
+        let plan=json!({"type":"plan","appId":w.id,"operations":operations,"appBytes":app_size,"totalBytes":total,"appSize":bytes(app_size),"totalSize":bytes(total),"state":"ready"});w.plan_ready=true;
+        if flag(&w.request,"prepareOnly"){w.preview_plan=Some(plan);return false;}
+        send(plan);
+        if flag(&w.request,"estimateOnly"){return false;}
         if !w.removing{return !w.control.cancel.is_cancelled();}
         if !flag(&w.request,"removalConfirmed"){
             let message=if w.addon{format!("Only {} will be removed. The parent app and its data will be kept.",w.name)}else if w.scope!="user"{format!("If you proceed, {} will be removed for all users, and its app data for this account will be deleted.",w.name)}else{format!("If you proceed, {} and its app data will be removed.",w.name)};
@@ -528,6 +532,13 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
                 .is_some_and(|e| e.eq_ignore_ascii_case("flatpak"))
         }) {
             if !state.borrow_mut().ask(json!({"kind":"bundle","title":"Open local Flatpak bundle?","message":format!("Only open bundles from a source you trust. Flatpak may register the bundle's software source for your user while preparing it.\n\n{}",path.display()),"operations":[]})){return Err("Cancelled".into());}
+            if flag(&request, "prepareOnly") {
+                // The bundle contains its own app metadata and permissions.
+                // Preview must not require its runtime or a reachable source.
+                // Actual installation still resolves every required dependency.
+                tx.set_disable_dependencies(true);
+                tx.set_disable_related(true);
+            }
             tx.add_install_bundle(&gio::File::for_path(path), None)
                 .map_err(|e| e.to_string())?;
         } else {
@@ -590,6 +601,7 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
                 return Err("The reference now names a different app. Open it again.".into());
             }
             state.borrow_mut().id = next_id.to_string();
+            state.borrow_mut().preview_hint = local_preview::reference_hint(&key);
             send(json!({"type":"identity","appId":next_id.as_str()}));
             tx.add_install_flatpakref(&glib::Bytes::from_owned(contents))
                 .map_err(|e| e.to_string())?;
@@ -598,6 +610,24 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
         return Err("Unsupported transaction request.".into());
     }
     let result = tx.run(Some(&cancel));
+    // A preview stops before deployment. Resolve its details after the transaction
+    // has released its locks, not inside a nested repository refresh callback.
+    let preview = state.borrow_mut().preview_plan.take();
+    if let Some(mut plan) = preview.filter(|_| !cancel.is_cancelled()) {
+        let app_id = text(&plan, "appId");
+        if let Some(op) = tx.operations().into_iter().find(|op| {
+            op.get_ref()
+                .is_some_and(|r| r.starts_with(&format!("app/{app_id}/")))
+        }) {
+            let hint = state.borrow().preview_hint.clone();
+            let details = local_preview::resolve(&installation, &request, &op, &hint, &cancel);
+            plan["app"] = details["app"].clone();
+            plan["permissions"] = details["permissions"].clone();
+        }
+        if !cancel.is_cancelled() {
+            send(plan);
+        }
+    }
     {
         let w = state.borrow();
         if result.is_err() || w.operation_error {
@@ -661,6 +691,8 @@ pub fn run(request: Value) -> i32 {
         updating: action == "update",
         request,
         plan_ready: false,
+        preview_plan: None,
+        preview_hint: Default::default(),
         declined: false,
         operation_error: false,
         progress: HashMap::new(),

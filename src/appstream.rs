@@ -192,6 +192,28 @@ fn read_metadata(path: &Path) -> Option<String> {
     }
 }
 
+// Local-file previews must stay on the resolved source, branch and architecture.
+pub(crate) fn app_from_xml(xml: &str, path: &Path, id: &str, reference: &str) -> Option<App> {
+    blocks(xml, "component").into_iter().find_map(|component| {
+        let candidate = base_text(component, "id")?;
+        if crate::backend::normalized_id(&candidate) != crate::backend::normalized_id(id) {
+            return None;
+        }
+        let app = parse_component(component, path)?;
+        (app.flatpak_ref.is_empty() || app.flatpak_ref == reference).then_some(app)
+    })
+}
+
+pub(crate) fn app_in_catalog(root: &Path, id: &str, reference: &str) -> Option<App> {
+    let mut files = Vec::new();
+    collect_files(root, 0, &mut files);
+    files.sort();
+    files.into_iter().find_map(|path| {
+        let xml = read_metadata(&path)?;
+        app_from_xml(&xml, &path, id, reference)
+    })
+}
+
 fn parse_component(xml: &str, catalog_path: &Path) -> Option<App> {
     let id = base_text(xml, "id")?;
     let name = base_text(xml, "name").filter(|value| !value.is_empty())?;
@@ -806,6 +828,36 @@ mod tests {
             assert_eq!(app.category, "Multimedia");
             assert_eq!(app.categories, [category]);
         }
+    }
+
+    #[test]
+    fn local_preview_matches_id_and_ref_without_using_another_branch() {
+        let xml = r#"<components><component type="desktop-application"><id>org.example.Other</id><name>Other</name></component><component type="desktop-application"><id>org.example.Player.desktop</id><name>Player Beta</name><bundle type="flatpak">app/org.example.Player/x86_64/beta</bundle><description><p>Local details</p></description><screenshots><screenshot><image type="source">https://example.org/image.png</image></screenshot></screenshots></component></components>"#;
+        let path = Path::new("appstream.xml");
+        assert!(app_from_xml(
+            xml,
+            path,
+            "org.example.Player",
+            "app/org.example.Player/x86_64/stable"
+        )
+        .is_none());
+        assert!(app_from_xml(
+            xml,
+            path,
+            "org.example.Missing",
+            "app/org.example.Missing/x86_64/beta"
+        )
+        .is_none());
+        let app = app_from_xml(
+            xml,
+            path,
+            "org.example.Player",
+            "app/org.example.Player/x86_64/beta",
+        )
+        .unwrap();
+        assert_eq!(app.name, "Player Beta");
+        assert_eq!(app.description, "Local details");
+        assert_eq!(app.screenshots, ["https://example.org/image.png"]);
     }
 
     #[test]

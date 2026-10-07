@@ -308,8 +308,25 @@ impl Manager {
                             prepared["remote"] = op["remote"].clone();
                         }
                     }
+                    let mut app = if normalized_id(text(&message["app"], "id")) == id {
+                        // A skipped operation (already installed) is absent from
+                        // the download plan but still has resolved preview identity.
+                        prepared["flatpakRef"] = message["app"]["flatpakRef"].clone();
+                        prepared["remote"] = message["app"]["remote"].clone();
+                        message["app"].clone()
+                    } else {
+                        self.metadata(id)
+                    };
+                    prepared["sourceUrl"] = app["sourceUrl"].clone();
+                    prepared["previewPermissions"] = message["permissions"].clone();
+                    app["localSource"] = request["source"].clone();
+                    // A preview is not an installed app. Keep installation scope
+                    // in the request only, or permissions would query flatpak info.
+                    app.as_object_mut().unwrap().remove("installation");
+                    app["flatpakRef"] = prepared["flatpakRef"].clone();
+                    app["remote"] = prepared["remote"].clone();
                     self.sources.insert(id.into(), prepared);
-                    self.signal("appOpened", json!([self.metadata(id)]));
+                    self.signal("appOpened", json!([app]));
                 }
                 if request["action"] != "uninstall"
                     && id == normalized_id(text(&self.size_app, "id"))
@@ -504,8 +521,52 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::backend::permissions;
     fn request(id: &str) -> Value {
         json!({"id":id,"action":"install","name":id,"installation":"user"})
+    }
+    #[test]
+    fn local_preview_keeps_details_permissions_and_source_without_hijacking_catalog_installs() {
+        let catalog = json!({"id":"a.b.App","name":"Catalog app","remote":"catalog",
+            "flatpakRef":"app/a.b.App/x86_64/stable","sourceUrl":"https://catalog.example/repo/"});
+        let mut manager = Manager::new(vec![catalog.clone()]);
+        manager.enqueue(
+            json!({"action":"source","source":"file:///tmp/local.flatpakref",
+            "prepareOnly":true,"hidden":true,"installation":"user"}),
+        );
+        let preview = json!({"id":"a.b.App","name":"Local app","description":"Source details",
+            "screenshots":["https://local.example/image.png"],"remote":"local",
+            "flatpakRef":"app/a.b.App/x86_64/beta","sourceUrl":"https://local.example/repo/"});
+        let permissions = permissions::parse(
+            b"[Application]\nname=a.b.App\n[Context]\nshared=network;\n",
+            false,
+        );
+        manager.job_message("install", &json!({"type":"plan","appId":"a.b.App","app":preview,
+            "permissions":permissions,"operations":[{"ref":"app/a.b.App/x86_64/beta","remote":"local"}]}));
+        let opened = manager
+            .signals
+            .iter()
+            .find(|s| s["name"] == "appOpened")
+            .unwrap()["args"][0]
+            .clone();
+        assert_eq!(opened["description"], "Source details");
+        assert_eq!(opened["screenshots"], preview["screenshots"]);
+        assert!(opened.get("installation").is_none());
+        let request = manager.install_request(&opened).unwrap();
+        assert_eq!(request["sourceUrl"], preview["sourceUrl"]);
+        assert_eq!(request["source"], "file:///tmp/local.flatpakref");
+        manager.request_permissions(opened.clone());
+        assert_eq!(manager.properties["appPermissions"], permissions);
+        assert!(
+            !manager.tasks.contains_key("permissions"),
+            "Reuse resolved permissions without another fetch"
+        );
+        let catalog_request = manager.install_request(&catalog).unwrap();
+        assert_eq!(catalog_request["action"], "install");
+        assert_eq!(catalog_request["remote"], "catalog");
+        let mut changed = opened;
+        changed["localSource"] = "file:///tmp/replaced.flatpakref".into();
+        assert!(manager.install_request(&changed).is_none());
     }
     #[test]
     fn adding_to_running_batch_changes_every_total() {

@@ -496,6 +496,14 @@ Page {
                     anchors.fill: parent; anchors.margins: 22; spacing: 10
                     Label { text: "About this app"; color: window.textColor; font.pixelSize: 23; font.weight: Font.DemiBold }
                     Label {
+                        objectName: "appDetailsWarning"
+                        Layout.fillWidth: true
+                        visible: text.length > 0
+                        text: app && app.detailsWarning || ""
+                        textFormat: Text.PlainText
+                        color: window.textColor; font.bold: true; wrapMode: Text.WordWrap
+                    }
+                    Label {
                         Layout.fillWidth: true
                         text: app && app.description ? app.description : (app ? app.summary : "")
                         color: window.textColor; wrapMode: Text.WordWrap; font.pixelSize: 16; lineHeight: 1.25

@@ -4,7 +4,12 @@ use std::os::unix::fs::MetadataExt;
 impl Manager {
     pub(super) fn install_request(&self, app: &Value) -> Option<Value> {
         let id = normalized_id(text(app, "id"));
-        if let Some(source) = self.sources.get(id) {
+        if !text(app, "localSource").is_empty() {
+            let source = self.sources.get(id).filter(|source| {
+                source["source"] == app["localSource"]
+                    && source["flatpakRef"] == app["flatpakRef"]
+                    && source["sourceUrl"] == app["sourceUrl"]
+            })?;
             let mut request = source.clone();
             merge(
                 &mut request,
@@ -234,6 +239,10 @@ impl Manager {
             json!({"state":"loading","installed":installed}),
         );
         let context = json!({"installed":installed});
+        if !installed && request["previewPermissions"]["state"] == "ready" {
+            self.set("appPermissions", request["previewPermissions"].clone());
+            return self.permissions_token;
+        }
         if installed {
             self.start(
                 "permissions",
