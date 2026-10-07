@@ -80,7 +80,7 @@ TestCase {
         menu.itemAt(1).triggered(); menu.close()
         const about = findChild(main, "aboutDialog")
         tryCompare(about, "opened", true)
-        compare(findChild(about, "aboutVersion").text, "Version 2026.10 (Beta)")
+        compare(findChild(about, "aboutVersion").text, "Version 2026.10")
         const copyright = findChild(about, "aboutCopyright")
         compare(copyright.text, "Copyright © 2026 FluffNet LLC - MIT License")
         compare(copyright.lineCount, 1)

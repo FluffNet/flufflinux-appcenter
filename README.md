@@ -10,7 +10,7 @@ Application state, Flatpak operations, queue management and caching are written
 in Rust. Small native adapters connect Qt/QML and KDE desktop services. Page
 scrolling uses Kirigami while screenshot gestures keep their existing behavior.
 
-The current release is **2026.10 (Beta)**.
+The current release is **2026.10**.
 
 ## Screenshots
 

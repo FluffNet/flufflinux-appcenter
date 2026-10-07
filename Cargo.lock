@@ -256,7 +256,7 @@ dependencies = [
 
 [[package]]
 name = "flufflinux-appcenter"
-version = "2026.10.0-beta"
+version = "2026.10.0"
 dependencies = [
  "chrono",
  "gio",

@@ -1,6 +1,6 @@
 [package]
 name = "flufflinux-appcenter"
-version = "2026.10.0-beta"
+version = "2026.10.0"
 edition = "2021"
 license = "MIT"
 description = "A small native application catalog for Fluff Linux"
