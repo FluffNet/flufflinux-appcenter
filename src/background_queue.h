@@ -1,5 +1,4 @@
 #pragma once
-
 #include <QObject>
 #include <QEventLoopLocker>
 #include <QPointer>
@@ -9,7 +8,6 @@
 #include <QVariantMap>
 #include <functional>
 #include <memory>
-
 class FlatpakManager;
 class QWindow;
 class KUiServerV2JobTracker;
@@ -17,12 +15,11 @@ class SleepInhibitor;
 class KStatusNotifierItem;
 class BackgroundJob;
 
-// The session service owns the manager, not the visible window. KDE's native
-// job tracker supplies tray progress and respects fullscreen / Do Not Disturb.
+// Native KDE presentation adapter for Rust's background commands.
 class BackgroundQueue final : public QObject {
 public:
     BackgroundQueue(FlatpakManager *manager, QWindow *window,
-                    std::function<void()> showWindow, QObject *parent = nullptr);
+        std::function<void()> showWindow, QObject *parent = nullptr);
     ~BackgroundQueue() override;
     bool closed() const { return m_closed; }
     int trackedJobs() const { return m_registeredJobs.size(); }
@@ -31,8 +28,7 @@ public:
 protected:
     bool eventFilter(QObject *object, QEvent *event) override;
 private:
-    void detachJobs();
-    void reportBatch();
+    void execute(const QVariantMap &command);
     FlatpakManager *m_manager;
     QPointer<QWindow> m_window;
     std::function<void()> m_showWindow;
@@ -41,13 +37,7 @@ private:
     std::unique_ptr<KStatusNotifierItem> m_tray;
     QMap<int, BackgroundJob *> m_jobs;
     QSet<int> m_registeredJobs;
-    QMap<int, QVariantMap> m_batchJobs;
-    quint64 m_batchId = 0;
-    bool m_batchReported = true;
     QTimer m_idle;
     bool m_closed = false;
-    // Native KJob notifications have their own quit locks. Their final release
-    // must not exit the hidden app before our workers/cache writes finish.
-    // Only the controller's explicit idle quit ends this service.
     QEventLoopLocker m_lifetimeLock;
 };

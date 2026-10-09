@@ -1,6 +1,5 @@
 #include "flatpak_manager.h"
 #include "catalog_stats.h"
-#include "catalog_cache.h"
 #include "catalog_preferences.h"
 #include "network_status.h"
 #include "window_preferences.h"
@@ -114,6 +113,9 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     if (!server.listen(socketPath)) { qCritical("Cannot create the App Center link handler socket."); return 1; }
 
     FlatpakManager manager({});
+    if (!qEnvironmentVariableIsSet("FLUFF_APP_CENTER_QML")
+            || qEnvironmentVariableIntValue("FLUFF_APP_CENTER_RECOVERY_TEST") == 1)
+        manager.enableRecovery();
     NetworkStatus networkStatus;
     manager.setCatalogNetworkState(networkStatus.state(), networkStatus.ready());
     QObject::connect(&networkStatus, &NetworkStatus::changed, &manager, [&] {
@@ -125,9 +127,9 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     // Read-only UI fixtures keep the local-only worker unless explicitly
     // opting into the full startup flow with isolated source/cache paths.
     const bool cacheStartup = manageWindow || qEnvironmentVariableIntValue("FLUFF_APP_CENTER_CATALOG_TEST") == 1;
-    manager.loadCatalog(cacheStartup ? CatalogCache::defaultPath() : QString());
+    manager.loadCatalog(cacheStartup ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/application-list.json" : QString());
     if (!manager.catalogLoading()) trace("catalog-cache-ready");
-    CatalogStats catalogStats;
+    CatalogStats catalogStats(&manager);
     // Custom QML is used by read-only UI fixtures; it must not read/write the
     // desktop user's window preferences or override fixture geometry.
     // Explicitly opt-in live fixtures exercise this exact controller using an
@@ -144,7 +146,6 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     engine.rootContext()->setContextProperty("fluffNetworkStatus", &networkStatus);
     engine.rootContext()->setContextProperty("fluffCatalogPreferences", &catalogPreferences);
     engine.rootContext()->setContextProperty("fluffDesktopTheme", &desktopTheme);
-    engine.rootContext()->setContextProperty("fluffInitialCatalog", manager.catalog());
     engine.rootContext()->setContextProperty("fluffWindowManaged", manageWindow);
     if (manageWindow) QTimer::singleShot(0, &manager, &FlatpakManager::initializeSources);
     engine.load(QUrl::fromLocalFile(QString::fromUtf8(qml_path)));

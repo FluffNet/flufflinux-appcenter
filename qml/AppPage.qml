@@ -293,7 +293,7 @@ Page {
         // the image DragHandler's grab after the drag threshold is crossed.
         interactive: !screenshotPreview.visible
         ScrollBar.vertical: ScrollBar {}
-        NaturalWheelScroll {
+        PageWheelScroll {
             id: detailsWheelScroll
             objectName: "detailsNaturalScroll"
             scrollTarget: detailsFlickable
@@ -488,6 +488,25 @@ Page {
                 }
             }
             Rectangle {
+                objectName: "localSourceNote"
+                Layout.fillWidth: true
+                visible: !!(app && app.localSource) && !heroActions.installed
+                implicitHeight: sourceNoteText.implicitHeight + 32
+                radius: window.cornerRadius
+                color: window.surfaceColor; border.color: window.accentColor; border.width: 1
+                Label {
+                    id: sourceNoteText
+                    objectName: "localSourceNoteText"
+                    anchors.fill: parent; anchors.margins: 16
+                    text: app && app.sourceUrl
+                        ? qsTr("This app comes from %1\nInstalling this app will add this source so the app can receive updates.").arg(app.sourceUrl)
+                        : qsTr("This app comes from a local Flatpak file. Only install it if you trust where it came from.")
+                    textFormat: Text.PlainText
+                    color: window.textColor; wrapMode: Text.Wrap; font.pixelSize: 16
+                }
+            }
+            Rectangle {
+                objectName: "appAboutCard"
                 Layout.fillWidth: true
                 implicitHeight: aboutLayout.implicitHeight + 44; radius: window.cornerRadius
                 color: window.surfaceColor; border.color: window.borderColor; border.width: 1
@@ -495,6 +514,14 @@ Page {
                     id: aboutLayout
                     anchors.fill: parent; anchors.margins: 22; spacing: 10
                     Label { text: "About this app"; color: window.textColor; font.pixelSize: 23; font.weight: Font.DemiBold }
+                    Label {
+                        objectName: "appDetailsWarning"
+                        Layout.fillWidth: true
+                        visible: text.length > 0
+                        text: app && app.detailsWarning || ""
+                        textFormat: Text.PlainText
+                        color: window.textColor; font.bold: true; wrapMode: Text.WordWrap
+                    }
                     Label {
                         Layout.fillWidth: true
                         text: app && app.description ? app.description : (app ? app.summary : "")
@@ -764,7 +791,6 @@ Page {
             // after its opening animation. Preserve both scroll positions.
             detailsFlickable.cancelFlick()
             screenshotList.cancelFlick()
-            detailsWheelScroll.stopSmoothScroll()
             detailsWheelScroll.middleMouseScroll.stop()
             screenshotMiddleScroll.stop()
             width = desiredWidth

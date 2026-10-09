@@ -1,6 +1,5 @@
 // Production manager + isolated worker protocol; no real sources/apps changed.
-#include "../../src/catalog_inputs.h"
-#include "../../src/catalog_cache.h"
+#include "rust_cache_fixture.h"
 #include "../../src/flatpak_manager.h"
 #include <QGuiApplication>
 #include <QJsonArray>

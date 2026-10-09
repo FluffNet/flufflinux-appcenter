@@ -9,11 +9,13 @@
 #include <functional>
 
 static void until(const std::function<bool()> &condition) {
+    static int checkpoint = 0; ++checkpoint;
     QElapsedTimer timer; timer.start();
     while (!condition() && timer.elapsed() < 6000) { QCoreApplication::processEvents(); QThread::msleep(5); }
-    assert(condition());
+    if (!condition()) qFatal("Application-link test timed out at checkpoint %d", checkpoint);
 }
 int main(int argc, char **argv) {
+    if (argc > 1) return 2;
     QTemporaryDir temporary; assert(temporary.isValid());
     qputenv("XDG_DATA_HOME", (temporary.path() + "/data").toUtf8());
     qputenv("XDG_CONFIG_HOME", (temporary.path() + "/config").toUtf8());

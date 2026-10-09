@@ -52,6 +52,11 @@ TestCase {
         backend.repositories = backend.initialRepositories
         main.requestActivate(); wait(50)
     }
+    function cleanup() {
+        const about = findChild(main, "aboutDialog")
+        about.close()
+        tryCompare(about, "visible", false)
+    }
     function test_menu_layout_data() { return [{tag:"wide", width:1180}, {tag:"narrow", width:720}] }
     function test_menu_layout(data) {
         main.width = data.width
@@ -69,13 +74,16 @@ TestCase {
         tryCompare(menu, "opened", true)
         fuzzyCompare(menu.x + menu.width, button.width, 0.5)
         verify(button.x + menu.x >= 0, "Right-aligned menu stays inside the page")
-        compare(menu.count, 2)
+        compare(menu.count, 3)
+        compare(menu.itemAt(2).objectName, "recoveryMenuItem")
+        verify(!menu.itemAt(2).visible)
+        compare(menu.itemAt(2).height, 0)
         compare(menu.itemAt(0).text, "Settings"); verify(menu.itemAt(0).icon.name.length > 0)
         compare(menu.itemAt(1).text, "About"); verify(menu.itemAt(1).icon.name.length > 0)
         menu.itemAt(1).triggered(); menu.close()
         const about = findChild(main, "aboutDialog")
         tryCompare(about, "opened", true)
-        compare(findChild(about, "aboutVersion").text, "Version 2026.09 (Beta)")
+        compare(findChild(about, "aboutVersion").text, "Version 2026.10")
         const copyright = findChild(about, "aboutCopyright")
         compare(copyright.text, "Copyright © 2026 FluffNet LLC - MIT License")
         compare(copyright.lineCount, 1)

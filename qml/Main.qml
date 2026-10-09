@@ -39,8 +39,7 @@ ApplicationWindow {
         ? fluffDesktopTheme.revision : 0
     readonly property url appIconUrl: iconSource("flufflinux-appcenter")
 
-    property var catalog: typeof fluffInitialCatalog !== "undefined"
-                          ? fluffInitialCatalog : []
+    property var catalog: backend && backend.catalog || []
     property var selectedApp: null
     property var backend: typeof fluffBackend !== "undefined" ? fluffBackend : null
     property var catalogStats: typeof fluffCatalogStats !== "undefined" ? fluffCatalogStats : null
@@ -132,8 +131,12 @@ ApplicationWindow {
     function detailsFor(app) {
         const installed = findInstalled(app)
         if (installed) return installed
+        const installedFields = ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedRef", "installedBranch", "installedArch", "installedAt", "installedDate", "updatedAt", "updatedDate"]
+        // Keep the app identity stable when an unrelated installed-list refresh
+        // arrives, so an open permissions dialog is not treated as a new app.
+        if (app && !installedFields.some(field => field in app)) return app
         const clean = Object.assign({}, app)
-        for (const field of ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedRef", "installedBranch", "installedArch", "installedAt", "installedDate", "updatedAt", "updatedDate"])
+        for (const field of installedFields)
             delete clean[field]
         return clean
     }
@@ -143,8 +146,8 @@ ApplicationWindow {
         ignoreUnknownSignals: true
         function onAppOpened(app) { window.openApp(app) }
         function onHomeRequested() { window.showHome() }
+        function onUpdatesRequested() { window.showUpdates() }
         function onInputError(message) { inputError.text = message; errorDialog.open() }
-        function onCatalogChanged() { window.catalog = window.backend.catalog }
     }
     function showDownloads() {
         if (stack.currentItem.objectName !== "downloadsPage")
@@ -156,6 +159,8 @@ ApplicationWindow {
         if (backend && typeof backend.refreshSources === "function") backend.refreshSources()
     }
     function showAbout() { aboutDialog.open() }
+    function showRecovery() { recoveryDialog.open() }
+    RecoveryDialog { id: recoveryDialog; backend: window.backend }
     function showHome() {
         aboutDialog.close()
         errorDialog.close()
@@ -272,7 +277,7 @@ ApplicationWindow {
                 source: window.appIconUrl; fillMode: Image.PreserveAspectFit
             }
             Label { text: qsTr("App Center"); font.pixelSize: 26; font.bold: true; Layout.alignment: Qt.AlignHCenter }
-            Label { objectName: "aboutVersion"; text: qsTr("Version %1").arg(Qt.application.version || "2026.09 (Beta)"); Layout.alignment: Qt.AlignHCenter }
+            Label { objectName: "aboutVersion"; text: qsTr("Version %1").arg(Qt.application.version || "2026.10"); Layout.alignment: Qt.AlignHCenter }
             Label { text: qsTr("Discover and manage Flatpak apps on Fluff Linux."); Layout.fillWidth: true; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
             Label {
                 objectName: "aboutCopyright"

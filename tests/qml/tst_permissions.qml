@@ -73,6 +73,39 @@ TestCase {
         mouseClick(findChild(dialog(), "closePermissionsButton")); tryCompare(dialog(), "visible", false)
         verify(!button.activeFocus); compare(backend.appPermissions.state, undefined)
     }
+    function test_local_file_details_warning_does_not_hide_permissions() {
+        const warning = "Could not load app details from this source."
+        main.openApp(Object.assign({}, app, {detailsWarning:warning}))
+        tryCompare(stack(), "busy", false)
+        const label = findChild(page(), "appDetailsWarning")
+        compare(label.text, warning); verify(label.visible && label.font.bold)
+        compare(label.color, main.textColor)
+        open()
+        backend.appPermissions = {state:"ready", groups:[], installed:false}
+        verify(dialog().ready)
+    }
+    function test_unrelated_installed_refresh_keeps_permissions_open() {
+        open()
+        backend.appPermissions = {state:"ready", groups:[], installed:false}
+        try {
+            backend.installedApps = [{id:"org.example.Unrelated", name:"Unrelated app"}]
+            wait(50)
+            verify(dialog().opened, "An unrelated installed-list refresh must not close this app's permissions")
+            verify(dialog().ready)
+        } finally {
+            backend.installedApps = []
+        }
+    }
+    function test_same_app_republished_keeps_permissions_but_source_change_closes() {
+        open()
+        backend.appPermissions = {state:"ready", groups:[], installed:false}
+        main.selectedApp = Object.assign({}, app)
+        wait(50)
+        verify(dialog().opened)
+        verify(dialog().ready)
+        main.selectedApp = Object.assign({}, app, {sourceUrl:"https://different.example/repo/"})
+        tryCompare(dialog(), "visible", false)
+    }
     function test_group_layout_data() {
         return [{tag:"desktop", width:1920, height:1080}, {tag:"wide", width:1180, height:760}, {tag:"narrow", width:720, height:540}]
     }

@@ -85,7 +85,7 @@ Page {
         clip: true
         boundsBehavior: Flickable.StopAtBounds
         ScrollBar.vertical: ScrollBar {}
-        NaturalWheelScroll { scrollTarget: scroll }
+        PageWheelScroll { scrollTarget: scroll }
         ColumnLayout {
             id: content
             x: 24; y: 24; width: parent.width - 48; spacing: 16

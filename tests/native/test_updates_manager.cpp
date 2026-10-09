@@ -88,7 +88,7 @@ int main(int argc, char **argv) {
     until([&] { return !manager.busy(); });
     assert(manager.updates()["state"] == "cancelled" && manager.updates()["items"].toList().isEmpty());
     manager.checkForUpdates();
-    auto timer = manager.findChild<QTimer *>("updateCheckTimeout"); assert(timer); timer->start(20);
+    auto timer = manager.findChild<QTimer *>("updatesWorkTimeout"); assert(timer); timer->start(20);
     until([&] { return !manager.busy(); });
     assert(manager.updates()["state"] == "error");
     assert(manager.updates()["error"].toString().contains("timed out"));

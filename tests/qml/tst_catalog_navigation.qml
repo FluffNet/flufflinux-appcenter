@@ -103,10 +103,10 @@ TestCase {
         grid.contentY = 0
         waitForRendering(page)
         const naturalScroll = findChild(page, "catalogNaturalScroll")
-        naturalScroll.scrollBy(100, false)
-        compare(grid.contentY, 100, "Mouse scrolling must not snap to rows")
-        naturalScroll.applyTouchpadDelta(10, true)
-        compare(grid.contentY, 121.5, "Touchpad scrolling must preserve its existing pixel movement")
+        naturalScroll.scrollDown(100)
+        tryCompare(grid, "contentY", 100)
+        naturalScroll.scrollDown(10)
+        tryCompare(grid, "contentY", 110)
         grid.contentY = 0
         waitForRendering(page)
         mousePress(bar, bar.width / 2, bar.contentItem.y + bar.contentItem.height / 2)

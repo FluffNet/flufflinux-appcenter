@@ -21,10 +21,11 @@ with tempfile.TemporaryDirectory(prefix="appcenter-cli-") as temporary:
     # Help/introspection must work on a terminal without any display/platform plugin.
     display = env["QT_QPA_PLATFORM"]
     env["QT_QPA_PLATFORM"] = "not-a-platform"
-    for flag, expected in [("--help", "--search"), ("--help-all", "--mime"), ("--version", "2026.09"),
+    for flag, expected in [("--help", "--search"), ("--help-all", "--mime"), ("--version", "2026.10"),
                            ("--author", "FluffNet LLC"), ("--license", "MIT"),
                            ("--listmodes", "Browsing"), ("--listbackends", "flatpak-backend")]:
         result = run([flag]); assert result.returncode == 0 and expected in result.stdout, result
+    assert run(["--version"]).stdout == "App Center 2026.10\n"
     for args in [["--headless-update"], ["--test", "old.qml"]]:
         result = run(args); assert result.returncode != 0 and result.stderr, result
     env["QT_QPA_PLATFORM"] = display

@@ -19,6 +19,10 @@ Dialog {
     readonly property bool ready: permissionData.state === "ready"
     readonly property var groups: ready ? permissionData.groups || [] : []
     readonly property string appName: String(app.name || app.id || "")
+    // Model refreshes can recreate the same app object. Close only when the
+    // permission target changes, not when its unchanged details are republished.
+    readonly property string appIdentity: JSON.stringify([app.id, app.flatpakRef, app.remote,
+        app.sourceUrl, app.localSource, app.installation, app.installedRef, app.installedVersion, app.version])
     modal: true
     parent: Overlay.overlay
     anchors.centerIn: parent
@@ -39,7 +43,7 @@ Dialog {
     }
     onAboutToShow: { permissionScroll.contentY = 0; load() }
     onOpened: contentItem.forceActiveFocus(Qt.OtherFocusReason)
-    onAppChanged: if (visible) close()
+    onAppIdentityChanged: if (visible) close()
     onClosed: cancelRead()
     Component.onDestruction: cancelRead()
     header: Label {
@@ -67,7 +71,7 @@ Dialog {
                 surfaceColor: window.raisedSurfaceColor
                 Accessible.name: qsTr("Scroll app permissions")
             }
-            NaturalWheelScroll { scrollTarget: permissionScroll }
+            PageWheelScroll { scrollTarget: permissionScroll }
             ColumnLayout {
                 id: body
                 width: permissionScroll.width

@@ -171,7 +171,7 @@ Page {
                     anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
                     visible: page.visible && size < 1
                 }
-                NaturalWheelScroll { scrollTarget: list }
+                PageWheelScroll { scrollTarget: list }
                 delegate: Rectangle {
                     id: updateRow
                     required property var modelData

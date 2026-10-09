@@ -167,7 +167,7 @@ Page {
     onInstalledSortIndexChanged: installedList.positionViewAtBeginning()
     readonly property var categories: [
         { name: "All Apps", label: qsTr("Home"), icon: "go-home" },
-        { name: "Audio & Video", label: qsTr("Audio & Video"), icon: "applications-multimedia" },
+        { name: "Multimedia", label: qsTr("Multimedia"), icon: "applications-multimedia" },
         { name: "Development", label: qsTr("Development"), icon: "applications-development" },
         { name: "Education", label: qsTr("Education"), icon: "applications-education" },
         { name: "Games", label: qsTr("Games"), icon: "applications-games" },
@@ -194,7 +194,9 @@ Page {
         const compactQuery = page.compactSearchText(query)
         const activeCategory = query ? window.searchCategoryFilter : window.selectedCategory
         const matches = window.catalog.filter(function(app) {
-            const categoryMatches = activeCategory === "All Apps" || app.category === activeCategory
+            // Keep still-fresh catalogs from before the display-name change usable.
+            const appCategory = app.category === "Audio & Video" ? "Multimedia" : app.category
+            const categoryMatches = activeCategory === "All Apps" || appCategory === activeCategory
             const compactNameMatches = compactQuery.length > 0
                     && page.compactSearchText(app.searchName).indexOf(compactQuery) >= 0
             const compactDescriptionMatches = compactQuery.length > 0
@@ -244,7 +246,8 @@ Page {
         } else if (kind === "mime") {
             cliMimeType = value.toLowerCase()
         } else if (kind === "category") {
-            const aliases = { "audiovideo": "Audio & Video", "game": "Games", "network": "Internet", "utility": "Utilities" }
+            const aliases = { "audiovideo": "Multimedia", "audio & video": "Multimedia", "audio/video": "Multimedia",
+                "game": "Games", "network": "Internet", "utility": "Utilities" }
             const name = aliases[value.toLowerCase()] || value
             const category = categories.find(item => item.name.toLowerCase() === name.toLowerCase()
                                                    || item.label.toLowerCase() === name.toLowerCase())
@@ -526,6 +529,14 @@ Page {
                         text: qsTr("About"); icon.name: "dialog-information"
                         onTriggered: window.showAbout()
                     }
+                    MenuItem {
+                        objectName: "recoveryMenuItem"
+                        text: qsTr("Interrupted work..."); icon.name: "view-history"
+                        visible: !!(window.backend && window.backend.recovery
+                            && ((window.backend.recovery.items || []).length || window.backend.recovery.error))
+                        height: visible ? implicitHeight : 0
+                        onTriggered: window.showRecovery()
+                    }
                 }
             }
         }
@@ -670,10 +681,10 @@ Page {
                 objectName: "categoryList"
                 anchors.fill: parent; anchors.topMargin: installedNavigation.height + sidebar.sectionGap
                 spacing: sidebar.navigationGap; clip: true; model: page.categories
-                interactive: false
+                interactive: true
                 boundsBehavior: Flickable.StopAtBounds
                 onHeightChanged: contentY = 0
-                NaturalWheelScroll {
+                PageWheelScroll {
                     objectName: "categoryNaturalScroll"
                     scrollTarget: categoryList
                 }
@@ -864,7 +875,7 @@ Page {
                         visible: catalogGrid.visible && size < 1
                         onPressedChanged: { if (pressed) catalogGrid.releaseTopAnchor() }
                     }
-                    NaturalWheelScroll {
+                    PageWheelScroll {
                         objectName: "catalogNaturalScroll"
                         scrollTarget: catalogGrid
                         onScrollStarted: catalogGrid.releaseTopAnchor()
@@ -894,7 +905,7 @@ Page {
                         anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
                         visible: installedList.visible && size < 1
                     }
-                    NaturalWheelScroll { scrollTarget: installedList }
+                    PageWheelScroll { scrollTarget: installedList }
                     delegate: InstalledRow {
                         required property var modelData
                         width: ListView.view.width

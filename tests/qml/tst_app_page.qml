@@ -324,12 +324,11 @@ TestCase {
                    0,
                    -120,
                    Qt.NoButton)
-        verify(details.contentY > 0)
-
-        details.contentY = 0
-        naturalScroll.applyTouchpadDelta(12, true)
-        compare(naturalScroll.smoothScrolling, false)
-        compare(details.contentY, 25.8)
+        tryVerify(() => details.contentY > 0)
+        wait(500)
+        compare(naturalScroll.target, details)
+        compare(naturalScroll.blockTargetWheel, true)
+        compare(naturalScroll.scrollFlickableTarget, true)
     }
 
     function test_preview_supports_touch_and_touchpad_swiping() {
