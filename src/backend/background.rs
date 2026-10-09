@@ -150,6 +150,8 @@ impl Background {
                 }
                 commands.push(json!({"kind":"summary","title":if failed{"App queue finished with errors"}else{"App queue complete"},"body":lines.join("\n"),"timeout":5000}));
             }
+            self.batch_jobs.clear();
+            self.batch = 0;
         }
         commands
     }

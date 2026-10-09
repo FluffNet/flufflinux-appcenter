@@ -4,6 +4,7 @@ mod apps;
 mod catalog_state;
 mod navigation;
 mod queue;
+mod recovery_state;
 mod update_state;
 use super::{bytes, flag, normalized_id, number, progress, rows, storage, text};
 use serde_json::{json, Map, Value};
@@ -47,7 +48,7 @@ pub struct Manager {
     tasks: HashMap<String, Task>,
     serial: u64,
     stopping: bool,
-    metadata: HashMap<String, Value>,
+    metadata: HashMap<String, usize>,
     sources: HashMap<String, Value>,
     jobs: Vec<Value>,
     requests: Vec<Value>,
@@ -71,10 +72,11 @@ pub struct Manager {
     pending_installed_links: Vec<String>,
     popularity_attempt: Option<Instant>,
     background: super::background::Background,
+    recovery: recovery_state::RecoveryState,
 }
 impl Manager {
     pub fn new(catalog: Vec<Value>) -> Self {
-        let properties = json!({"jobs":[],"review":{},"busy":false,"backgroundWorkPending":false,
+        let properties = json!({"jobs":[],"review":{},"recovery":{"items":[],"error":"","checking":false,"saving":false,"notice":0},"busy":false,"backgroundWorkPending":false,
             "installedApps":[],"installedLoading":true,"installedError":"","iconRevision":0,
             "installSizes":{},"appPermissions":{},"appAddons":{},
             "updates":{"state":"idle","items":[],"status":"","skipped":[],"error":"","lastChecked":"","lastUpdated":""},
@@ -115,6 +117,7 @@ impl Manager {
             pending_installed_links: vec![],
             popularity_attempt: None,
             background: Default::default(),
+            recovery: Default::default(),
         };
         if !catalog.is_empty() {
             manager.set_catalog(catalog);
@@ -173,7 +176,7 @@ impl Manager {
             },
         );
         self.command(json!({"command":"start","role":role,"serial":self.serial,"program":program,"args":args,
-            "timeout":timeout,"limit":limit,"stream":stream,"stderrLines":role=="catalog","interactive":matches!(role,"install"|"remove"|"sources")}));
+            "timeout":timeout,"limit":limit,"stream":stream,"stderrLines":role=="catalog","interactive":matches!(role,"install"|"remove"|"sources"|"journal")}));
     }
     #[allow(clippy::too_many_arguments)]
     fn worker(
@@ -208,15 +211,21 @@ impl Manager {
         self.tasks.remove(role);
     }
     fn metadata(&self, id: &str) -> Value {
-        self.metadata.get(normalized_id(id)).cloned().unwrap_or_else(||json!({"id":id,"name":id,"icon":id,
+        self.catalog_app(id).cloned().unwrap_or_else(||json!({"id":id,"name":id,"icon":id,
             "summary":"","description":"","category":"","developer":"","license":"","homepage":"","screenshots":[]}))
     }
+    fn catalog_app(&self, id: &str) -> Option<&Value> {
+        self.metadata
+            .get(normalized_id(id))
+            .and_then(|index| self.properties["catalog"].get(*index))
+    }
     fn finish_envelope(&mut self, result: Value) -> Value {
+        self.flush_queue();
         let busy = self.busy();
         self.set("busy", busy.into());
         self.set(
             "backgroundWorkPending",
-            (busy || self.tasks.contains_key("catalog")).into(),
+            (busy || self.tasks.contains_key("catalog") || self.recovery_pending()).into(),
         );
         self.set("sourcesBusy", self.tasks.contains_key("sources").into());
         self.set(
@@ -244,6 +253,11 @@ impl Manager {
         let arg = |index: usize| args.get(index).cloned().unwrap_or(Value::Null);
         let mut result = Value::Null;
         match action {
+            "enableRecovery" => self.enable_recovery(arg(0).as_str().unwrap_or("")),
+            "loadRecovery" => self.load_recovery(),
+            "retryRecoveryIo" => self.retry_recovery_io(),
+            "dismissRecovery" => self.dismiss_recovery(),
+            "reviewRecovery" => self.review_recovery(arg(0).as_u64().unwrap_or(u64::MAX) as usize),
             "event" => self.event(&arg(0)),
             "backgroundEnable" => self.background.enabled = true,
             "backgroundClosed" => self.background.closed = arg(0) == true,
@@ -315,11 +329,13 @@ impl Manager {
             "cancelAll" => self.cancel_all(),
             "clearDownloadHistory" => {
                 for job in &mut self.jobs {
-                    if !flag(job, "active") && text(job, "action") != "uninstall" {
+                    if !job.is_null() && !flag(job, "active") && text(job, "action") != "uninstall"
+                    {
                         job["hidden"] = true.into();
                     }
                 }
                 self.publish_jobs();
+                self.release_finished_jobs();
             }
             "startNext" => {
                 self.start_next();
@@ -376,6 +392,7 @@ impl Manager {
                 "install" | "remove" => self.job_finished(role, task.context, event),
                 "sources" => self.source_finished(event),
                 "catalog" => self.catalog_finished(event),
+                "recovery" | "journal" => self.recovery_finished(role, task.context, event),
                 "installed" => self.installed_finished(task.context, event),
                 "permissions" | "addons" => self.reader_finished(role, task.context, event),
                 "updates" => self.updates_finished(flag(&task.context, "result"), event),

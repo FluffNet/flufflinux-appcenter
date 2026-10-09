@@ -529,6 +529,14 @@ Page {
                         text: qsTr("About"); icon.name: "dialog-information"
                         onTriggered: window.showAbout()
                     }
+                    MenuItem {
+                        objectName: "recoveryMenuItem"
+                        text: qsTr("Interrupted work..."); icon.name: "view-history"
+                        visible: !!(window.backend && window.backend.recovery
+                            && ((window.backend.recovery.items || []).length || window.backend.recovery.error))
+                        height: visible ? implicitHeight : 0
+                        onTriggered: window.showRecovery()
+                    }
                 }
             }
         }

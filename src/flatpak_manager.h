@@ -13,6 +13,7 @@ class FlatpakManager final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantList jobs READ jobs NOTIFY jobsChanged)
     Q_PROPERTY(QVariantMap review READ review NOTIFY reviewChanged)
+    Q_PROPERTY(QVariantMap recovery READ recovery NOTIFY recoveryChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY jobsChanged)
     Q_PROPERTY(QVariantList installedApps READ installedApps NOTIFY installedChanged)
     Q_PROPERTY(bool installedLoading READ installedLoading NOTIFY installedChanged)
@@ -35,6 +36,12 @@ public:
     ~FlatpakManager() override;
     QVariantList jobs() const { return m_state.value("jobs").toList(); }
     QVariantMap review() const { return m_state.value("review").toMap(); }
+    QVariantMap recovery() const { return m_state.value("recovery").toMap(); }
+    void enableRecovery() { dispatch("enableRecovery"); }
+    Q_INVOKABLE void reviewRecovery(int index) { dispatch("reviewRecovery", {index}); }
+    Q_INVOKABLE void dismissRecovery() { dispatch("dismissRecovery"); }
+    Q_INVOKABLE void retryRecoveryIo() { dispatch("retryRecoveryIo"); }
+    Q_INVOKABLE void refreshRecovery() { dispatch("loadRecovery"); }
     bool busy() const { return m_state.value("busy").toBool(); }
     QVariantList installedApps() const { return m_state.value("installedApps").toList(); }
     bool installedLoading() const { return m_state.value("installedLoading").toBool(); }
@@ -89,6 +96,8 @@ public:
 signals:
     void jobsChanged();
     void reviewChanged();
+    void recoveryChanged();
+    void updatesRequested();
     void installedChanged();
     void installSizesChanged();
     void appPermissionsChanged();

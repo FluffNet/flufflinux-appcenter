@@ -5,7 +5,8 @@ impl Manager {
     pub(super) fn set_catalog(&mut self, apps: Vec<Value>) {
         self.metadata = apps
             .iter()
-            .map(|app| (normalized_id(text(app, "id")).to_owned(), app.clone()))
+            .enumerate()
+            .map(|(index, app)| (normalized_id(text(app, "id")).to_owned(), index))
             .collect();
         self.set("catalog", apps.into());
         self.publish_jobs();
@@ -127,15 +128,16 @@ impl Manager {
             self.catalog.deadline = None;
             return;
         }
-        let document: Value = serde_json::from_str(text(event, "stdout")).unwrap_or(Value::Null);
+        let mut document: Value =
+            serde_json::from_str(text(event, "stdout")).unwrap_or(Value::Null);
         let apps = if document.is_array() {
-            document.as_array()
+            document.as_array_mut()
         } else {
-            document["apps"].as_array()
+            document["apps"].as_array_mut()
         };
         let ok = success(event) && apps.is_some();
         if ok {
-            self.set_catalog(apps.cloned().unwrap_or_default());
+            self.set_catalog(std::mem::take(apps.unwrap()));
             if !self.catalog.path.is_empty() {
                 let fingerprint = catalog::fingerprint().unwrap_or_default();
                 if !fingerprint.is_empty() && fingerprint == self.catalog.reading {

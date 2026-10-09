@@ -27,10 +27,10 @@ unsafe fn input(pointer: *const c_char) -> Value {
 /// `catalog` is null or a live NUL-terminated string for the duration of the call.
 pub unsafe extern "C" fn fluff_backend_new(catalog: *const c_char) -> *mut Manager {
     catch_unwind(|| {
-        let apps = unsafe { input(catalog) }
-            .as_array()
-            .cloned()
-            .unwrap_or_default();
+        let apps = match unsafe { input(catalog) } {
+            Value::Array(apps) => apps,
+            _ => vec![],
+        };
         Box::into_raw(Box::new(Manager::new(apps)))
     })
     .unwrap_or(std::ptr::null_mut())

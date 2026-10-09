@@ -17,7 +17,7 @@ impl Manager {
             );
             return Some(request);
         }
-        let catalog = self.metadata.get(id).unwrap_or(app);
+        let catalog = self.catalog_app(id).unwrap_or(app);
         let variants = rows(&catalog["sources"]);
         let chosen = if variants.is_empty() {
             catalog

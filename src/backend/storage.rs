@@ -138,7 +138,7 @@ pub fn read_cache(path: &Path, fingerprint: &str, now: DateTime<Utc>) -> Option<
     {
         return None;
     }
-    let apps = document["apps"].as_array()?;
+    let apps = document["apps"].as_array_mut()?;
     if apps
         .iter()
         .any(|app| text(app, "id").is_empty() || text(app, "name").is_empty())
@@ -146,7 +146,7 @@ pub fn read_cache(path: &Path, fingerprint: &str, now: DateTime<Utc>) -> Option<
         return None;
     }
     Some(Snapshot {
-        apps: apps.clone(),
+        apps: std::mem::take(apps),
         saved_at,
     })
 }

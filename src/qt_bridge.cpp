@@ -113,6 +113,9 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     if (!server.listen(socketPath)) { qCritical("Cannot create the App Center link handler socket."); return 1; }
 
     FlatpakManager manager({});
+    if (!qEnvironmentVariableIsSet("FLUFF_APP_CENTER_QML")
+            || qEnvironmentVariableIntValue("FLUFF_APP_CENTER_RECOVERY_TEST") == 1)
+        manager.enableRecovery();
     NetworkStatus networkStatus;
     manager.setCatalogNetworkState(networkStatus.state(), networkStatus.ready());
     QObject::connect(&networkStatus, &NetworkStatus::changed, &manager, [&] {
@@ -143,7 +146,6 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     engine.rootContext()->setContextProperty("fluffNetworkStatus", &networkStatus);
     engine.rootContext()->setContextProperty("fluffCatalogPreferences", &catalogPreferences);
     engine.rootContext()->setContextProperty("fluffDesktopTheme", &desktopTheme);
-    engine.rootContext()->setContextProperty("fluffInitialCatalog", manager.catalog());
     engine.rootContext()->setContextProperty("fluffWindowManaged", manageWindow);
     if (manageWindow) QTimer::singleShot(0, &manager, &FlatpakManager::initializeSources);
     engine.load(QUrl::fromLocalFile(QString::fromUtf8(qml_path)));

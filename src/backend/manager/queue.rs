@@ -5,12 +5,12 @@ impl Manager {
         let mut positions = HashMap::new();
         let mut visible = vec![];
         for job in &self.jobs {
-            if !flag(job, "cancelled") && !flag(job, "prepareOnly") {
+            if !job.is_null() && !flag(job, "cancelled") && !flag(job, "prepareOnly") {
                 *totals.entry(number(job, "queueBatch")).or_insert(0u64) += 1;
             }
         }
         for item in &self.jobs {
-            if flag(item, "cancelled") || flag(item, "prepareOnly") {
+            if item.is_null() || flag(item, "cancelled") || flag(item, "prepareOnly") {
                 continue;
             }
             let mut job = item.clone();
@@ -67,6 +67,14 @@ impl Manager {
             return;
         }
         if !flag(&request, "prepareOnly") {
+            self.replace_recovered(&request);
+            request["recoveryId"] = format!(
+                "{}:{}:{}",
+                std::process::id(),
+                chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default(),
+                self.jobs.len()
+            )
+            .into();
             if !self
                 .jobs
                 .iter()
@@ -76,7 +84,16 @@ impl Manager {
             }
             request["queueBatch"] = self.batch.into();
         }
-        let index = self.jobs.len();
+        // Reuse released slots. Live indices remain stable for delegates,
+        // worker replies and confirmation dialogs.
+        let index = if flag(&request, "prepareOnly") {
+            self.jobs
+                .iter()
+                .position(Value::is_null)
+                .unwrap_or(self.jobs.len())
+        } else {
+            self.jobs.len()
+        };
         let removing = request["action"] == "uninstall";
         merge(
             &mut request,
@@ -85,9 +102,17 @@ impl Manager {
         if removing {
             request["removalConfirmed"] = false.into();
         }
-        self.requests.push(request.clone());
-        self.jobs.push(request.clone());
+        if index == self.jobs.len() {
+            self.requests.push(request.clone());
+            self.jobs.push(request.clone());
+        } else {
+            self.requests[index] = request.clone();
+            self.jobs[index] = request.clone();
+        }
         self.publish_jobs();
+        if !flag(&request, "prepareOnly") {
+            self.queue_changed();
+        }
         if removing {
             let name = text(&request, "name");
             let message = if flag(&request, "addon") {
@@ -108,6 +133,9 @@ impl Manager {
         for index in 0..self.jobs.len() {
             let job = &self.jobs[index];
             if !flag(job, "active") {
+                continue;
+            }
+            if !flag(job, "prepareOnly") && !self.queue_saved() {
                 continue;
             }
             let removing = job["action"] == "uninstall";
@@ -203,6 +231,7 @@ impl Manager {
                     index,
                     json!({"active":false,"queued":false,"cancelled":true,"status":""}),
                 );
+                self.queue_changed();
             }
             return;
         }
@@ -230,6 +259,9 @@ impl Manager {
         }
         self.patch_job(index,json!({"active":false,"queued":false,"cancelled":true,"status":"","cancelling":running.is_some()}));
         self.clear_reviews(index);
+        if !flag(&self.jobs[index], "prepareOnly") {
+            self.queue_changed();
+        }
     }
     pub(super) fn cancel_all(&mut self) {
         self.cancel_updates();
@@ -298,6 +330,9 @@ impl Manager {
                 let mut patch = progress::stages(operations, "preparing");
                 patch["operations"] = message["operations"].clone();
                 self.patch_job(index, patch);
+                if !flag(&self.jobs[index], "prepareOnly") {
+                    self.queue_changed();
+                }
                 let id = text(message, "appId");
                 let request = self.requests[index].clone();
                 if flag(&request, "prepareOnly") && !id.is_empty() {
@@ -456,6 +491,9 @@ impl Manager {
         self.patch_job(index,json!({"active":false,"queued":false,"failed":!ok&&!cancelled,"cancelled":cancelled,
             "progress":if ok{json!(1)}else{job["progress"].clone()},"status":if ok{if removing{""}else{"Complete"}}else if cancelled{"Cancelled"}else{"Failed"},"error":text(message,"error")}));
         self.clear_reviews(index);
+        if !preparation {
+            self.queue_changed();
+        }
     }
     fn apply_removal(&mut self, removed: &Value) {
         let id = normalized_id(text(removed, "id"));
@@ -520,14 +558,49 @@ impl Manager {
                     text(event, "stderr")
                 ));
             }
+            if !preparation {
+                self.queue_changed();
+            }
         }
         self.clear_reviews(index);
+        self.requests[index] = Value::Null;
+        self.release_finished_jobs();
         if !preparation && !self.stopping {
             if !text(&self.size_app, "id").is_empty() {
                 self.install_info(self.size_app.clone());
             }
             self.refresh_desktop_caches();
             self.reload_catalog(false);
+        }
+    }
+    pub(super) fn release_finished_jobs(&mut self) {
+        let active_batches: std::collections::HashSet<_> = self
+            .jobs
+            .iter()
+            .filter(|job| flag(job, "active") && !flag(job, "prepareOnly"))
+            .map(|job| number(job, "queueBatch"))
+            .collect();
+        for index in 0..self.jobs.len() {
+            let job = &self.jobs[index];
+            if !flag(job, "active")
+                && (flag(job, "prepareOnly") || flag(job, "hidden"))
+                && self.job_role(index).is_none()
+            {
+                // Cleared history still contributes to a running batch's
+                // 2/5 position. Keep only that accounting until it finishes.
+                self.jobs[index] = if !flag(job, "prepareOnly")
+                    && active_batches.contains(&number(job, "queueBatch"))
+                {
+                    json!({"index":index,"queueBatch":job["queueBatch"],"hidden":true,"cancelled":flag(job,"cancelled")})
+                } else {
+                    Value::Null
+                };
+                self.requests[index] = Value::Null;
+            }
+        }
+        while self.jobs.last().is_some_and(Value::is_null) {
+            self.jobs.pop();
+            self.requests.pop();
         }
     }
 }
@@ -538,6 +611,43 @@ mod tests {
     use crate::backend::permissions;
     fn request(id: &str) -> Value {
         json!({"id":id,"action":"install","name":id,"installation":"user"})
+    }
+    #[test]
+    fn finished_previews_release_slots_without_losing_current_preview_details() {
+        let mut manager = Manager::new(vec![]);
+        for _ in 0..1000 {
+            manager.enqueue(json!({"action":"source","source":"file:///tmp/example.flatpakref","installation":"user","prepareOnly":true,"hidden":true}));
+            let serial = manager.tasks["install"].serial;
+            manager.dispatch("event", &json!([{"role":"install","serial":serial,"kind":"line","line":json!({"type":"result","success":true}).to_string()}]));
+            manager.dispatch(
+                "event",
+                &json!([{"role":"install","serial":serial,"kind":"finished","code":0}]),
+            );
+            assert!(manager.jobs.is_empty());
+            assert!(manager.requests.is_empty());
+        }
+    }
+    #[test]
+    fn clearing_history_preserves_live_indices_and_releases_finished_payloads() {
+        let mut manager = Manager::new(vec![]);
+        manager.enqueue(request("a.b.First"));
+        manager.enqueue(request("a.b.Second"));
+        manager.jobs[1]["active"] = false.into();
+        manager.dispatch("clearDownloadHistory", &json!([]));
+        assert_eq!(manager.jobs.len(), 2);
+        assert!(manager.jobs[1].get("id").is_none());
+        assert!(manager.requests[1].is_null());
+        assert_eq!(number(&manager.tasks["install"].context, "index"), 0);
+        assert!(flag(&manager.jobs[0], "active"));
+        manager.enqueue(request("a.b.Third"));
+        assert_eq!(manager.jobs[2]["id"], "a.b.Third");
+        assert_eq!(manager.properties["jobs"][1]["queuePosition"], 3);
+        assert_eq!(manager.properties["jobs"][0]["queueTotal"], 3);
+        manager.jobs[0]["active"] = false.into();
+        manager.jobs[2]["active"] = false.into();
+        manager.tasks.clear();
+        manager.dispatch("clearDownloadHistory", &json!([]));
+        assert!(manager.jobs.is_empty());
     }
     #[test]
     fn local_preview_keeps_details_permissions_and_source_without_hijacking_catalog_installs() {

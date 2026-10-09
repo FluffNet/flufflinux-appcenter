@@ -70,6 +70,7 @@ void FlatpakManager::applyResponse(const QJsonObject &response) {
     if (changes.contains("popularity")) notifications.insert("popularityChanged");
     if (changes.contains("jobs") || changes.contains("busy") || changes.contains("sourceInputStatus") || changes.contains("backgroundWorkPending")) notifications.insert("jobsChanged");
     if (changes.contains("review")) notifications.insert("reviewChanged");
+    if (changes.contains("recovery")) notifications.insert("recoveryChanged");
     if (changes.contains("installedApps") || changes.contains("installedLoading") || changes.contains("installedError") || changes.contains("iconRevision")) notifications.insert("installedChanged");
     if (changes.contains("installSizes")) notifications.insert("installSizesChanged");
     if (changes.contains("appPermissions")) notifications.insert("appPermissionsChanged");
@@ -84,6 +85,7 @@ void FlatpakManager::applyResponse(const QJsonObject &response) {
         const auto args = signal["args"].toArray();
         if (signal["name"] == "appOpened") emit appOpened(args.at(0).toObject().toVariantMap());
         else if (signal["name"] == "homeRequested") emit homeRequested();
+        else if (signal["name"] == "updatesRequested") emit updatesRequested();
         else if (signal["name"] == "inputError") emit inputError(args.at(0).toString());
     }
     for (const auto &command : response["commands"].toArray()) execute(command.toObject());

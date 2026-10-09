@@ -39,8 +39,7 @@ ApplicationWindow {
         ? fluffDesktopTheme.revision : 0
     readonly property url appIconUrl: iconSource("flufflinux-appcenter")
 
-    property var catalog: typeof fluffInitialCatalog !== "undefined"
-                          ? fluffInitialCatalog : []
+    property var catalog: backend && backend.catalog || []
     property var selectedApp: null
     property var backend: typeof fluffBackend !== "undefined" ? fluffBackend : null
     property var catalogStats: typeof fluffCatalogStats !== "undefined" ? fluffCatalogStats : null
@@ -147,8 +146,8 @@ ApplicationWindow {
         ignoreUnknownSignals: true
         function onAppOpened(app) { window.openApp(app) }
         function onHomeRequested() { window.showHome() }
+        function onUpdatesRequested() { window.showUpdates() }
         function onInputError(message) { inputError.text = message; errorDialog.open() }
-        function onCatalogChanged() { window.catalog = window.backend.catalog }
     }
     function showDownloads() {
         if (stack.currentItem.objectName !== "downloadsPage")
@@ -160,6 +159,8 @@ ApplicationWindow {
         if (backend && typeof backend.refreshSources === "function") backend.refreshSources()
     }
     function showAbout() { aboutDialog.open() }
+    function showRecovery() { recoveryDialog.open() }
+    RecoveryDialog { id: recoveryDialog; backend: window.backend }
     function showHome() {
         aboutDialog.close()
         errorDialog.close()

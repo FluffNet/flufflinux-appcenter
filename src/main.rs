@@ -72,6 +72,19 @@ fn c_path(path: &Path) -> Result<CString, String> {
 
 fn run() -> Result<i32, String> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("--recovery-worker") {
+        if args.len() != 3 || unsafe { libc::geteuid() } == 0 {
+            return Err(
+                "Run queue recovery as the desktop user with an action and state path.".into(),
+            );
+        }
+        backend::process::parent_death_signal()?;
+        println!(
+            "{}",
+            backend::recovery::worker(&args[1], Path::new(&args[2]))
+        );
+        return Ok(0);
+    }
     if args.as_slice() == ["--popularity-worker"] {
         if unsafe { libc::geteuid() } == 0 {
             return Err("Run App Center as your desktop user.".into());
