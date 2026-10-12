@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Stäng förhandsvisning av skärmbild",
+  "Previous screenshot": "Föregående skärmbild",
+  "Next screenshot": "Nästa skärmbild",
+  "Zoom out": "Zooma ut",
+  "Zoom in": "Zooma in",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 valda - Total storlek: %2",
   "%1 → %2": "%1 → %2",

@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Ekran görüntüsü önizlemesini kapat",
+  "Previous screenshot": "Önceki ekran görüntüsü",
+  "Next screenshot": "Sonraki ekran görüntüsü",
+  "Zoom out": "Uzaklaştır",
+  "Zoom in": "Yakınlaştır",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 seçildi - Toplam boyut: %2",
   "%1 → %2": "%1 → %2",

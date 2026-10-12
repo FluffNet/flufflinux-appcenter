@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Bildschirmfoto-Vorschau schließen",
+  "Previous screenshot": "Vorheriges Bildschirmfoto",
+  "Next screenshot": "Nächstes Bildschirmfoto",
+  "Zoom out": "Verkleinern",
+  "Zoom in": "Vergrößern",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 ausgewählt - Gesamtgröße: %2",
   "%1 → %2": "%1 → %2",

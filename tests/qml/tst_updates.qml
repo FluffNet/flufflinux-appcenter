@@ -110,6 +110,35 @@ TestCase {
             verify(title.fontInfo.pixelSize >= 24)
         } finally { title.text = original }
     }
+    Component {
+        id: translatedTextOverride
+        Binding { property: "text"; restoreMode: Binding.RestoreBindingOrValue }
+    }
+    function test_long_translated_controls_stay_inside_window() {
+        main.width = 720
+        open(); ready()
+        const replacements = [
+            ["appUpdatesTitle", "செயலி புதுப்பிப்புகள்"],
+            ["checkForUpdatesButton", "செயலி புதுப்பிப்புகளைச் சரிபார்"],
+            ["selectAllUpdates", "அனைத்தையும் தேர்ந்தெடு"],
+            ["installUpdatesButton", "அனைத்துச் செயலிகளையும் புதுப்பி"],
+            ["updatesDownloadSummary", "2 தேர்ந்தெடுக்கப்பட்டது - மொத்த அளவு: 256.00 MiB"]
+        ]
+        const overrides = []
+        try {
+            for (const [name, text] of replacements) {
+                const item = findChild(page(), name)
+                overrides.push(createTemporaryObject(translatedTextOverride, page(), {target:item, value:text}))
+            }
+            for (const override of overrides) tryVerify(function() {
+                const item = override.target
+                const p = item.mapToItem(main.contentItem, 0, 0)
+                return p.x >= 0 && p.x + item.width <= main.width + 1
+            }, 2000, "long translated update controls fit the narrow window")
+        } finally {
+            for (const override of overrides) override.when = false
+        }
+    }
     function test_manual_only_check_and_cancel() {
         mouseClick(findChild(root(), "updatesButton")); tryCompare(stack(), "busy", false)
         verify(page().visible); compare(stack().depth, 1); compare(backend.checks, 0)

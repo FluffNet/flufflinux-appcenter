@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Képernyőkép előnézetének bezárása",
+  "Previous screenshot": "Előző képernyőkép",
+  "Next screenshot": "Következő képernyőkép",
+  "Zoom out": "Kicsinyítés",
+  "Zoom in": "Nagyítás",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 kiválasztva - Teljes méret: %2",
   "%1 → %2": "%1 → %2",

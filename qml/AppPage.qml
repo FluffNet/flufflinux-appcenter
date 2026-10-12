@@ -856,7 +856,7 @@ Page {
                     height: 40
                     text: "×"
                     font.pixelSize: 24
-                    Accessible.name: "Close screenshot preview"
+                    Accessible.name: qsTr("Close screenshot preview")
                     onClicked: screenshotPreview.close()
                     palette.buttonText: window.textColor
                     background: Rectangle {
@@ -885,7 +885,7 @@ Page {
                         text: "←"
                         font.pixelSize: 25
                         visible: page.previewScreenshotIndex > 0
-                        Accessible.name: "Previous screenshot"
+                        Accessible.name: qsTr("Previous screenshot")
                         onClicked: page.movePreview(-1)
                         palette.buttonText: window.textColor
                         background: Rectangle {
@@ -1169,7 +1169,7 @@ Page {
                         text: "→"
                         font.pixelSize: 25
                         visible: app && page.previewScreenshotIndex < app.screenshots.length - 1
-                        Accessible.name: "Next screenshot"
+                        Accessible.name: qsTr("Next screenshot")
                         onClicked: page.movePreview(1)
                         palette.buttonText: window.textColor
                         background: Rectangle {
@@ -1198,7 +1198,7 @@ Page {
                         text: "-"
                         font.pixelSize: 24
                         enabled: page.previewZoom > 1.001
-                        Accessible.name: "Zoom out"
+                        Accessible.name: qsTr("Zoom out")
                         onClicked: page.zoomPreviewBy(1 / 1.25,
                                                       previewImageFrame.width / 2,
                                                       previewImageFrame.height / 2)
@@ -1217,7 +1217,7 @@ Page {
                         text: "+"
                         font.pixelSize: 22
                         enabled: page.previewZoom < page.maximumPreviewZoom - 0.001
-                        Accessible.name: "Zoom in"
+                        Accessible.name: qsTr("Zoom in")
                         onClicked: page.zoomPreviewBy(1.25,
                                                       previewImageFrame.width / 2,
                                                       previewImageFrame.height / 2)

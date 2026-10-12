@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "關閉螢幕擷取畫面預覽",
+  "Previous screenshot": "上一張螢幕擷取畫面",
+  "Next screenshot": "下一張螢幕擷取畫面",
+  "Zoom out": "縮小",
+  "Zoom in": "放大",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "已選取 %1 個 - 總大小：%2",
   "%1 → %2": "%1 → %2",

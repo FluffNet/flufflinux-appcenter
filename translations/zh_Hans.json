@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "关闭截图预览",
+  "Previous screenshot": "上一张截图",
+  "Next screenshot": "下一张截图",
+  "Zoom out": "缩小",
+  "Zoom in": "放大",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "已选择 %1 个 - 总大小：%2",
   "%1 → %2": "%1 → %2",

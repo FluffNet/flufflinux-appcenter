@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Fermer l’aperçu de la capture d’écran",
+  "Previous screenshot": "Capture d’écran précédente",
+  "Next screenshot": "Capture d’écran suivante",
+  "Zoom out": "Dézoomer",
+  "Zoom in": "Zoomer",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 sélectionnées - Taille totale : %2",
   "%1 → %2": "%1 → %2",

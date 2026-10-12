@@ -32,11 +32,20 @@ I18nCapture {
     function superScenes() { return smoke.baseScenes() }
     function capture(scene, mode) {
         check(sampleApp.name === "Firefox", "catalog application names are not translated")
-        for (const name of ["appActionLabel", "comboDisplayLabel", "updatesNavigationLabel"]) {
+        for (const name of ["appActionLabel", "comboDisplayLabel", "updatesNavigationLabel", "appUpdatesTitle"]) {
             const label = findPage(name)
             if (!label || !label.visible || label.width <= 0) continue
             check(label.contentWidth <= label.width + 1, "text fits horizontally: " + name + " / " + language)
             check(label.contentHeight <= label.height + 1, "text fits vertically: " + name + " / " + language)
+        }
+        if (scene.name === "updates") {
+            for (const name of ["appUpdatesTitle", "checkForUpdatesButton", "selectAllUpdates", "installUpdatesButton", "updatesDownloadSummary"]) {
+                const item = findPage(name)
+                if (!item || !item.visible) continue
+                const bounds = item.mapToItem(contentItem, 0, 0)
+                check(bounds.x >= -1 && bounds.x + item.width <= width + 1,
+                      "updates control fits window: " + name + " / " + language)
+            }
         }
         const filename = language + "-smoke-" + mode + "-" + scene.name + ".png"
         find("captureProbe").grabImage(contentItem).save(Qt.resolvedUrl(outputDirectory + filename).toString().replace("file://", ""))

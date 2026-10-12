@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Schermvoorbeeld sluiten",
+  "Previous screenshot": "Vorige schermafbeelding",
+  "Next screenshot": "Volgende schermafbeelding",
+  "Zoom out": "Uitzoomen",
+  "Zoom in": "Inzoomen",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 geselecteerd - Totale grootte: %2",
   "%1 → %2": "%1 → %2",

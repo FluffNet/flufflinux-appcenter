@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Închide previzualizarea capturii de ecran",
+  "Previous screenshot": "Captura de ecran anterioară",
+  "Next screenshot": "Captura de ecran următoare",
+  "Zoom out": "Micșorează",
+  "Zoom in": "Mărește",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 selectate - Dimensiune totală: %2",
   "%1 → %2": "%1 → %2",

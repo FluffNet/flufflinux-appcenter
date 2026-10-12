@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Zavrieť náhľad snímky obrazovky",
+  "Previous screenshot": "Predchádzajúca snímka obrazovky",
+  "Next screenshot": "Nasledujúca snímka obrazovky",
+  "Zoom out": "Oddialiť",
+  "Zoom in": "Priblížiť",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "Vybrané: %1 - Celková veľkosť: %2",
   "%1 → %2": "%1 → %2",

@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Maak skermvoorskou toe",
+  "Previous screenshot": "Vorige skermskoot",
+  "Next screenshot": "Volgende skermskoot",
+  "Zoom out": "Zoem uit",
+  "Zoom in": "Zoem in",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 gekies - Totale grootte: %2",
   "%1 → %2": "%1 → %2",

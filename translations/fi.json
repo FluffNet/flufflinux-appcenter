@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Sulje kuvakaappauksen esikatselu",
+  "Previous screenshot": "Edellinen kuvakaappaus",
+  "Next screenshot": "Seuraava kuvakaappaus",
+  "Zoom out": "Loitonna",
+  "Zoom in": "Lähennä",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 valittu - Kokonaiskoko: %2",
   "%1 → %2": "%1 → %2",

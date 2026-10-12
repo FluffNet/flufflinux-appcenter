@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "סגירת תצוגה מקדימה של צילום המסך",
+  "Previous screenshot": "צילום המסך הקודם",
+  "Next screenshot": "צילום המסך הבא",
+  "Zoom out": "הקטנה",
+  "Zoom in": "הגדלה",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "נבחרו %1 - גודל כולל: %2",
   "%1 → %2": "%1 → %2",

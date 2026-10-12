@@ -193,7 +193,7 @@ mod tests {
 
     #[test]
     fn preserves_script_and_glibc_modifiers() {
-        for locale in ["sr_RS.UTF-8@latin", "sr-Latn-ME", "sr_Latn"] {
+        for locale in ["sr_RS.UTF-8@latin", "sr-Latn-ME", "sr_Latn", "sr-latin"] {
             assert_eq!(names(locale), ["sr_Latn"]);
         }
         for locale in ["sr_RS.UTF-8", "sr-Cyrl-ME"] {
@@ -228,6 +228,20 @@ mod tests {
                 [expected, "en"]
             );
         }
+    }
+
+    #[test]
+    fn qt_serbian_latin_fallback_list_keeps_the_requested_script() {
+        // Observed Qt uiLanguages() for sr_RS.UTF-8@latin: a Latin request
+        // followed by Cyrillic fallbacks. Do not merge the two app catalogs.
+        let catalogs = preferred_catalogs(
+            ["sr-latin", "sr-Cyrl-RS", "sr-RS", "sr-Cyrl", "sr", "en"]
+                .map(str::to_owned),
+        );
+        assert_eq!(
+            catalogs.iter().map(|catalog| catalog.name.as_str()).collect::<Vec<_>>(),
+            ["sr_Latn", "en"],
+        );
     }
 
     #[test]

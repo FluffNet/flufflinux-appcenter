@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "إغلاق معاينة لقطة الشاشة",
+  "Previous screenshot": "لقطة الشاشة السابقة",
+  "Next screenshot": "لقطة الشاشة التالية",
+  "Zoom out": "تصغير",
+  "Zoom in": "تكبير",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "تم تحديد %1 - الحجم الإجمالي: %2",
   "%1 → %2": "%1 → %2",

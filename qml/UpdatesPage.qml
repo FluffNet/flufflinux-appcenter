@@ -79,6 +79,7 @@ Page {
         spacing: 14
         GridLayout {
             Layout.fillWidth: true
+            Layout.minimumWidth: 0
             columns: page.compact ? 1 : 2
             Label {
                 objectName: "appUpdatesTitle"
@@ -94,6 +95,7 @@ Page {
                 text: qsTr("Check for App Updates"); icon.name: "view-refresh"
                 contentItem: FluffButtonContent { monochromeIcon: true }
                 Layout.alignment: Qt.AlignRight
+                Layout.minimumWidth: 0
                 Layout.maximumWidth: page.width - 56
                 enabled: !window.networkOffline && !page.busy && !page.checking
                 onClicked: if (!window.networkOffline) window.backend.checkForUpdates()
@@ -134,10 +136,13 @@ Page {
         }
         GridLayout {
             visible: page.rows.length > 0; Layout.fillWidth: true
-            columns: page.compact ? 2 : 3
+            Layout.minimumWidth: 0
+            columns: page.compact ? 1 : 3
             UpdateCheckBox {
                 Layout.row: 0; Layout.column: 0
                 objectName: "selectAllUpdates"
+                Layout.minimumWidth: 0
+                Layout.maximumWidth: page.width - 56
                 text: qsTr("Select All"); enabled: !page.busy && page.updateData.state === "ready"
                 checkState: page.allSelected ? Qt.Checked : page.selected.length ? Qt.PartiallyChecked : Qt.Unchecked
                 nextCheckState: function() { return checkState === Qt.Checked ? Qt.Unchecked : Qt.Checked }
@@ -146,7 +151,8 @@ Page {
             Label {
                 objectName: "updatesDownloadSummary"
                 Layout.row: page.compact ? 1 : 0; Layout.column: page.compact ? 0 : 1
-                Layout.columnSpan: page.compact ? 2 : 1
+                Layout.columnSpan: 1
+                Layout.minimumWidth: 0
                 Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
                 text: Bidi.format(qsTr("%1 selected - Total size: %2"), [page.selected.length, page.sizeText(page.selectedBytes)], page.mirrored)
                 HoverHandler { id: downloadSummaryHover }
@@ -154,8 +160,10 @@ Page {
                 ToolTip.text: qsTr("Required components update with selected apps. Shared components are counted once; cached data may reduce the download.")
             }
             FluffButton {
-                Layout.row: 0; Layout.column: page.compact ? 1 : 2
+                Layout.row: page.compact ? 2 : 0; Layout.column: page.compact ? 0 : 2
                 Layout.alignment: Qt.AlignRight
+                Layout.minimumWidth: 0
+                Layout.maximumWidth: page.width - 56
                 objectName: "installUpdatesButton"
                 text: page.allSelected ? qsTr("Update All Apps") : qsTr("Update selected apps")
                 icon.name: "system-upgrade"

@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Close screenshot preview",
+  "Previous screenshot": "Previous screenshot",
+  "Next screenshot": "Next screenshot",
+  "Zoom out": "Zoom out",
+  "Zoom in": "Zoom in",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 selected - Total size: %2",
   "%1 → %2": "%1 → %2",

@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Zamknij podgląd zrzutu ekranu",
+  "Previous screenshot": "Poprzedni zrzut ekranu",
+  "Next screenshot": "Następny zrzut ekranu",
+  "Zoom out": "Pomniejsz",
+  "Zoom in": "Powiększ",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "Wybrano: %1 - Łączny rozmiar: %2",
   "%1 → %2": "%1 → %2",

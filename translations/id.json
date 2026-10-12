@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Tutup pratinjau tangkapan layar",
+  "Previous screenshot": "Tangkapan layar sebelumnya",
+  "Next screenshot": "Tangkapan layar berikutnya",
+  "Zoom out": "Perkecil",
+  "Zoom in": "Perbesar",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 dipilih - Ukuran total: %2",
   "%1 → %2": "%1 → %2",

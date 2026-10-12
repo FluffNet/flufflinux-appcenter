@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "스크린샷 미리 보기 닫기",
+  "Previous screenshot": "이전 스크린샷",
+  "Next screenshot": "다음 스크린샷",
+  "Zoom out": "축소",
+  "Zoom in": "확대",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1개 선택 - 전체 크기: %2",
   "%1 → %2": "%1 → %2",

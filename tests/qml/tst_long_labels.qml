@@ -32,6 +32,9 @@ TestCase {
                 ["el", "Ενημερώσεις επιλεγμένων εφαρμογών"],
                 ["he", "הצגת השינויים בהרשאות של היישומים שנבחרו"],
                 ["ar", "عرض تغييرات أذونات التطبيقات المحددة"],
+                ["ta", "தேர்ந்தெடுத்த செயலிகளைப் புதுப்பி"],
+                ["ml", "തിരഞ്ഞെടുത്ത ആപ്പുകൾ പുതുക്കുക"],
+                ["si", "තෝරාගත් යෙදුම් යාවත්කාලීන කරන්න"],
                 ["compound", "Anwendungsberechtigungsänderungsübersicht"]
             ]) result.push({tag:language+rtl+dark+size, rtl:rtl, dark:dark, size:size, label:label})
         return result

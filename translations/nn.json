@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Lukk førehandsvising av skjermbilete",
+  "Previous screenshot": "Førre skjermbilete",
+  "Next screenshot": "Neste skjermbilete",
+  "Zoom out": "Zoom ut",
+  "Zoom in": "Zoom inn",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 valde - Samla storleik: %2",
   "%1 → %2": "%1 → %2",

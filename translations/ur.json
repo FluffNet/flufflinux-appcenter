@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "اسکرین شاٹ کا پیش منظر بند کریں",
+  "Previous screenshot": "پچھلا اسکرین شاٹ",
+  "Next screenshot": "اگلا اسکرین شاٹ",
+  "Zoom out": "چھوٹا کریں",
+  "Zoom in": "بڑا کریں",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 منتخب - کل حجم: %2",
   "%1 → %2": "%1 → %2",

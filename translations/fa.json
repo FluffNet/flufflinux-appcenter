@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "بستن پیش‌نمایش تصویر صفحه",
+  "Previous screenshot": "تصویر صفحهٔ قبلی",
+  "Next screenshot": "تصویر صفحهٔ بعدی",
+  "Zoom out": "کوچک‌نمایی",
+  "Zoom in": "بزرگ‌نمایی",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 انتخاب شده - اندازهٔ کل: %2",
   "%1 → %2": "%1 → %2",

@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Zatvori pregled snimka ekrana",
+  "Previous screenshot": "Prethodni snimak ekrana",
+  "Next screenshot": "Sledeći snimak ekrana",
+  "Zoom out": "Umanji",
+  "Zoom in": "Uvećaj",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "Izabrano: %1 - Ukupna veličina: %2",
   "%1 → %2": "%1 → %2",

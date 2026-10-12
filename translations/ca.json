@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "Tanca la previsualització de la captura de pantalla",
+  "Previous screenshot": "Captura de pantalla anterior",
+  "Next screenshot": "Captura de pantalla següent",
+  "Zoom out": "Allunya",
+  "Zoom in": "Apropa",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 seleccionades - Mida total: %2",
   "%1 → %2": "%1 → %2",

@@ -1,4 +1,9 @@
 {
+  "Close screenshot preview": "د پردې انځور مخکتنه وتړئ",
+  "Previous screenshot": "د پردې مخکینی انځور",
+  "Next screenshot": "د پردې بل انځور",
+  "Zoom out": "کوچنی کړئ",
+  "Zoom in": "لوی کړئ",
   "%1 / %2 (%3)": "%1 / %2 (%3)",
   "%1 selected - Total size: %2": "%1 ټاکل شوي - ټول حجم: %2",
   "%1 → %2": "%1 → %2",
