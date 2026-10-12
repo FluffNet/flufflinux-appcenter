@@ -650,6 +650,44 @@ mod tests {
         assert!(manager.jobs.is_empty());
     }
     #[test]
+    fn clearing_one_failure_preserves_other_jobs_and_batch_positions() {
+        let mut manager = Manager::new(vec![]);
+        manager.jobs = vec![
+            json!({"index":0,"queueBatch":1,"action":"install","failed":true,"active":false}),
+            json!({"index":1,"queueBatch":1,"action":"update","failed":true,"active":false}),
+            json!({"index":2,"queueBatch":1,"action":"install","active":true}),
+        ];
+        manager.requests = vec![request("a.b.First"), request("a.b.Second"), request("a.b.Third")];
+        manager.dispatch("clearFailedJob", &json!([0]));
+        assert_eq!(manager.properties["jobs"].as_array().unwrap().len(), 2);
+        assert_eq!(manager.properties["jobs"][0]["index"], 1);
+        assert_eq!(manager.properties["jobs"][1]["index"], 2);
+        assert_eq!(manager.properties["jobs"][1]["queuePosition"], 3);
+        assert_eq!(manager.properties["jobs"][1]["queueTotal"], 3);
+        assert!(manager.requests[0].is_null());
+        assert!(flag(&manager.jobs[1], "failed"));
+        assert!(flag(&manager.jobs[2], "active"));
+        manager.dispatch("clearFailedJob", &json!([1]));
+        assert_eq!(manager.properties["jobs"].as_array().unwrap().len(), 1);
+        assert_eq!(manager.properties["jobs"][0]["queueTotal"], 3);
+        assert!(manager.requests[1].is_null());
+    }
+    #[test]
+    fn individual_clear_rejects_active_successful_removal_and_invalid_entries() {
+        let mut manager = Manager::new(vec![]);
+        manager.jobs = vec![
+            json!({"index":0,"action":"install","failed":true,"active":true}),
+            json!({"index":1,"action":"install","active":false}),
+            json!({"index":2,"action":"uninstall","failed":true,"active":false}),
+        ];
+        manager.requests = vec![Value::Null; 3];
+        let before = manager.jobs.clone();
+        for index in [json!(0), json!(1), json!(2), json!(999), json!(-1), Value::Null, json!("0")] {
+            manager.dispatch("clearFailedJob", &json!([index]));
+            assert_eq!(manager.jobs, before);
+        }
+    }
+    #[test]
     fn local_preview_keeps_details_permissions_and_source_without_hijacking_catalog_installs() {
         let catalog = json!({"id":"a.b.App","name":"Catalog app","remote":"catalog",
             "flatpakRef":"app/a.b.App/x86_64/stable","sourceUrl":"https://catalog.example/repo/"});

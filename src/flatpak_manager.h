@@ -77,6 +77,7 @@ public:
     Q_INVOKABLE void cancelJob(int index) { dispatch("cancelJob", {index}); }
     Q_INVOKABLE void cancelAll() { dispatch("cancelAll", {}); }
     Q_INVOKABLE void clearDownloadHistory() { dispatch("clearDownloadHistory", {}); }
+    Q_INVOKABLE void clearFailedJob(int index) { dispatch("clearFailedJob", {index}); }
     Q_INVOKABLE void refreshInstalled() { dispatch("refreshInstalled", {}); }
     Q_INVOKABLE void launchApp(QVariantMap app) { dispatch("launchApp", {app}); }
     Q_INVOKABLE void refreshSources(bool refreshCatalogs = false) { dispatch("refreshSources", {refreshCatalogs}); }

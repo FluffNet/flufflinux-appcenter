@@ -327,6 +327,19 @@ impl Manager {
                 }
             }
             "cancelAll" => self.cancel_all(),
+            "clearFailedJob" => {
+                if let Some(index) = arg(0).as_u64().and_then(|index| usize::try_from(index).ok()) {
+                    if let Some(job) = self.jobs.get_mut(index) {
+                        if flag(job, "failed") && !flag(job, "active")
+                            && text(job, "action") != "uninstall"
+                        {
+                            job["hidden"] = true.into();
+                            self.publish_jobs();
+                            self.release_finished_jobs();
+                        }
+                    }
+                }
+            }
             "clearDownloadHistory" => {
                 for job in &mut self.jobs {
                     if !job.is_null() && !flag(job, "active") && text(job, "action") != "uninstall"

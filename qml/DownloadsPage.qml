@@ -165,6 +165,15 @@ Page {
                                 onClicked: if (window.backend) window.backend.cancelJob(modelData.index)
                             }
                             AppActionButton {
+                                objectName: "clearFailedDownloadButton"
+                                Layout.fillWidth: false
+                                visible: modelData.failed === true && !modelData.active
+                                text: qsTr("Clear")
+                                icon.name: "edit-clear-history"
+                                Accessible.name: qsTr("Clear failed operation for %1").arg(modelData.name)
+                                onClicked: if (window.backend) window.backend.clearFailedJob(modelData.index)
+                            }
+                            AppActionButton {
                                 objectName: "openDownloadButton"
                                 Layout.fillWidth: false
                                 visible: downloadCard.canOpen

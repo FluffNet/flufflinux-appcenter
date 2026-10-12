@@ -20,11 +20,16 @@ TestCase {
         property var launched: null
         property int cancelledIndex: -1
         property int clearCount: 0
+        property int clearedIndex: -1
         signal appOpened(var app)
         signal inputError(string message)
         function launchApp(app) { launched = app }
         function cancelJob(index) { cancelledIndex = index }
         function clearDownloadHistory() { ++clearCount; jobs = jobs.filter(job => job.active) }
+        function clearFailedJob(index) {
+            clearedIndex = index
+            jobs = jobs.filter(job => job.index !== index || job.active || !job.failed)
+        }
     }
     AppCenter.Main { id: main; backend: backend; visible: true }
     readonly property var app: { return {
@@ -59,6 +64,7 @@ TestCase {
         backend.jobs = []; backend.installedApps = []; backend.review = ({})
         backend.launched = null; backend.cancelledIndex = -1
         backend.clearCount = 0; main.catalog = []
+        backend.clearedIndex = -1
     }
     function test_open_details_from_icon_and_title_data() {
         return [{tag: "icon", object: "downloadAppIcon"}, {tag: "title", object: "downloadAppName"}]
@@ -243,6 +249,34 @@ TestCase {
         verify(findChild(card(), "downloadJobError").visible)
         compare(findChild(card(), "downloadJobError").text, "Network unavailable")
         compare(findChild(card(), "downloadJobStatus").text, "Failed")
+    }
+    function test_clear_one_failure_preserves_other_rows_data() {
+        return [{tag:"install", action:"install"}, {tag:"update", action:"update"}]
+    }
+    function test_clear_one_failure_preserves_other_rows(data) {
+        backend.jobs = [Object.assign({}, job, {active:false, failed:true, action:data.action}),
+            Object.assign({}, job, {index:8, active:false, failed:true}),
+            Object.assign({}, job, {index:12}),
+            Object.assign({}, job, {index:15, active:false})]
+        const rows = findChild(stack().currentItem, "downloadJobs")
+        const survivor = rows.itemAt(1)
+        const clear = findChild(card(), "clearFailedDownloadButton")
+        verify(clear.visible)
+        compare(clear.text, "Clear")
+        compare(clear.icon.name, findChild(stack().currentItem, "clearDownloadHistoryButton").icon.name)
+        verify(!findChild(rows.itemAt(2), "clearFailedDownloadButton").visible)
+        verify(!findChild(rows.itemAt(3), "clearFailedDownloadButton").visible)
+        waitForPolish(stack().currentItem)
+        waitForRendering(clear)
+        mouseClick(clear)
+        compare(backend.clearedIndex, 3)
+        compare(backend.jobs.map(job => job.index).join(","), "8,12,15")
+        compare(rows.itemAt(0), survivor)
+        waitForPolish(stack().currentItem)
+        waitForRendering(survivor)
+        mouseClick(findChild(survivor, "clearFailedDownloadButton"))
+        compare(backend.clearedIndex, 8)
+        compare(backend.jobs.map(job => job.index).join(","), "12,15")
     }
     function test_repo_success_has_no_complete_or_open() {
         backend.jobs = [{index: 3, action: "source", id: "", name: "Repository", active: false, status: "Complete", operations: []}]
