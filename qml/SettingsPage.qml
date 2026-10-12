@@ -18,22 +18,33 @@ Page {
     readonly property bool sourceWorkPending: !!inputStatus || !!(window.backend && window.backend.sourcesBusy)
     header: Control {
         focusPolicy: Qt.ClickFocus
-        height: 70; leftPadding: 24; rightPadding: 24
+        height: Math.max(70, settingsTitle.implicitHeight + 24, settingsBack.implicitHeight + 24)
+        leftPadding: 24; rightPadding: 24
         background: Rectangle {
             color: window.backgroundColor
             FluffSeparator { anchors.left: parent.left; anchors.right: parent.right; anchors.bottom: parent.bottom }
         }
         contentItem: Item {
             FluffToolButton {
+                id: settingsBack
                 objectName: "settingsBackButton"
                 anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-                implicitWidth: 106; implicitHeight: 44; font.pixelSize: 16; font.weight: Font.DemiBold
+                implicitWidth: Math.max(106, implicitContentWidth + leftPadding + rightPadding)
+                implicitHeight: Math.max(44, implicitContentHeight + topPadding + bottomPadding)
+                font.pixelSize: 16; font.weight: Font.DemiBold
                 text: qsTr("Back")
                 icon.name: mirrored ? "go-next" : "go-previous"
                 contentItem: FluffButtonContent { monochromeIcon: true }
                 onClicked: window.goBack()
             }
-            Label { anchors.centerIn: parent; text: qsTr("Settings"); font.pixelSize: 26; font.bold: true; color: window.textColor }
+            Label {
+                id: settingsTitle
+                objectName: "settingsTitle"
+                anchors.centerIn: parent
+                width: Math.max(0, parent.width - 2 * (settingsBack.width + 12))
+                text: qsTr("Settings"); font.pixelSize: 26; font.bold: true; color: window.textColor
+                wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter
+            }
         }
     }
     ScrollView {
@@ -182,29 +193,44 @@ Page {
             Item { Layout.preferredHeight: 24 }
         }
     }
-    Dialog {
+    FluffDialog {
         id: addDialog
         objectName: "addSourceDialog"
         anchors.centerIn: parent; width: Math.min(page.width - 48, 600)
         title: qsTr("Add Flatpak Source"); modal: true
         contentItem: ColumnLayout {
             spacing: 14
-            Label { Layout.fillWidth: true; text: qsTr("Enter an HTTPS .flatpakrepo address or choose a repository file."); wrapMode: Text.Wrap }
-            TextField { id: sourceInput; objectName: "sourceInput"; Layout.fillWidth: true; placeholderText: "https://example.org/source.flatpakrepo"; selectByMouse: true }
-            FluffButton { objectName: "chooseSourceFileButton"; text: qsTr("Choose File…"); icon.name: "document-open"; onClicked: sourceFile.open() }
+            Label { Layout.fillWidth: true; text: qsTr("Enter an HTTPS .flatpakrepo address or choose a repository file."); wrapMode: Text.Wrap; color: window.textColor }
+            TextField {
+                id: sourceInput
+                objectName: "sourceInput"
+                Layout.fillWidth: true
+                placeholderText: "https://example.org/source.flatpakrepo"
+                selectByMouse: true
+                color: window.textColor; placeholderTextColor: window.mutedTextColor
+                background: Rectangle {
+                    implicitHeight: 40; implicitWidth: 240
+                    color: window.surfaceColor
+                    radius: window.cornerRadius
+                    border.color: sourceInput.activeFocus ? window.accentColor : window.borderColor
+                    border.width: sourceInput.activeFocus ? 2 : 1
+                }
+            }
+            FluffButton { objectName: "chooseSourceFileButton"; Layout.maximumWidth: parent.width; text: qsTr("Choose File…"); icon.name: "document-open"; onClicked: sourceFile.open() }
             RowLayout {
                 Layout.fillWidth: true
                 FluffButton {
                     objectName: "addDefaultSourcesButton"
+                    Layout.fillWidth: true; Layout.minimumWidth: 0
                     text: qsTr("Add Default Sources"); icon.name: "list-add"
                     visible: page.sources.length === 0
                     enabled: !page.busy
                     onClicked: { window.backend.addDefaultSources(); addDialog.close() }
                 }
-                Item { Layout.fillWidth: true }
-                FluffButton { objectName: "cancelAddSourceButton"; text: qsTr("Cancel"); icon.name: "dialog-cancel"; onClicked: addDialog.close() }
+                FluffButton { objectName: "cancelAddSourceButton"; Layout.fillWidth: true; Layout.minimumWidth: 0; text: qsTr("Cancel"); icon.name: "dialog-cancel"; onClicked: addDialog.close() }
                 FluffButton {
                     objectName: "confirmAddSourceButton"
+                    Layout.fillWidth: true; Layout.minimumWidth: 0
                     text: qsTr("Add Source"); icon.name: "list-add"
                     enabled: !!sourceInput.text.trim() && !page.busy
                     onClicked: { window.backend.openSource(sourceInput.text.trim()); addDialog.close() }
@@ -219,7 +245,7 @@ Page {
         nameFilters: [qsTr("Flatpak repositories (*.flatpakrepo)")]
         onAccepted: sourceInput.text = selectedFile.toString()
     }
-    Dialog {
+    FluffDialog {
         id: removeDialog
         objectName: "removeSourceDialog"
         anchors.centerIn: parent; width: Math.min(page.width - 48, 520)
@@ -230,7 +256,7 @@ Page {
                 ? qsTr("Remove %1 for all users?\n\nAdministrator authentication is required. Installed apps won’t be removed.")
                 : qsTr("Remove %1?\n\nInstalled apps won’t be removed."))
                 .arg(page.selectedSource ? page.selectedSource.title || page.selectedSource.name : "")
-            textFormat: Text.PlainText; wrapMode: Text.Wrap
+            textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.textColor
         }
         footer: DialogButtonBox {
             FluffButton {
@@ -246,7 +272,7 @@ Page {
             onRejected: removeDialog.close()
         }
     }
-    Dialog {
+    FluffDialog {
         id: detailsDialog
         objectName: "sourceDetailsDialog"
         anchors.centerIn: parent; width: Math.min(page.width - 48, 560)
@@ -266,7 +292,7 @@ Page {
         header: Control {
             leftPadding: 18; rightPadding: 8; topPadding: 8; bottomPadding: 8
             contentItem: RowLayout {
-                Label { text: detailsDialog.title; font.pixelSize: 20; Layout.fillWidth: true }
+                Label { text: detailsDialog.title; font.pixelSize: 20; Layout.fillWidth: true; Layout.minimumWidth: 0; wrapMode: Text.Wrap; color: window.textColor }
                 FluffToolButton {
                     objectName: "closeSourceDetailsButton"
                     Layout.preferredWidth: 44; Layout.preferredHeight: 44
@@ -282,7 +308,7 @@ Page {
                  page.selectedSource.scope === "merged" ? qsTr("User and System")
                      : page.selectedSource.scope === "user" ? qsTr("User") : qsTr("System"),
                  page.selectedSource.verified ? qsTr("Enabled") : qsTr("Disabled by source configuration")], page.mirrored) : ""
-            textFormat: Text.PlainText; wrapMode: Text.WrapAnywhere
+            textFormat: Text.PlainText; wrapMode: Text.WrapAnywhere; color: window.textColor
         }
     }
 }

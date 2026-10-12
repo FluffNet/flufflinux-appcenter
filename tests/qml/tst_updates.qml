@@ -98,6 +98,18 @@ TestCase {
         compare(findChild(page(), "updateDates").text, "Apps were last updated: 24/09/2026 12:39")
         compare(backend.checks, 0)
     }
+    function test_long_heading_at_narrow_width() {
+        main.width = 720
+        open()
+        const title = findChild(page(), "appUpdatesTitle")
+        const original = title.text
+        try {
+            title.text = "Anwendungsaktualisierungen"
+            tryCompare(title, "lineCount", 1)
+            verify(title.contentWidth <= title.width + 1)
+            verify(title.fontInfo.pixelSize >= 24)
+        } finally { title.text = original }
+    }
     function test_manual_only_check_and_cancel() {
         mouseClick(findChild(root(), "updatesButton")); tryCompare(stack(), "busy", false)
         verify(page().visible); compare(stack().depth, 1); compare(backend.checks, 0)

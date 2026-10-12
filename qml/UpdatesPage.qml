@@ -80,7 +80,14 @@ Page {
         GridLayout {
             Layout.fillWidth: true
             columns: page.compact ? 1 : 2
-            Label { objectName: "appUpdatesTitle"; text: qsTr("App Updates"); color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold; Layout.fillWidth: true; Layout.minimumWidth: 0; wrapMode: Text.Wrap }
+            Label {
+                objectName: "appUpdatesTitle"
+                text: qsTr("App Updates"); color: window.textColor
+                font.pixelSize: 32; font.weight: Font.DemiBold
+                fontSizeMode: Text.HorizontalFit; minimumPixelSize: 24
+                Layout.fillWidth: true; Layout.minimumWidth: 0
+                wrapMode: Text.Wrap
+            }
             FluffButton {
                 objectName: "checkForUpdatesButton"
                 visible: !page.checking

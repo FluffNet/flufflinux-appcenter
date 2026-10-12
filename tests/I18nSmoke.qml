@@ -12,9 +12,14 @@ I18nCapture {
         "تنظیمات":"fa", "Impostazioni":"it", "设置":"zh_Hans", "設定":"zh_Hant",
         "ترتیبات":"ur", "ترتیباں":"pa_Arab", "امستنې":"ps", "تەڭشەكلەر":"ug",
         "Instellingen":"nl", "Ustawienia":"pl", "설정":"ko", "Ayarlar":"tr",
-        "Inställningar":"sv", "Indstillinger":"da"
+        "Inställningar":"sv", "Indstillinger":"da", "Asetukset":"fi",
+        "Innstillinger":"nb", "Innstillingar":"nn", "Nastavení":"cs",
+        "Nastavenia":"sk", "Beállítások":"hu", "Configurări":"ro", "Pengaturan":"id",
+        "Ρυθμίσεις":"el", "Configuració":"ca", "Podešavanja":"sr_Latn", "Подешавања":"sr",
+        "Instellings":"af"
     })
-    language: qsTr("App Center") === "アプリセンター" ? "ja" : languageNames[qsTr("Settings")] || "unknown"
+    language: qsTr("App Center") === "アプリセンター" ? "ja"
+        : qsTr("Back") === "Arrere" ? "ca_valencia" : languageNames[qsTr("Settings")] || "unknown"
     expectedSettings: qsTr("Settings")
     function buildScenes() {
         check(language !== "unknown", "the selected translation catalog is active")
