@@ -63,6 +63,8 @@ TestCase {
         appPage.app = window.previewApp
         window.width = 1180
         window.height = 760
+        tryCompare(appPage, "mirrored", false)
+        waitForRendering(appPage)
     }
 
     function appWithScreenshots(screenshots) {
@@ -464,7 +466,8 @@ TestCase {
     function test_preview_zoom_controls_and_cursor_centering() {
         appPage.openScreenshot(0)
         const preview = appPage.screenshotPreviewDialog
-        tryCompare(preview, "visible", true)
+        tryCompare(preview, "opened", true)
+        waitForRendering(preview.contentItem)
 
         const frame = findChild(preview, "previewImageFrame")
         const gestureSurface = findChild(preview, "previewGestureSurface")
@@ -613,7 +616,9 @@ TestCase {
     function test_mouse_wheel_outside_photo_browses_one_screenshot_per_notch() {
         appPage.openScreenshot(1)
         const preview = appPage.screenshotPreviewDialog
-        tryCompare(preview, "visible", true)
+        tryCompare(preview, "opened", true)
+        tryCompare(findChild(preview, "previewImage"), "status", Image.Ready)
+        waitForRendering(preview.contentItem)
         const gestureSurface = findChild(preview, "previewGestureSurface")
         const verticalWheel = appPage.previewVerticalWheelHandler
         const wheelSurface = appPage.previewWindowWheelSurfaceItem
@@ -662,6 +667,19 @@ TestCase {
                    Qt.NoButton)
         compare(appPage.previewScreenshotIndex, 1)
         compare(preview.visible, true)
+    }
+
+    function test_clipped_image_pixels_are_not_wheel_zoom_targets() {
+        appPage.openScreenshot(0)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "opened", true)
+        tryCompare(findChild(preview, "previewImage"), "status", Image.Ready)
+        const frame = findChild(preview, "previewImageFrame")
+        appPage.setPreviewZoom(5)
+        verify(appPage.previewPointIsInsideImage(frame.width / 2, frame.height / 2))
+        for (const point of [[-1, frame.height / 2], [frame.width, frame.height / 2],
+                             [frame.width / 2, -1], [frame.width / 2, frame.height]])
+            verify(!appPage.previewPointIsInsideImage(point[0], point[1]))
     }
 
     function test_thumbnail_highlight_without_preview_badge() {

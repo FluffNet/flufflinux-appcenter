@@ -128,7 +128,9 @@ Page {
 
     function previewPointIsInsideImage(x, y) {
         if (!previewImageFrame || !previewImage
-                || previewImage.status !== Image.Ready)
+                || previewImage.status !== Image.Ready
+                || x < 0 || y < 0
+                || x >= previewImageFrame.width || y >= previewImageFrame.height)
             return false
 
         const centerX = previewImageFrame.width / 2 + previewPanX
@@ -724,6 +726,30 @@ Page {
         anchors.fill: parent
         visible: screenshotPreview.visible
         z: screenshotPreview.z + 1
+
+        // This wheel-only layer sits above the modal so wheel navigation also
+        // works on the dimmed area. Qt's popup outside-close policy cannot see
+        // through an overlay sibling above it. Cover only the four outside
+        // margins, leaving every preview button and gesture surface untouched.
+        Repeater {
+            model: [
+                Qt.rect(0, 0, parent.width, screenshotPreview.y),
+                Qt.rect(0, screenshotPreview.y + screenshotPreview.height,
+                        parent.width, parent.height - screenshotPreview.y - screenshotPreview.height),
+                Qt.rect(0, screenshotPreview.y, screenshotPreview.x, screenshotPreview.height),
+                Qt.rect(screenshotPreview.x + screenshotPreview.width, screenshotPreview.y,
+                        parent.width - screenshotPreview.x - screenshotPreview.width, screenshotPreview.height)
+            ]
+            MouseArea {
+                required property var modelData
+                x: modelData.x
+                y: modelData.y
+                width: Math.max(0, modelData.width)
+                height: Math.max(0, modelData.height)
+                acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                onPressed: screenshotPreview.close()
+            }
+        }
 
         WheelHandler {
             id: previewVerticalWheel
