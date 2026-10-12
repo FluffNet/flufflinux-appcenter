@@ -31,6 +31,7 @@ App.Main {
         console.log("BADGES_CAPTURE", name)
     }
     function verifyCards(page, search) {
+        check((main.searchText.length > 0) === search, "expected search/Home state")
         const grid = probe.findChild(page, "catalogGrid")
         let installed = 0, other = 0
         for (let i = 0; i < Math.min(grid.count, 12); ++i) {
@@ -64,12 +65,15 @@ App.Main {
             if (main.stage === 0) {
                 main.verifyCards(page, false); main.capture("home-dark")
                 probe.findChild(page, "searchField").text = "firefox"
+                main.searchText = "firefox"
             } else if (main.stage === 1) {
                 main.verifyCards(page, true); main.capture("search-dark")
                 main.theme(false); probe.findChild(page, "searchField").clear()
+                main.searchText = ""
             } else if (main.stage === 2) {
                 main.verifyCards(page, false); main.capture("home-light")
                 probe.findChild(page, "searchField").text = "firefox"
+                main.searchText = "firefox"
             } else if (main.stage === 3) {
                 main.verifyCards(page, true); main.capture("search-light")
                 console.log("BADGES_PASS", main.backend.installedApps.map(app => app.name).join(", "))
