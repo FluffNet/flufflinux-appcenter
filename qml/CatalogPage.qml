@@ -180,7 +180,7 @@ Page {
         { name: "Other", label: qsTr("Other"), icon: "applications-other" }
     ]
     readonly property real categorySidebarWidth: Math.min(page.width * 0.46,
-                                                           categoryWidthForLabels([qsTr("Installed"), qsTr("App Updates")].concat(categories.map(
+                                                           categoryWidthForLabels([qsTranslate("InstalledNavigation", "Installed"), qsTr("App Updates")].concat(categories.map(
                                                                function(category) {
                                                                    return category.label
                                                                }))))
@@ -347,6 +347,7 @@ Page {
         }
         contentItem: Item {
             Item {
+                anchors.left: parent.left
                 width: page.categorySidebarWidth
                 height: parent.height
 
@@ -373,7 +374,8 @@ Page {
 
             DownloadsButton {
                 id: downloadsControl
-                x: page.categorySidebarWidth + 12
+                x: headerControl.mirrored ? parent.width - page.categorySidebarWidth - 12 - width
+                                         : page.categorySidebarWidth + 12
                 anchors.verticalCenter: parent.verticalCenter
             }
 
@@ -387,7 +389,8 @@ Page {
                 anchors.right: applicationMenuButton.left
                 anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                placeholderText: "Search applications…"
+                placeholderText: qsTr("Search applications…")
+                horizontalAlignment: Text.AlignLeft
                 color: window.textColor; placeholderTextColor: window.mutedTextColor
                 leftPadding: 46; rightPadding: 48; implicitHeight: 44
                 activeFocusOnPress: true
@@ -498,7 +501,7 @@ Page {
                     property bool restoreKeyboardFocus: false
                     modal: false
                     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-                    x: applicationMenuButton.width - width
+                    x: applicationMenuButton.mirrored ? 0 : applicationMenuButton.width - width
                     y: applicationMenuButton.height + 6
                     width: 210
                     Overlay.onPressed: restoreKeyboardFocus = false
@@ -583,7 +586,7 @@ Page {
                         objectName: "installedButton"
                         width: parent.width
                         height: sidebar.navigationRowHeight
-                        text: qsTr("Installed")
+                        text: qsTranslate("InstalledNavigation", "Installed")
                         icon.name: "view-list-details"
                         icon.width: sidebar.navigationIconSize; icon.height: sidebar.navigationIconSize
                         icon.color: window.textColor
@@ -627,6 +630,9 @@ Page {
                                 font: installedButton.font
                                 color: window.textColor
                                 fontSizeMode: Text.Fit; minimumPixelSize: 1
+                                Layout.minimumWidth: 0
+                                Layout.maximumHeight: sidebar.navigationRowHeight
+                                wrapMode: Text.Wrap
                             }
                         }
                         onClicked: page.openCategory("Installed")
@@ -661,7 +667,14 @@ Page {
                                 isMask: true; color: window.textColor
                                 Accessible.ignored: true
                             }
-                            Label { text: updatesButton.text; color: window.textColor; font: updatesButton.font; Layout.fillWidth: true; fontSizeMode: Text.Fit; minimumPixelSize: 1 }
+                            Label {
+                                objectName: "updatesNavigationLabel"
+                                text: updatesButton.text; color: window.textColor; font: updatesButton.font
+                                Layout.fillWidth: true; Layout.minimumWidth: 0
+                                Layout.maximumHeight: sidebar.navigationRowHeight
+                                wrapMode: Text.Wrap
+                                fontSizeMode: Text.Fit; minimumPixelSize: 1
+                            }
                         }
                         background: Rectangle {
                             radius: window.cornerRadius
@@ -742,6 +755,9 @@ Page {
                             text: categoryButton.text; font: categoryButton.font
                             color: categoryButton.categorySelected && !window.darkMode ? "#000000" : window.textColor
                             fontSizeMode: Text.Fit; minimumPixelSize: 1
+                            Layout.minimumWidth: 0
+                            Layout.maximumHeight: sidebar.navigationRowHeight
+                            wrapMode: Text.Wrap
                         }
                     }
                     background: Rectangle {

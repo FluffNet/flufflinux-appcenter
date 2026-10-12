@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "Bidi.js" as Bidi
 import QtQuick.Dialogs as FileDialogs
 import org.kde.kirigami as Kirigami
 
@@ -27,7 +28,10 @@ Page {
                 objectName: "settingsBackButton"
                 anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
                 implicitWidth: 106; implicitHeight: 44; font.pixelSize: 16; font.weight: Font.DemiBold
-                text: qsTr("←  Back"); onClicked: window.goBack()
+                text: qsTr("Back")
+                icon.name: mirrored ? "go-next" : "go-previous"
+                contentItem: FluffButtonContent { monochromeIcon: true }
+                onClicked: window.goBack()
             }
             Label { anchors.centerIn: parent; text: qsTr("Settings"); font.pixelSize: 26; font.bold: true; color: window.textColor }
         }
@@ -273,10 +277,11 @@ Page {
             }
         }
         contentItem: Label {
-            text: page.selectedSource ? qsTr("Name: %1\nAddress: %2\nInstallation: %3\nSignature verification: %4")
-                .arg(page.selectedSource.name).arg(page.selectedSource.url)
-                .arg(page.selectedSource.scope === "merged" ? qsTr("User and System") : page.selectedSource.scope)
-                .arg(page.selectedSource.verified ? qsTr("Enabled") : qsTr("Disabled by source configuration")) : ""
+            text: page.selectedSource ? Bidi.format(qsTr("Name: %1\nAddress: %2\nInstallation: %3\nSignature verification: %4"),
+                [page.selectedSource.name, page.selectedSource.url,
+                 page.selectedSource.scope === "merged" ? qsTr("User and System")
+                     : page.selectedSource.scope === "user" ? qsTr("User") : qsTr("System"),
+                 page.selectedSource.verified ? qsTr("Enabled") : qsTr("Disabled by source configuration")], page.mirrored) : ""
             textFormat: Text.PlainText; wrapMode: Text.WrapAnywhere
         }
     }

@@ -50,7 +50,7 @@ AbstractButton {
             AppPublisher { objectName: "catalogAppPublisher"; app: card.app; Layout.fillWidth: true; font.pixelSize: 12 }
             Label {
                 Layout.fillWidth: true; Layout.fillHeight: true
-                text: app.summary || "Application for Fluff Linux"
+                text: app.summary || qsTr("Application for Fluff Linux")
                 color: window.mutedTextColor; wrapMode: Text.WordWrap; maximumLineCount: 3
                 elide: Text.ElideRight; verticalAlignment: Text.AlignTop
             }

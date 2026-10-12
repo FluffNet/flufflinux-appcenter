@@ -48,7 +48,8 @@ Page {
                     id: backButton
                     objectName: "downloadsBackButton"
                     anchors.left: parent.left; anchors.verticalCenter: parent.verticalCenter
-                    text: qsTr("Back"); icon.name: "go-previous"
+                    text: qsTr("Back"); icon.name: mirrored ? "go-next" : "go-previous"
+                    contentItem: FluffButtonContent { monochromeIcon: true }
                     onClicked: window.goBack()
                 }
             }
@@ -195,7 +196,8 @@ Page {
                                   : modelData.queued ? qsTr("Pending…")
                                   : !(modelData.operations || []).length ? qsTr("Preparing…") : ""
                             textFormat: Text.PlainText; wrapMode: Text.Wrap
-                            color: modelData.failed ? window.accentTextColor : window.mutedTextColor
+                            font.bold: modelData.active && modelData.queued === true
+                            color: modelData.failed ? window.accentTextColor : font.bold ? window.textColor : window.mutedTextColor
                         }
                         InstallationProgress {
                             objectName: "downloadJobProgress"

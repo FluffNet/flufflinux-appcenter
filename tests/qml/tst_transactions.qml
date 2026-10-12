@@ -404,6 +404,30 @@ TestCase {
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.installSizes = ({})
     }
+    function test_website_follows_value_column_data() {
+        return [{tag:"ltr",rtl:false}, {tag:"rtl",rtl:true}]
+    }
+    function test_website_follows_value_column(data) {
+        main.contentItem.LayoutMirroring.enabled = data.rtl
+        const app = {id:"org.example.Rtl", name:"Unchanged Name", summary:"", description:"", category:"Utilities", license:"MIT", developer:"", icon:"", screenshots:[], homepage:"https://example.org/path?a=1&b=2"}
+        try {
+            main.openApp(app)
+            const stack = findChild(main, "navigationStack")
+            tryCompare(stack, "busy", false)
+            const page = stack.currentItem
+            const website = findChild(page, "appWebsiteLink")
+            const category = findChild(page, "appCategoryValue")
+            waitForPolish(page)
+            const linkEdge = website.mapToItem(page, data.rtl ? website.width : 0, 0).x
+            const columnEdge = category.mapToItem(page, data.rtl ? category.width : 0, 0).x
+            fuzzyCompare(linkEdge, columnEdge, 0.5)
+            compare(website.text, app.homepage)
+            compare(website.contentItem.text, app.homepage)
+            compare(main.selectedApp.name, app.name)
+        } finally {
+            main.contentItem.LayoutMirroring.enabled = Qt.binding(function() { return main.rtl })
+        }
+    }
     function test_long_website_fits_narrow_window() {
         const previousWidth = main.width
         main.width = 720

@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "Bidi.js" as Bidi
 
 Page {
     focusPolicy: Qt.ClickFocus
@@ -222,9 +223,14 @@ Page {
         previewPinching = false
     }
 
+    function backSwipeDistance(horizontalTravel) {
+        return mirrored ? -horizontalTravel : horizontalTravel
+    }
+
     function finishPageSwipe(horizontalTravel, verticalTravel) {
-        const shouldGoBack = horizontalTravel >= Math.min(180, page.width * 0.18)
-                                 && horizontalTravel > verticalTravel * 1.5
+        const backTravel = backSwipeDistance(horizontalTravel)
+        const shouldGoBack = backTravel >= Math.min(180, page.width * 0.18)
+                                 && backTravel > verticalTravel * 1.5
         if (shouldGoBack)
             window.showCatalog()
         return shouldGoBack
@@ -267,8 +273,10 @@ Page {
         contentItem: RowLayout {
             FluffToolButton {
                 objectName: "backButton"
-                text: "←  Back"
-                implicitWidth: 106
+                text: qsTr("Back")
+                icon.name: mirrored ? "go-next" : "go-previous"
+                contentItem: FluffButtonContent { monochromeIcon: true }
+                implicitWidth: Math.max(106, implicitContentWidth + leftPadding + rightPadding)
                 leftPadding: 12
                 rightPadding: 14
                 font.pixelSize: 16
@@ -383,6 +391,8 @@ Page {
             }
             ListView {
                 id: screenshotList
+                LayoutMirroring.enabled: false
+                LayoutMirroring.childrenInherit: true
                 objectName: "screenshotList"
                 Layout.fillWidth: true
                 readonly property bool singleImage: count === 1
@@ -457,7 +467,7 @@ Page {
                             ? screenshotList.height
                             : 276
                     hoverEnabled: true
-                    Accessible.name: "Preview screenshot"
+                    Accessible.name: qsTr("Preview screenshot")
                     onClicked: page.openScreenshot(index)
                     background: Rectangle {
                         radius: window.cornerRadius
@@ -499,7 +509,7 @@ Page {
                     objectName: "localSourceNoteText"
                     anchors.fill: parent; anchors.margins: 16
                     text: app && app.sourceUrl
-                        ? qsTr("This app comes from %1\nInstalling this app will add this source so the app can receive updates.").arg(app.sourceUrl)
+                        ? Bidi.format(qsTr("This app comes from %1\nInstalling this app will add this source so the app can receive updates."), [app.sourceUrl], page.mirrored)
                         : qsTr("This app comes from a local Flatpak file. Only install it if you trust where it came from.")
                     textFormat: Text.PlainText
                     color: window.textColor; wrapMode: Text.Wrap; font.pixelSize: 16
@@ -513,7 +523,7 @@ Page {
                 ColumnLayout {
                     id: aboutLayout
                     anchors.fill: parent; anchors.margins: 22; spacing: 10
-                    Label { text: "About this app"; color: window.textColor; font.pixelSize: 23; font.weight: Font.DemiBold }
+                    Label { text: qsTr("About this app"); color: window.textColor; font.pixelSize: 23; font.weight: Font.DemiBold }
                     Label {
                         objectName: "appDetailsWarning"
                         Layout.fillWidth: true
@@ -553,13 +563,13 @@ Page {
                     text: app && app.installedDate || ""; color: window.textColor
                     visible: text.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap
                 }
-                Label { text: "Category"; color: window.mutedTextColor }
-                Label { objectName: "appCategoryValue"; text: app ? app.category : ""; color: window.textColor; Layout.fillWidth: true }
-                Label { text: "AppStream ID"; color: window.mutedTextColor }
+                Label { text: qsTr("Category"); color: window.mutedTextColor }
+                Label { objectName: "appCategoryValue"; text: app ? qsTranslate("AppCenter", app.category) : ""; color: window.textColor; Layout.fillWidth: true }
+                Label { text: qsTr("AppStream ID"); color: window.mutedTextColor }
                 Label { text: app ? app.id : ""; color: window.textColor; Layout.fillWidth: true; elide: Text.ElideRight }
-                Label { text: "License"; color: window.mutedTextColor; visible: app && app.license }
+                Label { text: qsTr("License"); color: window.mutedTextColor; visible: app && app.license }
                 Label { text: app ? app.license : ""; color: window.textColor; Layout.fillWidth: true; visible: text.length > 0 }
-                Label { objectName: "appWebsiteCaption"; text: "Website"; color: window.mutedTextColor; visible: app && app.homepage }
+                Label { objectName: "appWebsiteCaption"; text: qsTr("Website"); color: window.mutedTextColor; visible: app && app.homepage }
                 Item {
                     Layout.fillWidth: true
                     implicitWidth: websiteLink.implicitWidth
@@ -568,6 +578,7 @@ Page {
                     WebsiteLink {
                         id: websiteLink
                         objectName: "appWebsiteLink"
+                        anchors.left: parent.left
                         text: app ? app.homepage : ""
                         // Plain text starts at the same value-column edge as
                         // the other details. Long URLs stay inside the column.
@@ -644,7 +655,9 @@ Page {
             property bool startedInsideScreenshotStrip: false
             onPointChanged: {
                 if (active && !startedInsideScreenshotStrip) {
-                    travel = Math.max(travel, point.position.x - startPosition.x)
+                    const horizontalTravel = point.position.x - startPosition.x
+                    if (page.backSwipeDistance(horizontalTravel) > page.backSwipeDistance(travel))
+                        travel = horizontalTravel
                     verticalTravel = Math.max(verticalTravel,
                                               Math.abs(point.position.y - startPosition.y))
                 }
@@ -691,7 +704,7 @@ Page {
                     return
 
                 const fingerDistance = event.inverted ? rawX : -rawX
-                travel += fingerDistance
+                travel += page.backSwipeDistance(fingerDistance)
                 if (travel >= 80) {
                     travel = 0
                     window.showCatalog()
@@ -818,6 +831,8 @@ Page {
         }
         contentItem: ColumnLayout {
             focus: true
+            LayoutMirroring.enabled: false
+            LayoutMirroring.childrenInherit: true
             spacing: 8
             Keys.onLeftPressed: function(event) {
                 page.movePreview(-1)

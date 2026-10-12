@@ -115,14 +115,14 @@ impl Manager {
         }
         if removing {
             let name = text(&request, "name");
-            let message = if flag(&request, "addon") {
-                format!("Only {name} will be removed. The parent app and its data will be kept.")
+            let message_key = if flag(&request, "addon") {
+                "Only %1 will be removed. The parent app and its data will be kept."
             } else if request["installation"] != "user" {
-                format!("If you proceed, {name} will be removed for all users, and its app data for this account will be deleted.")
+                "If you proceed, %1 will be removed for all users, and its app data for this account will be deleted."
             } else {
-                format!("If you proceed, {name} and its app data will be removed.")
+                "If you proceed, %1 and its app data will be removed."
             };
-            self.queue_review(json!({"localRemoval":true,"kind":"transaction","removing":true,"appId":id,"operations":[],"title":format!("Uninstall {name}?"),"message":message}),index);
+            self.queue_review(json!({"localRemoval":true,"kind":"transaction","removing":true,"appId":id,"operations":[],"title":format!("Uninstall {name}?"),"titleKey":"Uninstall %1?","message":message_key.replace("%1",name),"messageKey":message_key,"textArguments":[name]}),index);
         }
         self.start_next();
     }

@@ -114,7 +114,7 @@ impl State {
         answer
     }
     fn review_source(&mut self, name: &str, url: &str) -> bool {
-        self.ask(json!({"kind":"remote","title":"Trust a new software source?","message":format!("Flatpak needs to add {name} for your user:\n{url}\nOnly continue if you trust this source. It can remain in your account even if you cancel installation later."),"operations":[]}))
+        self.ask(json!({"kind":"remote","title":"Trust a new software source?","message":format!("Flatpak needs to add {name} for your user:\n{url}\nOnly continue if you trust this source. It can remain in your account even if you cancel installation later."),"messageKey":"Flatpak needs to add %1 for your user:\n%2\nOnly continue if you trust this source. It can remain in your account even if you cancel installation later.","textArguments":[name,url],"operations":[]}))
     }
     // These fields map directly to the worker's operation progress protocol.
     #[allow(clippy::too_many_arguments)]
@@ -212,7 +212,7 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
         if !w.removing{return !w.control.cancel.is_cancelled();}
         if !flag(&w.request,"removalConfirmed"){
             let message=if w.addon{format!("Only {} will be removed. The parent app and its data will be kept.",w.name)}else if w.scope!="user"{format!("If you proceed, {} will be removed for all users, and its app data for this account will be deleted.",w.name)}else{format!("If you proceed, {} and its app data will be removed.",w.name)};
-            let review=json!({"kind":"transaction","operations":operations,"appId":w.id,"removing":true,"downloadSize":bytes(total),"title":format!("Uninstall {}?",w.name),"message":message});
+            let review=json!({"kind":"transaction","operations":operations,"appId":w.id,"removing":true,"downloadSize":bytes(total),"title":format!("Uninstall {}?",w.name),"message":message,"titleKey":"Uninstall %1?","messageKey":if w.addon{"Only %1 will be removed. The parent app and its data will be kept."}else if w.scope!="user"{"If you proceed, %1 will be removed for all users, and its app data for this account will be deleted."}else{"If you proceed, %1 and its app data will be removed."},"textArguments":[w.name]});
             if !w.ask(review){return false;}
         }
         if !w.addon{if let Err(error)=w.close_app(){w.problem=error;return false;}}true
@@ -596,7 +596,7 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
             {
                 return Err("The bundle or its source changed. Open it again.".into());
             }
-            if preview_directory.is_none() && !source_reviewed(&request,&origin) && !state.borrow_mut().ask(json!({"kind":"bundle","title":"Install local Flatpak bundle?","message":format!("Only install bundles from a source you trust. Flatpak may register the bundle's software source for your user.\n\n{}",path.display()),"operations":[]})){return Err("Cancelled".into());}
+            if preview_directory.is_none() && !source_reviewed(&request,&origin) && !state.borrow_mut().ask(json!({"kind":"bundle","title":"Install local Flatpak bundle?","message":format!("Only install bundles from a source you trust. Flatpak may register the bundle's software source for your user.\n\n{}",path.display()),"messageKey":"Only install bundles from a source you trust. Flatpak may register the bundle's software source for your user.\n\n%1","textArguments":[path.display().to_string()],"operations":[]})){return Err("Cancelled".into());}
             tx.add_install_bundle(&gio::File::for_path(path), None)
                 .map_err(|e| e.to_string())?;
         } else {
@@ -644,7 +644,7 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
                     libflatpak::Remote::from_file(name, &glib::Bytes::from_owned(contents.clone()))
                         .map_err(|e| e.to_string())?;
                 remote.set_gpg_verify(true);
-                if !state.borrow_mut().ask(json!({"kind":"remote","title":"Add software source?","message":format!("{name}\n{url}\nThis source will be available for your user only."),"operations":[]})){return Err("Cancelled".into());}
+                if !state.borrow_mut().ask(json!({"kind":"remote","title":"Add software source?","message":format!("{name}\n{url}\nThis source will be available for your user only."),"messageKey":"%1\n%2\nThis source will be available for your user only.","textArguments":[name,url.to_string()],"operations":[]})){return Err("Cancelled".into());}
                 return installation
                     .modify_remote(&remote, Some(&cancel))
                     .map_err(|e| e.to_string());

@@ -1,6 +1,7 @@
 //! Notification, batch and sleep-inhibition policy. KDE widgets only display
 //! these commands; no decision depends on a notification remaining visible.
 use super::{flag, number, text};
+use crate::i18n::{format as tr_format, translate as tr};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
 #[derive(Default)]
@@ -19,24 +20,21 @@ fn name(job: &Value) -> &str {
 }
 fn numbered(job: &Value) -> String {
     if number(job, "queueTotal") > 1 {
-        format!(
-            "{}/{}: {}",
-            number(job, "queuePosition"),
-            number(job, "queueTotal"),
-            name(job)
-        )
+        tr_format("%1/%2: %3", &[
+            &number(job, "queuePosition").to_string(),
+            &number(job, "queueTotal").to_string(), name(job)])
     } else {
         name(job).into()
     }
 }
 fn verb(job: &Value, completed: bool) -> &'static str {
     match (text(job, "action"), completed) {
-        ("uninstall", false) => "Removing",
-        ("update", false) => "Updating",
-        (_, false) => "Installing",
-        ("uninstall", true) => "removed",
-        ("update", true) => "updated",
-        (_, true) => "installed",
+        ("uninstall", false) => "Removing %1",
+        ("update", false) => "Updating %1",
+        (_, false) => "Installing %1",
+        ("uninstall", true) => "%1 removed",
+        ("update", true) => "%1 updated",
+        (_, true) => "%1 installed",
     }
 }
 fn html(value: &str) -> String {
@@ -50,8 +48,8 @@ fn html(value: &str) -> String {
 fn presentation(job: &Value) -> Value {
     let downloading =
         flag(job, "hasDownload") && !flag(job, "downloadComplete") && job["phase"] == "download";
-    json!({"title":format!("{} {}",verb(job,false),numbered(job)),"completionTitle":format!("{} {}",numbered(job),verb(job,true)),
-        "message":if downloading{format!("{} / {} ({})",text(job,"downloadedSize"),text(job,"downloadTotalSize"),text(job,"downloadSpeed"))}else{text(job,"status").into()},
+    json!({"title":tr_format(verb(job,false), &[&numbered(job)]),"completionTitle":tr_format(verb(job,true), &[&numbered(job)]),
+        "message":if downloading{tr_format("%1 / %2 (%3)", &[text(job,"downloadedSize"),text(job,"downloadTotalSize"),text(job,"downloadSpeed")])}else{tr(text(job,"status"))},
         "totalBytes":number(job,"downloadTotalBytes"),"receivedBytes":number(job,"receivedBytes"),"speed":number(job,"downloadSpeedBytes"),
         "percent":(job["progress"].as_f64().unwrap_or(0.0).clamp(0.0,0.99)*100.0).floor() as u64,"failed":flag(job,"failed"),"error":text(job,"error")})
 }
@@ -124,7 +122,7 @@ impl Background {
         }
         commands.push(json!({"kind":"idle","active":self.closed&&!work_pending}));
         let confirmation = review.as_object().is_some_and(|review| !review.is_empty());
-        commands.push(json!({"kind":"tray","visible":self.closed&&!active.is_empty(),"message":if confirmation{"Confirmation needed - open App Center to continue".into()}else{format!("{} app operation(s) in progress",active.len())}}));
+        commands.push(json!({"kind":"tray","visible":self.closed&&!active.is_empty(),"message":if confirmation{tr("Confirmation needed - open App Center to continue")}else{tr_format("App operations in progress: %1", &[&active.len().to_string()])}}));
         if finished {
             self.reported = true;
             if self.closed && self.batch_jobs.len() > 1 {
@@ -142,13 +140,10 @@ impl Background {
                             _ => "Installed",
                         }
                     };
-                    lines.push(html(&format!(
-                        "{}. {} - {result}",
-                        lines.len() + 1,
-                        name(job)
-                    )));
+                    lines.push(html(&tr_format("%1. %2 - %3", &[
+                        &(lines.len() + 1).to_string(), name(job), &tr(result)])));
                 }
-                commands.push(json!({"kind":"summary","title":if failed{"App queue finished with errors"}else{"App queue complete"},"body":lines.join("\n"),"timeout":5000}));
+                commands.push(json!({"kind":"summary","title":tr(if failed{"App queue finished with errors"}else{"App queue complete"}),"body":lines.join("\n"),"timeout":5000}));
             }
             self.batch_jobs.clear();
             self.batch = 0;

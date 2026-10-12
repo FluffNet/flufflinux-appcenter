@@ -10,7 +10,12 @@ ApplicationWindow {
     // The native launcher restores geometry before showing the real window.
     // Standalone QML fixtures keep their explicit, non-persistent geometry.
     visible: typeof fluffWindowManaged === "undefined" || !fluffWindowManaged
-    title: "App Center"
+    title: qsTr("App Center")
+    readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
+    contentItem.LayoutMirroring.enabled: rtl
+    contentItem.LayoutMirroring.childrenInherit: true
+    Overlay.overlay.LayoutMirroring.enabled: rtl
+    Overlay.overlay.LayoutMirroring.childrenInherit: true
     // Inherit the native launcher's desktop font and rendering preferences,
     // not a control style's independent default family.
     font: Qt.application.font
@@ -259,13 +264,12 @@ ApplicationWindow {
         objectName: "aboutDialog"
         anchors.centerIn: parent; width: Math.min(window.width - 48, 440)
         title: qsTr("About App Center")
-        modal: true; standardButtons: Dialog.Close
+        modal: true
         footer: DialogButtonBox {
-            standardButtons: Dialog.Close
             alignment: Qt.AlignHCenter
             topPadding: 8; bottomPadding: 8
             leftPadding: 8; rightPadding: 8
-            delegate: FluffButton { objectName: "aboutCloseButton" }
+            FluffButton { objectName: "aboutCloseButton"; text: qsTr("Close"); DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
             onRejected: aboutDialog.close()
         }
         contentItem: ColumnLayout {
@@ -290,6 +294,7 @@ ApplicationWindow {
     TransactionReview { backend: window.backend }
     Dialog {
         id: errorDialog
+        objectName: "flatpakErrorDialog"
         anchors.centerIn: parent; width: Math.min(window.width - 48, 600)
         title: qsTr("Could not open Flatpak")
         modal: true; standardButtons: Dialog.Ok

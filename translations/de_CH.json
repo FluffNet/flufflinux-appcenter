@@ -1,0 +1,14 @@
+{
+  "%1 selected - Total size: %2": "%1 ausgewählt - Gesamtgrösse: %2",
+  "App removed; final data cleanup could not be verified": "Anwendung entfernt; abschliessende Datenbereinigung konnte nicht bestätigt werden",
+  "Close": "Schliessen",
+  "Installed size": "Installierte Grösse",
+  "Size:": "Grösse:",
+  "Size: %1": "Grösse: %1",
+  "Size: Largest first": "Grösse: Grösste zuerst",
+  "Size: Smallest first": "Grösse: Kleinste zuerst",
+  "Total size with dependencies:": "Gesamtgrösse einschliesslich Abhängigkeiten:",
+  "&Close": "Schliessen",
+  "Access to hardware devices outside the sandbox.": "Zugriff auf Hardwaregeräte ausserhalb der Sandbox.",
+  "Locations available outside the app's private storage. Denied entries are exceptions to broader access.": "Verfügbare Orte ausserhalb des privaten Anwendungsspeichers. Verweigerte Einträge sind Ausnahmen von umfassenderen Zugriffsrechten."
+}

@@ -51,6 +51,7 @@ ToolButton {
             width: parent.width - 12; height: 3; radius: 1.5
             color: window.borderColor
             Rectangle {
+                anchors.left: parent.left
                 width: parent.width * window.downloadQueue.progress
                 height: parent.height; radius: 1.5
                 color: window.accentColor

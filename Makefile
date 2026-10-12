@@ -18,7 +18,7 @@ build:
 fakeroot: build
 	sh scripts/prepare-fakeroot.sh "$(EXCLUSIONS_FILE)"
 
-target/release/flufflinux-appcenter target/release/flufflinux-appcenter-source-helper &: Cargo.toml Cargo.lock VERSION build.rs data/exclusions.conf $(wildcard src/*.rs src/backend/*.rs src/backend/manager/*.rs src/bin/*.rs src/*.cpp src/*.h)
+target/release/flufflinux-appcenter target/release/flufflinux-appcenter-source-helper &: Cargo.toml Cargo.lock VERSION build.rs data/exclusions.conf $(wildcard src/*.rs src/i18n/*.rs translations/*.tsv src/backend/*.rs src/backend/manager/*.rs src/bin/*.rs src/*.cpp src/*.h)
 	cargo build --release
 
 install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter-source-helper
@@ -44,6 +44,8 @@ install: target/release/flufflinux-appcenter target/release/flufflinux-appcenter
 	install -m644 qml/*.qml "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/"
 	install -m644 qml/*.js "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/"
 	install -m644 qml/*.svg "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/"
+	mkdir -p "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/translations"
+	install -m644 translations/*.json "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/translations/"
 	install -m644 assets/flufflinux-appcenter.svg "$(DESTDIR)$(PREFIX)/share/flufflinux-appcenter/qml/flufflinux-appcenter.svg"
 	install -m644 assets/flufflinux-appcenter.svg "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/flufflinux-appcenter.svg"
 	for alias in flufflinuxplasmadiscover plasmadiscover; do ln -sfn flufflinux-appcenter.svg "$(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps/$$alias.svg"; done

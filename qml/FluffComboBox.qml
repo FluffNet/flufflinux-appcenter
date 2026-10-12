@@ -16,7 +16,8 @@ Basic.ComboBox {
         }
     }
     hoverEnabled: true
-    leftPadding: 12; rightPadding: 36
+    implicitHeight: Math.max(42, contentItem.implicitHeight + topPadding + bottomPadding)
+    leftPadding: mirrored ? 36 : 12; rightPadding: mirrored ? 12 : 36
     topPadding: 8; bottomPadding: 8
     palette.button: window.raisedSurfaceColor
     palette.buttonText: window.textColor
@@ -28,6 +29,22 @@ Basic.ComboBox {
     palette.highlightedText: window.textColor
     palette.light: window.hoverColor
     palette.midlight: window.hoverColor
+    delegate: ItemDelegate {
+        required property var model
+        required property int index
+        width: control.popup.width
+        text: control.textRole ? model[control.textRole] : model.modelData
+        highlighted: control.highlightedIndex === index
+        font: control.font
+        contentItem: Label {
+            text: parent.text
+            font: parent.font
+            color: window.textColor
+            wrapMode: Text.Wrap
+            verticalAlignment: Text.AlignVCenter
+        }
+        background: Rectangle { color: parent.highlighted ? window.hoverColor : window.raisedSurfaceColor }
+    }
     contentItem: Label {
         objectName: "comboDisplayLabel"
         text: control.displayText
@@ -35,11 +52,11 @@ Basic.ComboBox {
         color: window.textColor
         opacity: control.enabled ? 1 : 0.45
         verticalAlignment: Text.AlignVCenter
-        elide: Text.ElideRight
+        wrapMode: Text.Wrap
     }
     indicator: Canvas {
         objectName: "comboArrow"
-        x: control.width - width - 13; y: (control.height - height) / 2
+        x: control.mirrored ? 13 : control.width - width - 13; y: (control.height - height) / 2
         width: 12; height: 8
         opacity: control.enabled ? 1 : 0.45
         onPaint: {

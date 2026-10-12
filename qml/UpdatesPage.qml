@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "Bidi.js" as Bidi
 
 Page {
     id: page
@@ -79,13 +80,14 @@ Page {
         GridLayout {
             Layout.fillWidth: true
             columns: page.compact ? 1 : 2
-            Label { objectName: "appUpdatesTitle"; text: qsTr("App Updates"); color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold; Layout.fillWidth: true }
+            Label { objectName: "appUpdatesTitle"; text: qsTr("App Updates"); color: window.textColor; font.pixelSize: 32; font.weight: Font.DemiBold; Layout.fillWidth: true; Layout.minimumWidth: 0; wrapMode: Text.Wrap }
             FluffButton {
                 objectName: "checkForUpdatesButton"
                 visible: !page.checking
                 text: qsTr("Check for App Updates"); icon.name: "view-refresh"
                 contentItem: FluffButtonContent { monochromeIcon: true }
                 Layout.alignment: Qt.AlignRight
+                Layout.maximumWidth: page.width - 56
                 enabled: !window.networkOffline && !page.busy && !page.checking
                 onClicked: if (!window.networkOffline) window.backend.checkForUpdates()
             }
@@ -100,7 +102,7 @@ Page {
         Label {
             objectName: "updateDates"
             Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
-            text: qsTr("Apps were last updated: %1").arg(page.updateData.lastUpdated || qsTr("Not recorded"))
+            text: Bidi.format(qsTr("Apps were last updated: %1"), [page.updateData.lastUpdated || qsTr("Not recorded")], page.mirrored)
         }
         NetworkNotice {
             objectName: "updatesOfflineNote"
@@ -139,7 +141,7 @@ Page {
                 Layout.row: page.compact ? 1 : 0; Layout.column: page.compact ? 0 : 1
                 Layout.columnSpan: page.compact ? 2 : 1
                 Layout.fillWidth: true; wrapMode: Text.Wrap; color: window.mutedTextColor
-                text: qsTr("%1 selected - Total size: %2").arg(page.selected.length).arg(page.sizeText(page.selectedBytes))
+                text: Bidi.format(qsTr("%1 selected - Total size: %2"), [page.selected.length, page.sizeText(page.selectedBytes)], page.mirrored)
                 HoverHandler { id: downloadSummaryHover }
                 ToolTip.visible: downloadSummaryHover.hovered
                 ToolTip.text: qsTr("Required components update with selected apps. Shared components are counted once; cached data may reduce the download.")
@@ -197,8 +199,8 @@ Page {
                             Label { objectName: "updateVersion"; text: page.versionLabel(modelData); textFormat: Text.PlainText; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere }
                             Label {
                                 objectName: "updateDownloadSize"
-                                text: qsTr("Size: %1").arg(job && job.downloadTotalSize
-                                    ? job.downloadTotalSize : page.sizeText(modelData.downloadBytes || 0))
+                                text: Bidi.format(qsTr("Size: %1"), [job && job.downloadTotalSize
+                                    ? job.downloadTotalSize : page.sizeText(modelData.downloadBytes || 0)], page.mirrored)
                                 color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap
                             }
                             Label { text: page.sourceLabel(modelData); textFormat: Text.PlainText; color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
@@ -224,7 +226,7 @@ Page {
                                 // transfer/deployment details. Keep actionable states.
                                 visible: !!job && (queuedStatus || !job.active || job.failed || job.error || job.cancelling
                                     || !updateProgress.planned || (job.index !== undefined && window.backend.review && window.backend.review.jobIndex === job.index))
-                                text: job ? (queuedStatus ? qsTr("Queued…") : job.status)
+                                text: job ? (queuedStatus ? qsTr("Queued…") : qsTranslate("AppCenter", job.status || ""))
                                     + (job.error ? "\n" + job.error : "") : ""
                                 textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.Wrap
                                 font.bold: queuedStatus

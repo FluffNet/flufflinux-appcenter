@@ -10,9 +10,11 @@ T.ProgressBar {
     background: Rectangle { radius: 4; color: window.borderColor }
     contentItem: Item {
         id: track
+        transform: Scale { origin.x: track.width / 2; xScale: control.mirrored ? -1 : 1 }
         clip: true
         Rectangle {
             id: fill
+            objectName: "progressFill"
             height: parent.height
             radius: 4
             width: control.indeterminate ? parent.width * 0.3 : parent.width * control.position
@@ -32,6 +34,7 @@ T.ProgressBar {
             visible: control.activeStep && !control.indeterminate && control.position < 1
             Rectangle {
                 id: activity
+                objectName: "progressActivity"
                 width: Math.min(100, parent.width * 0.3); height: parent.height
                 radius: 4; color: window.accentColor; opacity: 0.65
                 NumberAnimation on x {

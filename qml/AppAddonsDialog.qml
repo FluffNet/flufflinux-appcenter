@@ -140,7 +140,7 @@ Dialog {
                                 Label {
                                     Layout.fillWidth: true
                                     visible: !!card.job && (card.job.active || card.job.failed)
-                                    text: !card.job ? "" : card.job.failed ? card.job.error : card.job.queued ? qsTr("Queued...") : card.job.status
+                                    text: !card.job ? "" : card.job.failed ? card.job.error : card.job.queued ? qsTr("Queued...") : qsTranslate("AppCenter", card.job.status || "")
                                     color: card.job && card.job.failed ? window.accentTextColor : window.textColor
                                     wrapMode: Text.Wrap
                                 }

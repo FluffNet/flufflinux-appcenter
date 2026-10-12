@@ -162,13 +162,14 @@ TestCase {
         backend.jobs = [Object.assign({}, job, {active: false})]
         const page = stack().currentItem
         const clear = findChild(page, "clearDownloadHistoryButton")
-        const icon = findChild(clear, "fluffButtonIcon")
+        const icon = findChild(clear, "fluffButtonMonochromeIcon")
         const label = findChild(clear, "fluffButtonLabel")
         const title = findChild(page, "downloadsTitle")
         waitForPolish(main.contentItem)
         compare(clear.icon.name, "edit-clear-history")
         verify(icon.visible && label.visible)
-        compare(icon.source.toString(), main.iconSource("edit-clear-history"))
+        compare(icon.source.toString(), "edit-clear-history")
+        compare(icon.color, main.textColor)
         compare(icon.width, 20); compare(icon.height, 20)
         verify(icon.mapToItem(clear, icon.width, 0).x < label.mapToItem(clear, 0, 0).x)
         verify(Math.abs(icon.mapToItem(clear, 0, icon.height / 2).y

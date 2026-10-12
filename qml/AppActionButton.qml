@@ -1,6 +1,7 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import org.kde.kirigami as Kirigami
 
 // Shared touch-friendly actions for app details and Downloads.
 Button {
@@ -26,6 +27,7 @@ Button {
         RowLayout {
             id: buttonContent
             anchors.centerIn: parent
+            width: Math.min(implicitWidth, parent.width)
             spacing: 10
             DownloadArrow {
                 objectName: "installDownloadArrow"
@@ -34,17 +36,33 @@ Button {
                 color: window.darkMode ? "#65d88b" : "#16823e"
             }
             Image {
-                visible: !control.downloadArrow
+                objectName: "appActionIcon"
+                visible: !control.downloadArrow && control.icon.name !== "media-playback-start"
                 Layout.preferredWidth: 24; Layout.preferredHeight: 24
                 sourceSize: Qt.size(24, 24)
                 source: !visible ? "" : control.icon.source.toString().length > 0 ? control.icon.source : window.iconSource(control.icon.name)
                 fillMode: Image.PreserveAspectFit
+            }
+            Kirigami.Icon {
+                objectName: "openActionIcon"
+                visible: !control.downloadArrow && control.icon.name === "media-playback-start"
+                Layout.preferredWidth: 24; Layout.preferredHeight: 24
+                source: "media-playback-start"
+                isMask: true
+                color: window.textColor
+                readonly property bool mirror: control.mirrored
+                transform: Scale { origin.x: 12; origin.y: 12; xScale: control.mirrored ? -1 : 1 }
+                Accessible.ignored: true
             }
             Label {
                 objectName: "appActionLabel"
                 text: control.text
                 font: control.font
                 color: window.textColor
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                wrapMode: Text.Wrap
+                horizontalAlignment: Text.AlignHCenter
             }
         }
     }

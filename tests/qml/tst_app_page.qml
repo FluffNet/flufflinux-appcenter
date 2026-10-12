@@ -54,6 +54,8 @@ TestCase {
     }
 
     function init() {
+        appPage.LayoutMirroring.enabled = false
+        appPage.LayoutMirroring.childrenInherit = true
         window.showCatalogCalled = false
         if (appPage.screenshotPreviewDialog.visible)
             appPage.screenshotPreviewDialog.close()
@@ -76,6 +78,28 @@ TestCase {
             homepage: window.previewApp.homepage,
             screenshots: screenshots
         }
+    }
+
+    function test_translated_back_button_does_not_split_words_data() {
+        return [
+            {tag:"de", text:"Zurück", rtl:false},
+            {tag:"fr", text:"Retour", rtl:false},
+            {tag:"el", text:"Επιστροφή", rtl:false},
+            {tag:"he", text:"חזרה", rtl:true}
+        ]
+    }
+    function test_translated_back_button_does_not_split_words(data) {
+        window.width = 720
+        appPage.LayoutMirroring.enabled = data.rtl
+        const button = findChild(appPage, "backButton")
+        const label = findChild(button, "fluffButtonLabel")
+        button.text = data.text
+        waitForPolish(window.contentItem)
+        // Text changes schedule another implicit-size/layout pass.
+        tryCompare(label, "lineCount", 1)
+        verify(label.contentWidth <= label.width + 1)
+        verify(button.width <= appPage.width)
+        button.text = qsTr("Back")
     }
 
     function test_single_screenshot_is_large_and_centered() {
@@ -201,11 +225,16 @@ TestCase {
         compare(appPage.previewScreenshot, appPage.app.screenshots[1])
     }
 
-    function test_back_control_has_text_and_icon() {
+    function test_back_control_has_text_and_icon_data() {
+        return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}]
+    }
+
+    function test_back_control_has_text_and_icon(data) {
+        appPage.LayoutMirroring.enabled = data.rtl
         const backButton = findChild(appPage, "backButton")
         verify(backButton !== null)
-        compare(backButton.text, "←  Back")
-        compare(backButton.icon.name, "")
+        compare(backButton.text, "Back")
+        compare(backButton.icon.name, data.rtl ? "go-next" : "go-previous")
         verify(backButton.width >= 106)
     }
 
@@ -234,7 +263,13 @@ TestCase {
         verify(window.showCatalogCalled)
     }
 
-    function test_page_supports_touch_and_touchpad_back_gestures() {
+    function test_page_supports_touch_and_touchpad_back_gestures_data() {
+        return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}]
+    }
+
+    function test_page_supports_touch_and_touchpad_back_gestures(data) {
+        appPage.LayoutMirroring.enabled = data.rtl
+        const direction = data.rtl ? -1 : 1
         const touchGesture = findChild(appPage, "pageTouchBackGesture")
         const touchpadGesture = findChild(appPage, "pageTouchpadBackGesture")
         verify(touchGesture !== null)
@@ -254,31 +289,62 @@ TestCase {
                     screenshotList.height / 2)
         compare(appPage.pointIsInsideScreenshotStrip(stripCenter.x,
                                                       stripCenter.y), true)
-        compare(appPage.finishPageSwipe(280, 10), true)
+        compare(appPage.finishPageSwipe(direction * 280, 10), true)
         compare(window.showCatalogCalled, true)
 
         window.showCatalogCalled = false
-        compare(appPage.finishPageSwipe(60, 10), false)
+        compare(appPage.finishPageSwipe(direction * 60, 10), false)
+        compare(appPage.finishPageSwipe(-direction * 280, 10), false)
+        compare(appPage.finishPageSwipe(direction * 280, 240), false)
         compare(window.showCatalogCalled, false)
 
         mouseWheel(swipeSurface,
                    stripCenter.x,
                    stripCenter.y,
-                   -240,
+                   direction * -240,
                    0,
                    Qt.NoButton)
         compare(window.showCatalogCalled, false)
 
+        mouseWheel(swipeSurface, swipeSurface.width / 2, 5,
+                   direction * 240, 0, Qt.NoButton)
+        compare(window.showCatalogCalled, false)
+        touchpadGesture.travel = 0
+
         mouseWheel(swipeSurface,
                    swipeSurface.width / 2,
                    5,
-                   -240,
+                   direction * -240,
                    0,
                    Qt.NoButton)
         compare(window.showCatalogCalled, true)
     }
 
-    function test_screenshot_strip_owns_touch_swipes_and_uses_natural_direction() {
+    function test_page_touch_back_direction_data() {
+        return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}]
+    }
+
+    function test_page_touch_back_direction(data) {
+        appPage.LayoutMirroring.enabled = data.rtl
+        const surface = findChild(appPage, "pageSwipeSurface")
+        const start = surface.width / 2
+        const direction = data.rtl ? -1 : 1
+        for (const correctDirection of [false, true]) {
+            const end = start + direction * (correctDirection ? 280 : -280)
+            const swipe = touchEvent(surface)
+            swipe.press(0, surface, start, 5).commit()
+            swipe.move(0, surface, end, 5).commit()
+            swipe.release(0, surface, end, 5).commit()
+            compare(window.showCatalogCalled, correctDirection)
+        }
+    }
+
+    function test_screenshot_strip_owns_touch_swipes_and_uses_natural_direction_data() {
+        return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}]
+    }
+
+    function test_screenshot_strip_owns_touch_swipes_and_uses_natural_direction(data) {
+        appPage.LayoutMirroring.enabled = data.rtl
         const screenshotList = findChild(appPage, "screenshotList")
         verify(screenshotList !== null)
         tryCompare(screenshotList, "count", 4)

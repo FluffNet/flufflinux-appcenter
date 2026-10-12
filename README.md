@@ -34,6 +34,9 @@ The current release is **2026.10**.
   Local file previews do not add sources. The app page identifies the source;
   clicking Install adds it if needed for future updates.
 - Follow the Plasma light or dark theme and desktop font settings.
+- Use translated interface text and right-to-left layouts where available,
+  without translating catalog application names. The translation rollout is
+  still in progress; the editable catalogs need native-speaker review.
 - Reuse a 12-hour application-list cache for faster repeat launches.
 
 ## App updates and background work

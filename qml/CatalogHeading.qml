@@ -12,15 +12,16 @@ ColumnLayout {
         Label {
             objectName: "catalogTitleLabel"
             Layout.fillWidth: true
-            text: catalogPage.installedView ? qsTr("Installed") : window.searchText ? qsTr("Search results") : catalogPage.cliFilterTitle || window.selectedCategory
+            text: catalogPage.installedView ? qsTranslate("InstalledNavigation", "Installed") : window.searchText ? qsTr("Search results") : catalogPage.cliFilterTitle || qsTranslate("AppCenter", window.selectedCategory)
             color: window.textColor; renderType: Text.QtRendering
             font.pixelSize: 32; font.weight: Font.DemiBold
-            elide: Text.ElideRight
+            Layout.minimumWidth: 0
+            wrapMode: Text.Wrap
         }
         FluffComboBox {
             objectName: "installedSort"
             visible: catalogPage.installedView; hoverEnabled: true
-            Layout.preferredWidth: 210; Layout.preferredHeight: 42
+            Layout.preferredWidth: 210; Layout.preferredHeight: Math.max(42, implicitHeight)
             model: catalogPage.installedSortOptions
             currentIndex: catalogPage.installedSortIndex
             onActivated: function(index) { catalogPage.installedSortIndex = index }
@@ -31,7 +32,7 @@ ColumnLayout {
             objectName: "catalogSort"
             visible: catalogPage.catalogView && !catalogPage.catalogListLoading; hoverEnabled: true
             onVisibleChanged: { if (!visible) popup.close() }
-            Layout.preferredWidth: 240; Layout.preferredHeight: 42
+            Layout.preferredWidth: 240; Layout.preferredHeight: Math.max(42, implicitHeight)
             model: catalogPage.catalogSortOptions
             currentIndex: catalogPage.activeCatalogSortIndex
             onActivated: function(index) { catalogPage.setCatalogSort(index) }
@@ -40,10 +41,10 @@ ColumnLayout {
         FluffComboBox {
             objectName: "searchCategoryFilter"
             visible: !catalogPage.installedView && window.searchText.length > 0; hoverEnabled: true
-            Layout.preferredWidth: 210; Layout.preferredHeight: 42
-            model: catalogPage.categories; textRole: "name"
+            Layout.preferredWidth: 210; Layout.preferredHeight: Math.max(42, implicitHeight)
+            model: catalogPage.categories.map(category => ({name: category.name, label: qsTranslate("AppCenter", category.name)})); textRole: "label"
             currentIndex: catalogPage.categoryIndex(window.searchCategoryFilter)
-            displayText: currentIndex === 0 ? "Category: All" : "Category: " + currentText
+            displayText: currentIndex === 0 ? qsTr("Category: All") : qsTr("Category: %1").arg(currentText)
             onActivated: function(index) { window.searchCategoryFilter = catalogPage.categories[index].name }
         }
     }

@@ -11,9 +11,18 @@ Dialog {
     property int requestToken: 0
     property bool changesView: false
     property var changes: ({})
+    function translatedDetail(value) {
+        const whole = qsTranslate("AppCenter", value)
+        if (whole !== value) return whole
+        return value.split(" - ").map(function(part) {
+            const translated = qsTranslate("AppCenter", part)
+            return translated === part && Qt.application.layoutDirection === Qt.RightToLeft
+                ? "\u2068" + part + "\u2069" : translated
+        }).join(" - ")
+    }
     readonly property var permissionData: changesView ? ({state: "ready", groups: (changes.groups || []).map(function(group) {
-        return Object.assign({}, group, {details: (group.added || []).map(value => qsTr("Added: %1").arg(value))
-            .concat((group.removed || []).map(value => qsTr("Removed: %1").arg(value)))})
+        return Object.assign({}, group, {details: (group.added || []).map(value => qsTr("Added: %1").arg(translatedDetail(value)))
+            .concat((group.removed || []).map(value => qsTr("Removed: %1").arg(translatedDetail(value))))})
     })}) : backend && backend.appPermissions || ({})
     readonly property bool loading: permissionData.state === "loading"
     readonly property bool ready: permissionData.state === "ready"
@@ -139,19 +148,19 @@ Dialog {
                                         Layout.fillWidth: true; spacing: 4
                                         Label {
                                             objectName: "permissionTitle"
-                                            text: modelData.title; textFormat: Text.PlainText
+                                            text: qsTranslate("AppCenter", modelData.title); textFormat: Text.PlainText
                                             font.pixelSize: 18; font.weight: Font.DemiBold; color: window.textColor
                                             Layout.fillWidth: true; wrapMode: Text.Wrap
                                         }
                                         Label {
-                                            text: modelData.description; textFormat: Text.PlainText
+                                            text: qsTranslate("AppCenter", modelData.description); textFormat: Text.PlainText
                                             color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap
                                         }
                                         Repeater {
                                             model: modelData.details
                                             delegate: Label {
                                                 required property string modelData
-                                                text: "•  " + modelData; textFormat: Text.PlainText
+                                                text: "•  " + (dialog.changesView ? modelData : dialog.translatedDetail(modelData)); textFormat: Text.PlainText
                                                 color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.WrapAnywhere
                                             }
                                         }

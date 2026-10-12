@@ -25,10 +25,27 @@
 #include <QQuickWindow>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QTranslator>
+#include <QLocale>
 #include <KWindowSystem>
 #include <cstdio>
 #include <memory>
 #include <unistd.h>
+
+extern "C" bool fluff_i18n_initialize(const char *languages);
+extern "C" char *fluff_i18n_translate(const char *context, const char *source);
+// Qt translation adapter only; language selection and catalogs live in Rust.
+class RustTranslator final : public QTranslator {
+public:
+    bool isEmpty() const override { return false; }
+    QString translate(const char *context, const char *source, const char *, int) const override {
+        char *translated = fluff_i18n_translate(context, source);
+        if (!translated) return {};
+        const auto result = QString::fromUtf8(translated);
+        fluff_backend_string_free(translated);
+        return result;
+    }
+};
 
 extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
                               int input_count, const char *const *inputs, const char *desktop_file) {
@@ -51,10 +68,15 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     if (!qEnvironmentVariableIsSet("PLASMA_INTEGRATION_USE_PORTAL"))
         qputenv("PLASMA_INTEGRATION_USE_PORTAL", "1");
     QApplication application(argc, argv);
+    const auto languageJson = QJsonDocument(QJsonArray::fromStringList(QLocale::system().uiLanguages())).toJson(QJsonDocument::Compact);
+    const bool rightToLeft = fluff_i18n_initialize(languageJson.constData());
+    RustTranslator translator;
+    application.installTranslator(&translator);
+    application.setLayoutDirection(rightToLeft ? Qt::RightToLeft : Qt::LeftToRight);
     trace("qt-ready");
     configureDesktopTypography(application);
     QCoreApplication::setApplicationName("flufflinux-appcenter");
-    QGuiApplication::setApplicationDisplayName("App Center");
+    QGuiApplication::setApplicationDisplayName(QCoreApplication::translate("AppCenter", "App Center"));
     QCoreApplication::setApplicationVersion(APPCENTER_DISPLAY_VERSION);
     QCoreApplication::setOrganizationName("FluffNet LLC");
     // Keep existing Plasma Discover pins associated with this window. The

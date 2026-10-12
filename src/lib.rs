@@ -2,3 +2,4 @@
 pub mod appstream;
 pub mod backend;
 pub mod catalog_exclusions;
+pub mod i18n;
