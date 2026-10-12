@@ -7,6 +7,9 @@ AbstractButton {
     focusPolicy: Qt.TabFocus
     PointerFocusHandler {}
     required property var app
+    property bool installed: false
+    Accessible.name: app.name
+    Accessible.description: (installed ? qsTr("Installed") + "\n" : "") + (app.summary || "")
     hoverEnabled: true
     implicitWidth: 250; implicitHeight: 142; padding: 18
     scale: down ? 0.985 : 1
@@ -35,6 +38,10 @@ AbstractButton {
                 height: 26
                 running: appIcon.status === Image.Loading
                 color: window.textColor
+            }
+            InstalledBadge {
+                anchors.right: parent.right; anchors.bottom: parent.bottom
+                visible: card.installed
             }
         }
         ColumnLayout {

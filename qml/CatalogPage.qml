@@ -849,6 +849,7 @@ Page {
                                         Layout.fillWidth: true; Layout.preferredWidth: 1
                                         Layout.preferredHeight: catalogGrid.height < 500 ? 80 : 96
                                         app: modelData
+                                        installed: !!window.findInstalled(app)
                                         onClicked: window.openApp(app)
                                     }
                                 }
@@ -886,6 +887,7 @@ Page {
                         height: GridView.view.cellHeight - 16
                         x: 8
                         app: modelData
+                        installed: !!window.findInstalled(app)
                         onClicked: window.openApp(app)
                     }
                 }
