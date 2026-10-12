@@ -125,6 +125,64 @@ TestCase {
         compare(loadingSpinner.color, window.textColor)
     }
 
+    function test_screenshots_stay_left_to_right_data() {
+        return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}]
+    }
+
+    function test_screenshots_stay_left_to_right(data) {
+        appPage.LayoutMirroring.enabled = data.rtl
+        tryCompare(appPage, "mirrored", data.rtl)
+        window.requestActivate()
+        tryCompare(window, "active", true)
+        const strip = findChild(appPage, "screenshotList")
+        tryCompare(strip, "count", 4)
+        compare(strip.effectiveLayoutDirection, Qt.LeftToRight)
+        strip.positionViewAtBeginning()
+        waitForRendering(strip)
+        verify(Math.abs(strip.contentX - strip.originX) < 1)
+
+        let previousX = -1
+        for (let index = 0; index < strip.count; ++index) {
+            strip.positionViewAtIndex(index, ListView.Contain)
+            tryVerify(function() { return strip.itemAtIndex(index) !== null })
+            const thumbnail = strip.itemAtIndex(index)
+            verify(thumbnail.x > previousX)
+            previousX = thumbnail.x
+            compare(thumbnail.modelData, window.previewApp.screenshots[index])
+            waitForRendering(strip)
+            const point = thumbnail.mapToItem(strip, thumbnail.width / 2,
+                                               thumbnail.height / 2)
+            mouseClick(strip, point.x, point.y)
+            const preview = appPage.screenshotPreviewDialog
+            tryCompare(preview, "opened", true)
+            compare(appPage.previewScreenshotIndex, index)
+            compare(appPage.previewScreenshot, window.previewApp.screenshots[index])
+            preview.close()
+            tryCompare(preview, "visible", false)
+        }
+
+        appPage.openScreenshot(1)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "opened", true)
+        const previous = findChild(preview, "previewPreviousButton")
+        const next = findChild(preview, "previewNextButton")
+        const frame = findChild(preview, "previewImageFrame")
+        verify(previous.mapToItem(frame, previous.width, 0).x <= 0)
+        verify(next.mapToItem(frame, 0, 0).x >= frame.width)
+        mouseClick(next, next.width / 2, next.height / 2)
+        compare(appPage.previewScreenshotIndex, 2)
+        mouseClick(previous, previous.width / 2, previous.height / 2)
+        compare(appPage.previewScreenshotIndex, 1)
+        preview.contentItem.forceActiveFocus()
+        keyClick(Qt.Key_Right)
+        compare(appPage.previewScreenshotIndex, 2)
+        keyClick(Qt.Key_Left)
+        compare(appPage.previewScreenshotIndex, 1)
+        preview.close()
+        tryCompare(preview, "visible", false)
+        strip.positionViewAtBeginning()
+    }
+
     function test_hero_artwork_and_developer_label() {
         const artwork = Qt.resolvedUrl("../../assets/flufflinux-appcenter.svg").toString()
         appPage.app = Object.assign({}, window.previewApp, {icon: artwork})

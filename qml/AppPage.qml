@@ -393,6 +393,8 @@ Page {
             }
             ListView {
                 id: screenshotList
+                // Preserve the source's screenshot order in every UI language.
+                layoutDirection: Qt.LeftToRight
                 LayoutMirroring.enabled: false
                 LayoutMirroring.childrenInherit: true
                 objectName: "screenshotList"
