@@ -23,7 +23,7 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(QVariantMap appPermissions READ appPermissions NOTIFY appPermissionsChanged)
     Q_PROPERTY(QVariantMap appAddons READ appAddons NOTIFY appAddonsChanged)
     Q_PROPERTY(QVariantMap updates READ updates NOTIFY updatesChanged)
-    Q_PROPERTY(QVariantList catalog READ catalog NOTIFY catalogChanged)
+    Q_PROPERTY(QVariantList catalog READ catalog NOTIFY catalogDataChanged)
     Q_PROPERTY(bool catalogLoading READ catalogLoading NOTIFY catalogChanged)
     Q_PROPERTY(int catalogProgress READ catalogProgress NOTIFY catalogProgressChanged)
     Q_PROPERTY(bool catalogSourcesUnavailable READ catalogSourcesUnavailable NOTIFY catalogChanged)
@@ -110,6 +110,7 @@ signals:
     void appAddonsChanged();
     void updatesChanged();
     void catalogChanged();
+    void catalogDataChanged();
     void catalogProgressChanged();
     void repositoriesChanged();
     void appOpened(QVariantMap app);

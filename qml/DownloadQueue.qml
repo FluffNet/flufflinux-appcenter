@@ -3,6 +3,9 @@ import QtQuick
 QtObject {
     id: queue
     property var jobs: []
+    // Equality of this scalar suppresses model reconciliation on progress-only
+    // updates. Indices are numeric backend identities, not translated labels.
+    readonly property string membership: jobs.map(job => job.index).join(",")
     readonly property var jobsByIndex: {
         const indexed = {}
         for (const job of jobs) indexed[job.index] = job

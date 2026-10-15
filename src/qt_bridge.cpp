@@ -21,6 +21,9 @@
 #include <QLockFile>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#if APPCENTER_NATIVE_TESTS
+#include <QQmlDebuggingEnabler>
+#endif
 #include <QQuickImageProvider>
 #include <QQuickWindow>
 #include <QStandardPaths>
@@ -68,6 +71,16 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     if (!qEnvironmentVariableIsSet("PLASMA_INTEGRATION_USE_PORTAL"))
         qputenv("PLASMA_INTEGRATION_USE_PORTAL", "1");
     QApplication application(argc, argv);
+#if APPCENTER_NATIVE_TESTS
+    // Test-only, loopback-only profiler. Never enable a debugger or expose it
+    // in production builds. The fixture is isolated from the user's session.
+    const int profilePort = qEnvironmentVariableIntValue("APPCENTER_QML_PROFILE_PORT");
+    if (profilePort >= 1024 && profilePort <= 65535) {
+        QQmlDebuggingEnabler::enableDebugging(true);
+        QQmlDebuggingEnabler::setServices(QQmlDebuggingEnabler::profilerServices());
+        QQmlDebuggingEnabler::startTcpDebugServer(profilePort, QQmlDebuggingEnabler::WaitForClient, "127.0.0.1");
+    }
+#endif
     const auto languageJson = QJsonDocument(QJsonArray::fromStringList(QLocale::system().uiLanguages())).toJson(QJsonDocument::Compact);
     const bool rightToLeft = fluff_i18n_initialize(languageJson.constData());
     RustTranslator translator;
@@ -161,6 +174,7 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     CatalogPreferences catalogPreferences(manageWindow ? WindowPreferences::defaultPath() : QString());
     std::unique_ptr<WindowPreferences> windowPreferences;
     if (manageWindow) windowPreferences = std::make_unique<WindowPreferences>();
+    bool firstFrame = true, firstCatalog = true;
     QQmlApplicationEngine engine;
     engine.addImageProvider("icon", new ThemeIconProvider(fallbackIcon));
     engine.rootContext()->setContextProperty("fluffBackend", &manager);
@@ -173,12 +187,11 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     engine.load(QUrl::fromLocalFile(QString::fromUtf8(qml_path)));
     if (engine.rootObjects().isEmpty()) return 4;
     trace("qml-ready");
-    bool firstFrame = true, firstCatalog = true;
-    QObject::connect(&manager, &FlatpakManager::catalogChanged, &application, [&] {
+    QObject::connect(&manager, &FlatpakManager::catalogChanged, &engine, [&] {
         if (firstCatalog && !manager.catalogLoading()) { firstCatalog = false; trace("catalog-ready"); }
     });
     if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-        QObject::connect(window, &QQuickWindow::frameSwapped, &application, [&] {
+        QObject::connect(window, &QQuickWindow::frameSwapped, &engine, [&] {
             if (firstFrame) { firstFrame = false; trace("first-frame"); }
         }, Qt::QueuedConnection);
     }
@@ -220,11 +233,14 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
         }
     };
     std::unique_ptr<BackgroundQueue> background;
+    // IPC callbacks capture dispatch by reference. Their context must die
+    // before that closure, not with the longer-lived application or engine.
+    QObject launchCallbacks;
     if (manageBackground) {
         if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()))
             background = std::make_unique<BackgroundQueue>(&manager, window, [&] { dispatch(QJsonArray{}); });
     }
-    QObject::connect(&server, &QLocalServer::newConnection, &engine, [&] {
+    QObject::connect(&server, &QLocalServer::newConnection, &launchCallbacks, [&] {
         while (auto socket = server.nextPendingConnection()) {
             QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
             const auto receive = [socket, &dispatch, &engine, &firstFrame] {
@@ -244,11 +260,22 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
                     window->requestUpdate();
                 } else acknowledge();
             };
-            QObject::connect(socket, &QLocalSocket::readyRead, &engine, receive);
+            QObject::connect(socket, &QLocalSocket::readyRead, &launchCallbacks, receive);
             // A fast launcher can finish writing before newConnection is handled.
             receive();
         }
     });
-    QTimer::singleShot(0, &engine, [&] { if (!incoming.isEmpty()) dispatch(incoming); });
-    return application.exec();
+    QTimer::singleShot(0, &launchCallbacks, [&] { if (!incoming.isEmpty()) dispatch(incoming); });
+    const int result = application.exec();
+    server.close();
+    QObject::disconnect(&server, nullptr, &launchCallbacks, nullptr);
+    for (auto socket : server.findChildren<QLocalSocket *>()) socket->disconnect(&launchCallbacks);
+    background.reset();
+    windowPreferences.reset();
+    // Release page wrappers/delegates while their QML engine and contexts are
+    // still valid, then destroy the scene before QApplication/font teardown.
+    engine.collectGarbage();
+    qDeleteAll(engine.rootObjects());
+    engine.collectGarbage();
+    return result;
 }

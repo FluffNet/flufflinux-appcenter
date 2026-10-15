@@ -127,6 +127,13 @@ fn main() {
         Ok("s" | "z") => "-Os",
         _ => "-O0",
     };
+    // Opt-in diagnostics only. Never add sanitizer runtimes to normal builds.
+    let sanitize_native = env::var("APPCENTER_SANITIZE_NATIVE").as_deref() == Ok("1");
+    println!("cargo:rerun-if-env-changed=APPCENTER_SANITIZE_NATIVE");
+    if sanitize_native {
+        println!("cargo:rustc-link-lib=dylib=asan");
+        println!("cargo:rustc-link-lib=dylib=ubsan");
+    }
     for source in [
         PathBuf::from("src/qt_bridge.cpp"),
         PathBuf::from("src/ui_format.cpp"),
@@ -143,9 +150,17 @@ fn main() {
         let object = output_dir
             .join(source.file_stem().unwrap())
             .with_extension("o");
-        let status = Command::new("c++")
+        let mut compiler = Command::new("c++");
+        if sanitize_native {
+            compiler.args(["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-g"]);
+        }
+        let status = compiler
             .args(["-std=c++17", "-fPIC", "-pthread", "-Wall", "-Wextra", "-c"])
             .arg(native_optimization)
+            .arg(format!(
+                "-DAPPCENTER_NATIVE_TESTS={}",
+                u8::from(env::var_os("CARGO_FEATURE_NATIVE_TESTS").is_some())
+            ))
             .arg(format!(
                 "-DAPPCENTER_DISPLAY_VERSION=\"{}\"",
                 display_version.trim()

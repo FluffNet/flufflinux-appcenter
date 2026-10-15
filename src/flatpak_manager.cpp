@@ -96,6 +96,8 @@ void FlatpakManager::applyResponse(const QJsonObject &response) {
     if (changes.contains("appPermissions")) notifications.insert("appPermissionsChanged");
     if (changes.contains("appAddons")) notifications.insert("appAddonsChanged");
     if (changes.contains("updates")) notifications.insert("updatesChanged");
+    // Loading/status changes must not reconstruct QML's catalog and icon models.
+    if (changes.contains("catalog")) notifications.insert("catalogDataChanged");
     if (changes.contains("catalog") || changes.contains("catalogLoading") || changes.contains("catalogSourcesUnavailable")) notifications.insert("catalogChanged");
     if (changes.contains("catalogProgress")) notifications.insert("catalogProgressChanged");
     if (changes.contains("repositories") || changes.contains("sourcesBusy") || changes.contains("sourcesError")) notifications.insert("repositoriesChanged");

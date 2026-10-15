@@ -88,6 +88,25 @@ TestCase {
         compare(findChild(page(), "catalogSort").currentIndex, 5)
         compare(preferences.homeSort, "release-asc")
     }
+    function test_orders_reused_but_invalidated_by_data() {
+        page().catalogSortIndex = 2
+        const cache = page().catalogOrders
+        const order = cache.orders[2]
+        verify(order !== undefined)
+        selectCategory("Updates")
+        selectCategory("All Apps")
+        verify(page().catalogOrders === cache)
+        verify(page().catalogOrders.orders[2] === order)
+        stats.counts = {"org.example.Alpha":100, "org.example.Beta":1}
+        verify(page().catalogOrders !== cache)
+        compare(page().visibleApps[0].name, "Alpha")
+        const refreshed = page().catalogOrders
+        main.catalog = [app("org.example.New", "New", "Utilities", "2026-10-01")]
+        verify(page().catalogOrders !== refreshed)
+        compare(names(), "New")
+        for (let index = 0; index < 6; ++index) page().orderedCatalog(index)
+        compare(Object.keys(page().catalogOrders.orders).length, 6)
+    }
     function test_multimedia_aliases_and_cached_categories_data() {
         return ["Multimedia", "AudioVideo", "Audio & Video", "Audio/Video"].map(name => ({tag:name, name:name}))
     }

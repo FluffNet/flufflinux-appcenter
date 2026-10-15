@@ -91,9 +91,32 @@ ApplicationWindow {
     // Keep unchanged rows in JS. Native progress transports only changed rows,
     // avoiding conversion of every app's dependency plan on each tick.
     property var backendJobs: []
+    property var pendingJobRows: ({})
     function syncBackendJobs() {
+        if (jobProgressTimer) jobProgressTimer.stop()
+        pendingJobRows = ({})
         backendJobs = backend ? Array.from(backend.jobs || [], job => Object.assign({}, job)) : []
     }
+    function flushJobRows() {
+        jobProgressTimer.stop()
+        const rows = pendingJobRows
+        pendingJobRows = ({})
+        if (Object.keys(rows).length) backendJobs = patchedRows(backendJobs, rows)
+    }
+    function scheduleJobRows(rows) {
+        let urgent = false
+        for (const key of Object.keys(rows)) {
+            const next = Object.assign({}, rows[key]), previous = backendJobs[Number(key)]
+            pendingJobRows[key] = next
+            // Completion/cancellation and queue membership must be immediate.
+            // Only replaceable in-flight progress is coalesced to one frame.
+            if (!previous || ["active", "queued", "cancelled", "failed", "id", "action", "index"]
+                    .some(field => previous[field] !== next[field])) urgent = true
+        }
+        if (urgent) flushJobRows()
+        else if (!jobProgressTimer.running) jobProgressTimer.start()
+    }
+    Timer { id: jobProgressTimer; interval: 33; onTriggered: window.flushJobRows() }
     function patchedRows(current, rows) {
         const values = current.slice()
         for (const key of Object.keys(rows)) {
@@ -217,7 +240,7 @@ ApplicationWindow {
         ignoreUnknownSignals: true
         function onJobsSnapshotChanged() { window.syncBackendJobs() }
         function onJobRowsChanged(rows) {
-            window.backendJobs = window.patchedRows(window.backendJobs, rows)
+            window.scheduleJobRows(rows)
         }
         function onInstalledAppsSnapshotChanged() { window.syncInstalledApps() }
         function onInstalledAppRowsChanged(rows) { window.installedApps = window.patchedRows(window.installedApps, rows) }

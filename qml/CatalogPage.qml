@@ -120,14 +120,42 @@ Page {
             ? app.releaseTimestamp * 1000 : Date.parse(app.releaseDate || "")
     }
     function compareCatalog(a, b, index, counts) {
-        const tie = a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
-        if (index < 2) return index === 1 ? -tie : tie
+        if (index < 2) {
+            const tie = a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+            return index === 1 ? -tie : tie
+        }
         const left = catalogValue(a, index, counts), right = catalogValue(b, index, counts)
         const leftKnown = typeof left === "number" && isFinite(left) && left >= 0
         const rightKnown = typeof right === "number" && isFinite(right) && right >= 0
         if (leftKnown !== rightKnown) return leftKnown ? -1 : 1
-        if (!leftKnown) return tie
-        return ((index === 3 || index === 5) ? left - right : right - left) || tie
+        const difference = leftKnown ? ((index === 3 || index === 5) ? left - right : right - left) : 0
+        return difference || a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+    }
+    // Cache only the six possible index orders, not copies of app metadata.
+    // The bound cache is replaced when data/popularity changes. Navigation,
+    // installed state and queue progress do not invalidate a catalog order.
+    readonly property var catalogOrders: ({apps: window.catalog, counts: popularityCounts, orders: {}})
+    function orderedCatalog(index) {
+        const cache = catalogOrders
+        if (!cache.orders[index]) {
+            const decorated = cache.apps.map((app, position) => ({position: position,
+                value: index >= 2 ? catalogValue(app, index, cache.counts) : undefined}))
+            decorated.sort(function(a, b) {
+                if (index >= 2) {
+                    const leftKnown = typeof a.value === "number" && isFinite(a.value) && a.value >= 0
+                    const rightKnown = typeof b.value === "number" && isFinite(b.value) && b.value >= 0
+                    if (leftKnown !== rightKnown) return leftKnown ? -1 : 1
+                    const difference = leftKnown ? ((index === 3 || index === 5)
+                        ? a.value - b.value : b.value - a.value) : 0
+                    if (difference) return difference
+                }
+                const left = cache.apps[a.position], right = cache.apps[b.position]
+                const tie = left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
+                return index === 1 ? -tie : tie
+            })
+            cache.orders[index] = decorated.map(entry => entry.position)
+        }
+        return cache.orders[index].map(position => cache.apps[position])
     }
     onUpdatesViewChanged: {
         if (updatesView) {
@@ -186,7 +214,7 @@ Page {
                                                                    return category.label
                                                                }))))
     readonly property var visibleApps: {
-        const sortIndex = activeCatalogSortIndex, counts = popularityCounts
+        const sortIndex = activeCatalogSortIndex
         // Only omit apps that are actually shown above, and only in Home's
         // popularity orders. Search, categories and other orders stay complete.
         const recommendedToOmit = homeView && (sortIndex === 2 || sortIndex === 3)
@@ -194,7 +222,8 @@ Page {
         const query = window.searchText.trim().toLowerCase()
         const compactQuery = page.compactSearchText(query)
         const activeCategory = query ? window.searchCategoryFilter : window.selectedCategory
-        const matches = window.catalog.filter(function(app) {
+        const candidates = query ? window.catalog : orderedCatalog(sortIndex)
+        const matches = candidates.filter(function(app) {
             // Keep still-fresh catalogs from before the display-name change usable.
             const appCategory = app.category === "Audio & Video" ? "Multimedia" : app.category
             const categoryMatches = activeCategory === "All Apps" || appCategory === activeCategory
@@ -210,8 +239,7 @@ Page {
                     && (!query || app.searchHaystack.indexOf(query) >= 0
                         || compactNameMatches || compactDescriptionMatches)
         })
-        if (!query)
-            return matches.sort((a, b) => page.compareCatalog(a, b, sortIndex, counts))
+        if (!query) return matches
         const scoredMatches = matches.map(function(app) {
             return { app: app, score: page.searchScore(app, query) }
         })

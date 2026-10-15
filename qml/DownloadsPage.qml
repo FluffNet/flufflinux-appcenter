@@ -33,7 +33,7 @@ Page {
     StackView.onActivated: window.downloadQueue.markViewed()
     Connections {
         target: window.downloadQueue
-        function onJobsChanged() { page.syncJobRows() }
+        function onMembershipChanged() { page.syncJobRows() }
         function onActiveCountChanged() {
             if (page.StackView.status === StackView.Active) window.downloadQueue.markViewed()
         }
