@@ -15,7 +15,7 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(QVariantMap review READ review NOTIFY reviewChanged)
     Q_PROPERTY(QVariantMap recovery READ recovery NOTIFY recoveryChanged)
     Q_PROPERTY(bool busy READ busy NOTIFY jobsChanged)
-    Q_PROPERTY(QVariantList installedApps READ installedApps NOTIFY installedChanged)
+    Q_PROPERTY(QVariantList installedApps READ installedApps NOTIFY installedAppsChanged)
     Q_PROPERTY(bool installedLoading READ installedLoading NOTIFY installedChanged)
     Q_PROPERTY(QString installedError READ installedError NOTIFY installedChanged)
     Q_PROPERTY(int iconRevision READ iconRevision NOTIFY installedChanged)
@@ -96,10 +96,15 @@ public:
     void backgroundIdle() { dispatch("backgroundIdle"); }
 signals:
     void jobsChanged();
+    void jobsSnapshotChanged();
+    void jobRowsChanged(QVariantMap rows);
     void reviewChanged();
     void recoveryChanged();
     void updatesRequested();
     void installedChanged();
+    void installedAppsChanged();
+    void installedAppsSnapshotChanged();
+    void installedAppRowsChanged(QVariantMap rows);
     void installSizesChanged();
     void appPermissionsChanged();
     void appAddonsChanged();

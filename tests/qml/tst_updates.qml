@@ -68,6 +68,22 @@ TestCase {
         tryVerify(() => root().updatesView)
         compare(backend.checks, 0, "Enabling navigation must not start an update check")
     }
+    function test_hidden_updates_release_rows_and_restore_scroll() {
+        open()
+        const items = []
+        for (let i = 0; i < 30; ++i) items.push(row("App " + i, "user"))
+        backend.updates = {state: "ready", items: items}
+        const list = findChild(page(), "updatesList")
+        tryCompare(list, "count", 30)
+        waitForPolish(list)
+        list.contentY = 400
+        wait(30)
+        main.showDownloads(); tryCompare(stack(), "busy", false)
+        compare(list.count, 0)
+        main.showCatalog(); tryCompare(stack(), "busy", false)
+        tryCompare(list, "count", 30)
+        tryVerify(() => Math.abs(list.contentY - 400) < 1)
+    }
     function test_update_icons_follow_theme_data() {
         return [{tag:"dark", background:"#202326", foreground:"#ffffff"},
             {tag:"light", background:"#eff0f1", foreground:"#202326"},

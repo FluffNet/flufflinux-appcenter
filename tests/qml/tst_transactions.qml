@@ -934,8 +934,12 @@ TestCase {
         verify(!findChild(page, "cancelAppButton").visible)
         compare(findChild(page, "appJobStatus").text, "Pending…")
         main.showCatalog(); tryCompare(stack, "busy", false)
-        compare(findChild(row, "installedRemovalStatus").text, "Pending…")
-        verify(!findChild(row, "installedRemovalProgress").visible)
+        // Hidden Installed pages release delegates. Check the newly visible
+        // row rather than retaining a pointer to a destroyed offscreen card.
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const restoredRow = list.itemAtIndex(0)
+        compare(findChild(restoredRow, "installedRemovalStatus").text, "Pending…")
+        verify(!findChild(restoredRow, "installedRemovalProgress").visible)
         main.openApp(app); tryCompare(stack, "busy", false)
         const runningPage = stack.currentItem
         // A finished sub-step must not claim the whole removal is complete.
@@ -944,9 +948,11 @@ TestCase {
         verify(!findChild(runningPage, "cancelAppButton").visible)
         compare(findChild(runningPage, "appJobStatus").text, "Uninstalling…")
         main.showCatalog(); tryCompare(stack, "busy", false)
-        verify(findChild(row, "installedRemovalProgress").visible)
-        verify(findChild(row, "installedRemovalProgress").indeterminate)
-        compare(findChild(row, "installedRemovalStatus").text, "Uninstalling…")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const runningRow = list.itemAtIndex(0)
+        verify(findChild(runningRow, "installedRemovalProgress").visible)
+        verify(findChild(runningRow, "installedRemovalProgress").indeterminate)
+        compare(findChild(runningRow, "installedRemovalStatus").text, "Uninstalling…")
         backend.jobs = []
         backend.installedApps = []
         main.selectedCategory = "All Apps"

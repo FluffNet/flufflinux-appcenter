@@ -44,7 +44,18 @@ ApplicationWindow {
         ? fluffDesktopTheme.revision : 0
     readonly property url appIconUrl: iconSource("flufflinux-appcenter")
 
-    property var catalog: backend && backend.catalog || []
+    property var catalog: backend ? Array.from(backend.catalog || []) : []
+    property int catalogIconRevision: 0
+    onCatalogChanged: ++catalogIconRevision
+    readonly property var catalogByAppId: {
+        const indexed = {}
+        for (const app of catalog) {
+            const key = "$" + String(app.id).replace(/\.desktop$/, "")
+            if (!indexed[key]) indexed[key] = app
+        }
+        return indexed
+    }
+    function catalogApp(id) { return catalogByAppId["$" + String(id).replace(/\.desktop$/, "")] || null }
     property var selectedApp: null
     property var backend: typeof fluffBackend !== "undefined" ? fluffBackend : null
     property var catalogStats: typeof fluffCatalogStats !== "undefined" ? fluffCatalogStats : null
@@ -54,7 +65,19 @@ ApplicationWindow {
     readonly property bool networkOffline: networkState === "offline"
     readonly property bool networkReady: !networkStatus || networkStatus.ready !== false
     property bool catalogSourcesUnavailable: !!backend && backend.catalogSourcesUnavailable === true
-    property var installedApps: backend ? backend.installedApps : []
+    property var installedApps: []
+    function syncInstalledApps() {
+        installedApps = backend ? Array.from(backend.installedApps || [], app => Object.assign({}, app)) : []
+    }
+    readonly property var installedByAppId: {
+        const grouped = {}
+        for (const app of installedApps) {
+            const key = "$" + String(app.id).replace(/\.desktop$/, "")
+            if (!grouped[key]) grouped[key] = []
+            grouped[key].push(app)
+        }
+        return grouped
+    }
     property bool installedLoading: backend ? backend.installedLoading : false
     property string installedError: backend ? backend.installedError : ""
     readonly property int iconRevision: backend ? backend.iconRevision : 0
@@ -65,8 +88,22 @@ ApplicationWindow {
     readonly property int catalogProgress: backend && typeof backend.catalogProgress === "number"
         ? Math.max(0, Math.min(100, backend.catalogProgress)) : 0
     readonly property bool catalogLoaded: !catalogLoading || catalog.length > 0
-    // Read the native QVariant queue once per notification, not once per card.
-    readonly property var backendJobs: backend ? backend.jobs : []
+    // Keep unchanged rows in JS. Native progress transports only changed rows,
+    // avoiding conversion of every app's dependency plan on each tick.
+    property var backendJobs: []
+    function syncBackendJobs() {
+        backendJobs = backend ? Array.from(backend.jobs || [], job => Object.assign({}, job)) : []
+    }
+    function patchedRows(current, rows) {
+        const values = current.slice()
+        for (const key of Object.keys(rows)) {
+            const index = Number(key)
+            if (Number.isInteger(index) && index >= 0 && index < values.length) values[index] = Object.assign({}, rows[key])
+        }
+        return values
+    }
+    onBackendChanged: { syncBackendJobs(); syncInstalledApps() }
+    Component.onCompleted: { syncBackendJobs(); syncInstalledApps() }
     readonly property var jobsByAppId: {
         const grouped = {}
         for (const job of backendJobs) {
@@ -88,9 +125,7 @@ ApplicationWindow {
     function findInstalled(app) {
         if (!app) return null
         const id = String(app.id).replace(/\.desktop$/, "")
-        const matches = installedApps.filter(function(item) {
-            return String(item.id).replace(/\.desktop$/, "") === id
-        })
+        const matches = installedByAppId["$" + id] || []
         return matches.find(function(item) { return item.installation === app.installation
             && item.installedBranch === app.installedBranch }) || matches[0] || null
     }
@@ -113,9 +148,28 @@ ApplicationWindow {
             source = source.indexOf("/") >= 0 ? "file://" + source : "image://icon/" + source
         if (source.startsWith("image://icon/"))
             return source + "?revision=" + iconRevision + "&theme=" + iconThemeRevision
-        return source.startsWith("file://") ? source + "?revision=" + iconRevision : source
+        // Desktop icon invalidation does not change AppStream files. Reload
+        // those only with the catalog, not after every item in a large queue.
+        return source.startsWith("file://") ? source + "?revision=" + catalogIconRevision : source
     }
     function installApp(app) { if (backend) backend.installApp(app) }
+    function publisherIndex(apps) {
+        const indexed = {}
+        for (const entry of apps) for (const candidate of [entry].concat(entry.sources || [])) {
+            const developer = String(candidate.developer || "").trim()
+            if (!developer) continue
+            const ref = String(candidate.installedRef || candidate.flatpakRef || "")
+            const parts = ref.split("/")
+            const id = parts.length === 4 ? parts[1] : String(candidate.id || "")
+            const key = "$" + id
+            if (!indexed[key]) indexed[key] = []
+            indexed[key].push({developer: developer, ref: ref,
+                remote: candidate.installedOrigin || candidate.remote || "", sourceUrl: candidate.sourceUrl || ""})
+        }
+        return indexed
+    }
+    readonly property var catalogPublishers: publisherIndex(catalog)
+    readonly property var installedPublishers: publisherIndex(installedApps)
     function publisherFor(app) {
         if (!app) return ""
         const direct = String(app.developer || "").trim()
@@ -133,16 +187,14 @@ ApplicationWindow {
         // or a different branch/source. This does not make a network request.
         for (const alias of [false, true]) {
             if (alias && ref) break
-            for (const entry of (installedApps || []).concat(catalog || [])) {
-                for (const candidate of [entry].concat(entry.sources || [])) {
-                    const candidateId = identity(candidate)
-                    if ((alias ? candidateId + ".desktop" : candidateId) !== id) continue
-                    if (ref && (candidate.installedRef || candidate.flatpakRef || "") !== ref) continue
-                    if (remote && (candidate.installedOrigin || candidate.remote || "") !== remote) continue
-                    if (app.sourceUrl && candidate.sourceUrl !== app.sourceUrl) continue
-                    const publisher = String(candidate.developer || "").trim()
-                    if (publisher) return publisher
-                }
+            if (alias && !id.endsWith(".desktop")) continue
+            const key = "$" + (alias ? id.slice(0, -8) : id)
+            const candidates = (installedPublishers[key] || []).concat(catalogPublishers[key] || [])
+            for (const candidate of candidates) {
+                if (ref && candidate.ref !== ref) continue
+                if (remote && candidate.remote !== remote) continue
+                if (app.sourceUrl && candidate.sourceUrl !== app.sourceUrl) continue
+                return candidate.developer
             }
         }
         return ""
@@ -163,6 +215,19 @@ ApplicationWindow {
     Connections {
         target: window.backend
         ignoreUnknownSignals: true
+        function onJobsSnapshotChanged() { window.syncBackendJobs() }
+        function onJobRowsChanged(rows) {
+            window.backendJobs = window.patchedRows(window.backendJobs, rows)
+        }
+        function onInstalledAppsSnapshotChanged() { window.syncInstalledApps() }
+        function onInstalledAppRowsChanged(rows) { window.installedApps = window.patchedRows(window.installedApps, rows) }
+        function onInstalledAppsChanged() {
+            if (typeof window.backend.installedAppRowsChanged !== "function") window.syncInstalledApps()
+        }
+        function onJobsChanged() {
+            // Standalone fixtures and simple alternate backends use snapshots.
+            if (typeof window.backend.jobRowsChanged !== "function") window.syncBackendJobs()
+        }
         function onAppOpened(app) { window.openApp(app) }
         function onHomeRequested() { window.showHome() }
         function onUpdatesRequested() { window.showUpdates() }

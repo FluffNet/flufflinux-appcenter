@@ -9,6 +9,7 @@
 #include <QProcess>
 #include <QPixmapCache>
 #include <QSet>
+#include <cstring>
 
 struct FlatpakManager::Process {
     QPointer<QProcess> process;
@@ -51,7 +52,7 @@ QVariant FlatpakManager::dispatch(const QString &action, const QVariantList &arg
     return apply(fluff_backend_dispatch(m_backend, request.constData()));
 }
 QVariant FlatpakManager::apply(char *reply) {
-    const auto response = QJsonDocument::fromJson(reply ? QByteArray(reply) : QByteArray()).object();
+    const auto response = QJsonDocument::fromJson(reply ? QByteArray::fromRawData(reply, std::strlen(reply)) : QByteArray()).object();
     fluff_backend_string_free(reply);
     // QML can synchronously request another action from a property signal.
     // Preserve Rust's envelope order so a cancel cannot overtake its start.
@@ -66,12 +67,31 @@ QVariant FlatpakManager::apply(char *reply) {
 void FlatpakManager::applyResponse(const QJsonObject &response) {
     const auto changes = response["state"].toObject();
     for (auto it = changes.begin(); it != changes.end(); ++it) m_state[it.key()] = it.value().toVariant();
+    // Transport-only row replacement. Rust owns membership, ordering and diffs.
+    const auto rowChanges = response["rows"].toObject();
+    for (auto it = rowChanges.begin(); it != rowChanges.end(); ++it) {
+        auto values = m_state.value(it.key()).toList();
+        const auto patches = it.value().toObject();
+        for (auto patch = patches.begin(); patch != patches.end(); ++patch) {
+            bool valid = false;
+            const auto row = patch.key().toLongLong(&valid);
+            if (valid && row >= 0 && row < values.size()) values[row] = patch.value().toVariant();
+        }
+        m_state[it.key()] = values;
+    }
+    // QML retains unchanged JS rows instead of converting every QVariant plan
+    // again on each progress tick. Native property observers remain supported.
+    if (changes.contains("jobs")) emit jobsSnapshotChanged();
+    else if (rowChanges.contains("jobs")) emit jobRowsChanged(rowChanges["jobs"].toObject().toVariantMap());
+    if (changes.contains("installedApps")) emit installedAppsSnapshotChanged();
+    else if (rowChanges.contains("installedApps")) emit installedAppRowsChanged(rowChanges["installedApps"].toObject().toVariantMap());
     QSet<QByteArray> notifications;
+    if (changes.contains("installedApps") || rowChanges.contains("installedApps")) notifications.insert("installedAppsChanged");
     if (changes.contains("popularity")) notifications.insert("popularityChanged");
-    if (changes.contains("jobs") || changes.contains("busy") || changes.contains("sourceInputStatus") || changes.contains("backgroundWorkPending")) notifications.insert("jobsChanged");
+    if (changes.contains("jobs") || rowChanges.contains("jobs") || changes.contains("busy") || changes.contains("sourceInputStatus") || changes.contains("backgroundWorkPending")) notifications.insert("jobsChanged");
     if (changes.contains("review")) notifications.insert("reviewChanged");
     if (changes.contains("recovery")) notifications.insert("recoveryChanged");
-    if (changes.contains("installedApps") || changes.contains("installedLoading") || changes.contains("installedError") || changes.contains("iconRevision")) notifications.insert("installedChanged");
+    if (changes.contains("installedApps") || rowChanges.contains("installedApps") || changes.contains("installedLoading") || changes.contains("installedError") || changes.contains("iconRevision")) notifications.insert("installedChanged");
     if (changes.contains("installSizes")) notifications.insert("installSizesChanged");
     if (changes.contains("appPermissions")) notifications.insert("appPermissionsChanged");
     if (changes.contains("appAddons")) notifications.insert("appAddonsChanged");
@@ -93,7 +113,8 @@ void FlatpakManager::applyResponse(const QJsonObject &response) {
 void FlatpakManager::processEvent(const std::shared_ptr<Process> &state, QJsonObject message) {
     if (m_stopping) return;
     message["serial"] = double(state->serial); message["role"] = state->role;
-    dispatch("event", {message.toVariantMap()});
+    const auto request = QJsonDocument(QJsonObject{{"action", "event"}, {"args", QJsonArray{message}}}).toJson(QJsonDocument::Compact);
+    apply(fluff_backend_dispatch(m_backend, request.constData()));
 }
 void FlatpakManager::readOutput(const std::shared_ptr<Process> &state, bool diagnostics) {
     if (!state->process || state->terminal) return;
@@ -132,9 +153,16 @@ void FlatpakManager::finish(const std::shared_ptr<Process> &state, int code, boo
     state->terminal = true;
     if (state->timeout) { state->timeout->stop(); state->timeout->setObjectName({}); }
     m_processes.remove(state->serial);
-    processEvent(state, {{"kind", "finished"}, {"code", code}, {"crashed", crashed},
-        {"stdout", QString::fromUtf8(state->output)}, {"stderr", QString::fromUtf8(state->diagnostics)},
-        {"error", state->error}, {"timedOut", state->timedOut}});
+    if (!m_stopping) {
+        const auto event = QJsonDocument(QJsonObject{{"kind", "finished"}, {"code", code}, {"crashed", crashed},
+            {"serial", double(state->serial)}, {"role", state->role},
+            {"stderr", QString::fromUtf8(state->diagnostics)}, {"error", state->error},
+            {"timedOut", state->timedOut}}).toJson(QJsonDocument::Compact);
+        apply(fluff_backend_worker_finished(m_backend, event.constData(),
+            reinterpret_cast<const unsigned char *>(state->output.constData()), std::size_t(state->output.size())));
+    }
+    state->output.clear();
+    state->output.squeeze();
     if (state->process) state->process->deleteLater();
 }
 void FlatpakManager::execute(const QJsonObject &command) {

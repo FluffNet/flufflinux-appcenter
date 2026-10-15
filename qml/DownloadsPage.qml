@@ -108,15 +108,21 @@ Page {
             required property int jobIndex
             readonly property var modelData: window.downloadQueue.jobsByIndex[jobIndex]
                 || {id: "", name: "", active: false, operations: []}
-            readonly property var installedApp: window.findInstalled(modelData)
-            readonly property var detailsApp: modelData.addon
+            // Progress is not app identity. Keep catalog/publisher lookups
+            // independent of a changing row's transfer/operation payload.
+            readonly property string appId: modelData.id || ""
+            readonly property string installation: modelData.installation || ""
+            readonly property string installedBranch: modelData.installedBranch || ""
+            readonly property bool addon: modelData.addon === true
+            readonly property var installedApp: window.findInstalled({id: appId,
+                installation: installation || undefined, installedBranch: installedBranch || undefined})
+            readonly property var detailsApp: addon
                 ? window.installedApps.find(item => modelData.parent
                     && item.installedRef === modelData.parent.installedRef
                     && item.installation === modelData.parent.installation) || null
-                : !modelData.id ? null : installedApp
-                || window.catalog.find(function(app) {
-                    return app.id.replace(/\.desktop$/, "") === modelData.id.replace(/\.desktop$/, "")
-                }) || Object.assign({summary: "", description: "", screenshots: [], developer: "", category: "", license: "", homepage: ""}, modelData)
+                : !appId ? null : installedApp
+                || window.catalogApp(appId)
+                || Object.assign({summary: "", description: "", screenshots: [], developer: "", category: "", license: "", homepage: ""}, modelData)
             readonly property var appJob: window.jobForApp(installedApp)
             readonly property bool canOpen: !modelData.active && !modelData.failed
                 && !modelData.cancelled && !!installedApp && (!appJob || !appJob.active)

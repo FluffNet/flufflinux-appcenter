@@ -194,6 +194,10 @@ impl Manager {
             4 * 1024 * 1024,
         )
         .unwrap_or(Value::Null);
+        // A list refresh must not reopen the same Flatpak repository once per
+        // app. Keep one local handle per scope for this snapshot, then release
+        // all handles together. Do not retain them across transactions.
+        let mut installations = HashMap::new();
         for line in text(event, "stdout")
             .lines()
             .filter(|line| !line.is_empty())
@@ -216,7 +220,13 @@ impl Manager {
                 &mut app,
                 &json!({"installedOrigin":columns[3],"installation":columns[4],"installedBranch":columns[5],"installedArch":columns[6],"installedVersion":columns[8]}),
             );
-            if let Some(size) = sizes::installed(&app) {
+            let installation = installations
+                .entry(columns[4].to_owned())
+                .or_insert_with(|| sources::installation(columns[4]).ok());
+            if let Some(size) = installation
+                .as_ref()
+                .and_then(|scope| sizes::installed(&app, scope))
+            {
                 app["installedBytes"] = size.into();
                 app["installedSize"] = bytes(size).into();
             }
@@ -236,7 +246,7 @@ impl Manager {
             }
             apps.push(app);
         }
-        self.set("installedApps", apps.into());
+        self.set_installed_rows(apps);
         self.update_date();
     }
     pub(super) fn update_date(&mut self) {
@@ -449,13 +459,30 @@ impl Manager {
                 json!({}),
             );
         } else {
-            self.command(json!({"command":"refreshIcons"}));
+            self.desktop_icons_pending = true;
             if self.desktop_again {
                 self.desktop_again = false;
                 self.refresh_desktop_caches();
             }
             self.refresh_installed();
         }
+    }
+    pub(super) fn refresh_desktop_icons_if_idle(&mut self) {
+        if self.stopping
+            || !self.desktop_icons_pending
+            || self.jobs.iter().any(|job| flag(job, "active"))
+            || ["install", "remove", "desktop"]
+                .iter()
+                .any(|role| self.tasks.contains_key(*role))
+        {
+            return;
+        }
+        // Launcher files and installed state are refreshed per deployment.
+        // Repeated global icon invalidations force synchronous theme searches
+        // and SVG painting in every visible control. Broadcast once per batch.
+        // External desktop theme changes still follow the normal live signal.
+        self.desktop_icons_pending = false;
+        self.command(json!({"command":"refreshIcons"}));
     }
 }
 fn scope_arg(scope: &str) -> String {
@@ -469,6 +496,77 @@ fn scope_arg(scope: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installed_date_changes_transport_only_the_changed_app() {
+        let mut manager = Manager::new(vec![]);
+        manager.initial();
+        let mut apps: Vec<_> = (0..200)
+            .map(|index| {
+                json!({"id":format!("a.b.App{index}"),
+            "installedRef":format!("app/a.b.App{index}/x86_64/stable"),"installation":"user",
+            "description":"unchanged metadata", "updatedAt":"before"})
+            })
+            .collect();
+        manager.set_installed_rows(apps.clone());
+        assert!(manager.initial()["state"]["installedApps"].is_array());
+        apps[42]["updatedAt"] = "after".into();
+        manager.set_installed_rows(apps.clone());
+        let delta = manager.initial();
+        assert!(delta["state"].get("installedApps").is_none());
+        assert_eq!(delta["rows"]["installedApps"].as_object().unwrap().len(), 1);
+        assert_eq!(delta["rows"]["installedApps"]["42"], apps[42]);
+        manager.set_installed_rows(apps.clone());
+        assert!(manager.initial()["rows"].get("installedApps").is_none());
+        apps.swap(0, 1);
+        manager.set_installed_rows(apps.clone());
+        assert_eq!(manager.initial()["state"]["installedApps"], json!(apps));
+        apps.pop();
+        manager.set_installed_rows(apps.clone());
+        assert_eq!(manager.initial()["state"]["installedApps"], json!(apps));
+        apps[42]["updatedAt"] = "latest".into();
+        manager.set_installed_rows(apps);
+        manager.set("installedApps", json!([]));
+        let replaced = manager.initial();
+        assert_eq!(replaced["state"]["installedApps"], json!([]));
+        assert!(replaced["rows"].get("installedApps").is_none());
+    }
+
+    #[test]
+    fn desktop_icon_invalidations_are_coalesced_until_the_batch_finishes() {
+        let mut manager = Manager::new(vec![]);
+        manager.initial();
+        manager.jobs = vec![json!({"active":true})];
+        for _ in 0..200 {
+            manager.desktop_icons_pending = true;
+            manager.refresh_desktop_icons_if_idle();
+        }
+        assert!(!manager
+            .commands
+            .iter()
+            .any(|command| command["command"] == "refreshIcons"));
+        // A real theme change is independent of deferred deployment refreshes.
+        let changed = manager.dispatch("iconsChanged", &json!([]));
+        assert_eq!(changed["state"]["iconRevision"], 1);
+        manager.jobs[0]["active"] = false.into();
+        for role in ["install", "remove", "desktop"] {
+            manager.tasks.insert(role.into(), Task::default());
+            manager.refresh_desktop_icons_if_idle();
+            assert!(manager.desktop_icons_pending);
+            manager.tasks.remove(role);
+        }
+        manager.refresh_desktop_icons_if_idle();
+        manager.refresh_desktop_icons_if_idle();
+        assert!(!manager.desktop_icons_pending);
+        assert_eq!(
+            manager
+                .commands
+                .iter()
+                .filter(|command| command["command"] == "refreshIcons")
+                .count(),
+            1
+        );
+    }
 
     #[test]
     fn installed_details_do_not_enumerate_remotes_until_the_app_is_removed() {

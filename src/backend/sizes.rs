@@ -242,16 +242,14 @@ impl Lookup {
         }
     }
 }
-pub fn installed(app: &Value) -> Option<u64> {
-    let scope = text(app, "installation");
+pub fn installed(app: &Value, installation: &Installation) -> Option<u64> {
     let id = normalized_id(text(app, "id"));
     let arch = text(app, "installedArch");
     let branch = text(app, "installedBranch");
-    if [scope, id, arch, branch].iter().any(|s| s.is_empty()) {
+    if [id, arch, branch].iter().any(|s| s.is_empty()) {
         return None;
     }
-    sources::installation(scope)
-        .ok()?
+    installation
         .installed_ref(
             RefKind::App,
             id,
@@ -433,7 +431,22 @@ mod tests {
         record(&mut lookup,app,100,"[Application]\n[Extension org.example.GL]\nsubdirectories=true\ndownload-if=future-rule\n");
         calculate(&mut lookup);
         assert!(!lookup.complete);
-        assert!(installed(&json!({})).is_none());
-        assert!(installed(&json!({"id":"org.example.App","installation":"user"})).is_none());
+        let directory = tempfile::tempdir().unwrap();
+        let scope = Installation::for_path(
+            &gio::File::for_path(directory.path()),
+            true,
+            gio::Cancellable::NONE,
+        )
+        .unwrap();
+        assert!(installed(&json!({}), &scope).is_none());
+        assert!(installed(
+            &json!({"id":"org.example.App","installation":"user"}),
+            &scope
+        )
+        .is_none());
+        // Missing deployments stay unknown when the same handle is reused.
+        for _ in 0..200 {
+            assert!(installed(&json!({"id":"org.example.App","installedArch":"x86_64","installedBranch":"stable"}), &scope).is_none());
+        }
     }
 }

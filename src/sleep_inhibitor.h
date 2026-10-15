@@ -7,6 +7,7 @@
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
 #include <QDBusServiceWatcher>
+#include <QTimer>
 #include <optional>
 
 // KDE PowerDevil's standard suspend inhibitor, acquired immediately rather
@@ -17,8 +18,12 @@ class SleepInhibitor final : public QObject {
 public:
     explicit SleepInhibitor(QObject *parent = nullptr) : QObject(parent),
         m_watch(service(), QDBusConnection::sessionBus(), QDBusServiceWatcher::WatchForOwnerChange, this) {
+        m_retry.setSingleShot(true);
+        m_retry.setInterval(2000);
+        connect(&m_retry, &QTimer::timeout, this, [this] { if (m_wanted) acquire(); });
         connect(&m_watch, &QDBusServiceWatcher::serviceOwnerChanged, this,
             [this](const QString &, const QString &, const QString &) {
+                m_retry.stop();
                 ++m_generation; m_pending = false; m_cookie.reset(); m_owner.clear();
                 if (m_wanted) acquire();
             });
@@ -26,6 +31,9 @@ public:
     ~SleepInhibitor() override { release(); }
     bool requested() const { return m_wanted; }
     void setActive(bool active) {
+        // Progress notifications are not retries. In particular, a missing
+        // PowerDevil must not cause a synchronous bus call on every tick.
+        if (m_wanted == active) return;
         m_wanted = active;
         if (active) acquire(); else release();
     }
@@ -42,7 +50,8 @@ private:
         if (m_cookie || m_pending) return;
         const auto owner = QDBusConnection::sessionBus().interface()->serviceOwner(service());
         if (!owner.isValid() || owner.value().isEmpty()) {
-            qWarning("App Center cannot inhibit sleep: KDE power management is unavailable."); return;
+            qWarning("App Center cannot inhibit sleep: KDE power management is unavailable.");
+            m_retry.start(); return;
         }
         m_pending = true;
         auto message = call(owner.value(), "Inhibit");
@@ -58,15 +67,21 @@ private:
                 return;
             }
             guard->m_pending = false;
-            if (reply.isError()) { qWarning("App Center could not inhibit sleep: %s", qPrintable(reply.error().message())); return; }
+            if (reply.isError()) {
+                qWarning("App Center could not inhibit sleep: %s", qPrintable(reply.error().message()));
+                if (guard->m_wanted) guard->m_retry.start();
+                return;
+            }
             if (!guard->m_wanted) { uninhibit(owner, reply.value()); return; }
             guard->m_owner = owner; guard->m_cookie = reply.value();
         });
     }
     void release() {
+        m_retry.stop();
         if (m_cookie) { uninhibit(m_owner, *m_cookie); m_cookie.reset(); }
     }
     QDBusServiceWatcher m_watch;
+    QTimer m_retry;
     QString m_owner;
     std::optional<uint> m_cookie;
     quint64 m_generation = 0;

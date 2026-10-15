@@ -105,6 +105,33 @@ mod tests {
     use super::*;
 
     #[test]
+    fn status_merge_preserves_update_items_and_skips_unchanged_notifications() {
+        let mut manager = Manager::new(vec![]);
+        let items = json!([{"id":"org.example.App","plan":[{"downloadBytes":1000}]}]);
+        manager.properties["updates"] =
+            json!({"state":"ready","items":items,"lastUpdated":"today"});
+        manager.initial();
+        // The unchanged items allocation must survive both a no-op and a
+        // status-only update, instead of deep-cloning the entire property.
+        let original = manager.properties["updates"]["items"]
+            .as_array()
+            .unwrap()
+            .as_ptr();
+        manager.merge("updates", json!({"lastUpdated":"today"}));
+        assert!(!manager.dirty.contains_key("updates"));
+        manager.merge("updates", json!({"lastUpdated":"tomorrow"}));
+        assert_eq!(
+            manager.properties["updates"]["items"]
+                .as_array()
+                .unwrap()
+                .as_ptr(),
+            original
+        );
+        assert_eq!(manager.dirty["updates"]["items"], items);
+        assert_eq!(manager.dirty["updates"]["lastUpdated"], "tomorrow");
+    }
+
+    #[test]
     fn repeated_large_batches_release_requests_tasks_and_cleared_history() {
         let mut manager = Manager::new(vec![]);
         manager.initial();
@@ -230,5 +257,27 @@ mod tests {
         // A second click while busy cannot enqueue the same selection again.
         manager.dispatch("installSelectedUpdates", &json!([]));
         assert_eq!(manager.jobs.len(), 200);
+        let snapshot_bytes = reply.to_string().len();
+        let serial = manager.tasks["install"].serial;
+        let progress = manager.dispatch(
+            "event",
+            &json!([{"kind":"line","role":"install","serial":serial,
+            "line":json!({"type":"status","status":"Downloading"}).to_string()}]),
+        );
+        assert!(progress["state"].get("jobs").is_none());
+        assert_eq!(progress["rows"]["jobs"].as_object().unwrap().len(), 1);
+        assert_eq!(progress["rows"]["jobs"]["0"]["status"], "Downloading");
+        assert!(progress.to_string().len() * 40 < snapshot_bytes);
+        // No-op status must not wake the QML queue or resend data.
+        let unchanged = manager.dispatch(
+            "event",
+            &json!([{"kind":"line","role":"install","serial":serial,
+            "line":json!({"type":"status","status":"Downloading"}).to_string()}]),
+        );
+        assert!(unchanged["rows"].get("jobs").is_none());
+        // Removing a row switches to a complete snapshot with current indices.
+        let removed = manager.dispatch("cancelJob", &json!([199]));
+        assert_eq!(rows(&removed["state"]["jobs"]).len(), 199);
+        assert!(removed["rows"].get("jobs").is_none());
     }
 }

@@ -142,6 +142,7 @@ Page {
         qsTr("Size: Largest first"), qsTr("Size: Smallest first")
     ]
     readonly property var installedMatches: {
+        if (!visible || !installedView) return []
         const query = window.searchText.trim().toLowerCase()
         const sortIndex = installedSortIndex
         return (window.installedApps || []).filter(function(app) {
@@ -916,6 +917,22 @@ Page {
                     Layout.leftMargin: 28; Layout.rightMargin: 28; Layout.bottomMargin: 20
                     clip: true; spacing: 12
                     model: page.installedMatches
+                    property real savedScrollY: 0
+                    property bool restoringScroll: true
+                    onContentYChanged: if (visible && !restoringScroll) savedScrollY = contentY
+                    onVisibleChanged: {
+                        if (!visible) restoringScroll = true
+                        else Qt.callLater(function() {
+                            if (!installedList.visible) return
+                            installedList.forceLayout()
+                            installedList.contentY = Math.max(installedList.originY,
+                                Math.min(installedList.savedScrollY, installedList.originY
+                                    + Math.max(0, installedList.contentHeight - installedList.height)))
+                            installedList.restoringScroll = false
+                        })
+                    }
+                    reuseItems: true
+                    cacheBuffer: 200
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: PageScrollBar {
                         objectName: "installedPageScrollBar"

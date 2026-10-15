@@ -7,29 +7,46 @@ Page {
     id: page
     objectName: "updatesPage"
     focusPolicy: Qt.ClickFocus
-    readonly property var updateData: window.backend && window.backend.updates || ({state: "idle", items: []})
+    readonly property var updateData: visible && window.backend && window.backend.updates || ({state: "idle", items: []})
     readonly property var rows: updateData.items || []
     readonly property bool checking: updateData.state === "checking"
     readonly property var skipped: updateData.skipped || []
     readonly property bool busy: !!window.backend && window.backend.busy
     readonly property bool compact: width < 600
-    onVisibleChanged: if (!visible) changesDialog.close()
+    property real savedScrollY: 0
+    property bool restoringScroll: true
+    onVisibleChanged: {
+        if (!visible) { restoringScroll = true; changesDialog.close() }
+        else Qt.callLater(function() {
+            if (!page.visible) return
+            list.forceLayout()
+            list.contentY = Math.max(list.originY, Math.min(page.savedScrollY,
+                list.originY + Math.max(0, list.contentHeight - list.height)))
+            page.restoringScroll = false
+        })
+    }
     readonly property var selected: rows.filter(row => row.selected)
     readonly property bool allSelected: rows.length > 0 && selected.length === rows.length
-    readonly property real selectedBytes: {
+    readonly property var plannedSizes: {
         const sizes = {}
+        if (!visible) return sizes
         for (const row of selected) for (const op of row.plan || []) {
             const key = row.installation + ":" + op.ref + ":" + op.commit
             sizes[key] = Number(op.downloadBytes || 0)
         }
+        return sizes
+    }
+    readonly property real selectedBytes: {
+        if (!visible) return 0
+        const sizes = Object.assign({}, plannedSizes)
         // Use resolved transfer totals once jobs start, just as the install
         // page does. Completed pulls report actual bytes, including cache hits.
         // Apply these after the plans so a queued app's shared dependency
         // cannot overwrite an already-resolved total.
         const resolved = {}
         for (const row of selected) {
-            const job = jobFor(row)
-            if (!job || job.queued) continue
+            const job = jobFor(row, true)
+            if (!job) continue
             for (const op of job.operations || []) {
                 const key = row.installation + ":" + op.ref + ":" + op.commit
                 if (sizes[key] === undefined) continue
@@ -49,6 +66,7 @@ Page {
     }
     readonly property var updateJobsByKey: {
         const grouped = {}
+        if (!visible) return grouped
         for (const job of window.backendJobs) {
             if (job.action !== "update") continue
             const key = "$" + job.key
@@ -57,10 +75,13 @@ Page {
         }
         return grouped
     }
-    function jobFor(row) {
+    function jobFor(row, skipQueued) {
         const jobs = updateJobsByKey["$" + row.key] || []
         for (let index = jobs.length - 1; index >= 0; --index) {
             const job = jobs[index]
+            // A current queued job has no resolved bytes; do not fall back to
+            // a previous completed attempt or compare all its dependency refs.
+            if (skipQueued && job.queued) return null
             // Finished history must not supply sizes/status for a later scan
             // of another release (including dependency-only refreshes).
             if (row.commit && (job.commit !== row.commit || job.oldCommit !== row.oldCommit)) continue
@@ -191,7 +212,13 @@ Page {
                 objectName: "updatesList"
                 visible: !page.checking
                 anchors.fill: parent
-                clip: true; spacing: 12; model: page.rows; contentWidth: width
+                clip: true; spacing: 12; contentWidth: width
+                // A hidden Updates page must not rebuild native controls for
+                // each completion while the user is scrolling Queue/App view.
+                model: page.visible && !page.checking ? page.rows : []
+                onContentYChanged: if (page.visible && !page.restoringScroll) page.savedScrollY = contentY
+                reuseItems: true
+                cacheBuffer: 200
                 boundsBehavior: Flickable.StopAtBounds
                 ScrollBar.vertical: PageScrollBar {
                     objectName: "updatesPageScrollBar"
@@ -217,7 +244,7 @@ Page {
                             Accessible.name: qsTr("Update %1").arg(modelData.name)
                             onClicked: window.backend.selectUpdate(modelData.key, checked)
                         }
-                        AppIcon { icon: modelData.icon || ""; Layout.preferredWidth: 56; Layout.preferredHeight: 56 }
+                        AppIcon { icon: modelData.icon || ""; sourceSize: Qt.size(64, 64); Layout.preferredWidth: 56; Layout.preferredHeight: 56 }
                         ColumnLayout {
                             Layout.fillWidth: true; spacing: 5
                             Label { text: modelData.name; textFormat: Text.PlainText; font.pixelSize: 18; font.weight: Font.DemiBold; color: window.textColor; Layout.fillWidth: true; wrapMode: Text.Wrap }

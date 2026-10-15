@@ -30,7 +30,7 @@ impl Manager {
             }
             visible.push(job);
         }
-        self.set("jobs", visible.into());
+        self.set_job_rows(visible);
         let status = self
             .jobs
             .iter()
@@ -48,10 +48,60 @@ impl Manager {
         self.set("sourceInputStatus", status.into());
     }
     fn patch_job(&mut self, index: usize, patch: Value) {
-        if let Some(job) = self.jobs.get_mut(index) {
-            merge(job, &patch);
-            self.publish_jobs();
+        let Some(job) = self.jobs.get_mut(index) else {
+            return;
+        };
+        if patch.as_object().is_some_and(|fields| {
+            fields
+                .iter()
+                .all(|(key, value)| job.get(key) == Some(value))
+        }) {
+            return;
         }
+        let membership_changed = ["cancelled", "hidden", "prepareOnly", "queueBatch", "index"]
+            .iter()
+            .any(|key| patch.get(*key).is_some_and(|value| job[*key] != *value));
+        merge(job, &patch);
+        if !membership_changed
+            && !flag(job, "prepareOnly")
+            && !flag(job, "hidden")
+            && !flag(job, "cancelled")
+        {
+            if let Some(row) = rows(&self.properties["jobs"])
+                .iter()
+                .position(|shown| number(shown, "index") == index as u64)
+            {
+                // Preserve presentation-only fields; only this row changed.
+                // Cloning every other job here dominated allocation profiles.
+                let mut shown = job.clone();
+                for key in ["queuePosition", "queueTotal"] {
+                    shown[key] = self.properties["jobs"][row][key].clone();
+                }
+                if !flag(&shown, "addon") {
+                    shown["icon"] = if shown["id"] != self.properties["jobs"][row]["id"]
+                        || flag(&self.properties["jobs"][row], "addon")
+                    {
+                        self.catalog_app(text(&shown, "id"))
+                            .map(|app| app["icon"].clone())
+                            .unwrap_or_else(|| shown["id"].clone())
+                    } else {
+                        self.properties["jobs"][row]["icon"].clone()
+                    };
+                }
+                if self.properties["jobs"][row] == shown {
+                    return;
+                }
+                self.properties["jobs"][row] = shown.clone();
+                if let Some(snapshot) = self.dirty.get_mut("jobs") {
+                    snapshot[row] = shown;
+                } else {
+                    self.row_changes.entry("jobs").or_insert_with(|| json!({}))[row.to_string()] =
+                        shown;
+                }
+                return;
+            }
+        }
+        self.publish_jobs();
     }
     pub(super) fn enqueue(&mut self, request: Value) {
         if self.enqueue_request(request) {
@@ -321,7 +371,10 @@ impl Manager {
                 if !flag(message, "historySaved") {
                     self.error("The app updated, but its last-update date could not be saved.");
                 }
-                self.refresh_installed();
+                // job_finished refreshes installed deployments after the
+                // desktop caches, including partially successful transactions.
+                // Do not also scan/republish the entire installed list for
+                // every operation-done message just before that refresh.
             }
             "review" => {
                 let mut patch = json!({"status":"Waiting for confirmation"});
@@ -642,6 +695,36 @@ mod tests {
     use crate::backend::permissions;
     fn request(id: &str) -> Value {
         json!({"id":id,"action":"install","name":id,"installation":"user"})
+    }
+    #[test]
+    fn update_completion_does_not_duplicate_installed_scan() {
+        let mut manager = Manager::new(vec![]);
+        manager.enqueue(request("a.b.App"));
+        manager.initial();
+        manager.tasks.remove("installed");
+        manager.job_message("install", &json!({"type":"updated","historySaved":true}));
+        assert!(!manager.tasks.contains_key("installed"));
+        manager.job_message("install", &json!({"type":"result","success":true}));
+        let serial = manager.tasks["install"].serial;
+        manager.dispatch(
+            "event",
+            &json!([{"role":"install","serial":serial,"kind":"finished","code":0}]),
+        );
+        assert!(manager.tasks.contains_key("desktop"));
+        manager.desktop_commands.clear();
+        manager.next_desktop_cache();
+        assert!(manager.tasks.contains_key("installed"));
+    }
+    #[test]
+    fn row_updates_preserve_addon_artwork_changes() {
+        let mut manager = Manager::new(vec![]);
+        manager
+            .enqueue(json!({"id":"a.b.Extension","action":"install","addon":true,"icon":"first"}));
+        manager.initial();
+        manager.patch_job(0, json!({"icon":"second"}));
+        let result = manager.initial();
+        assert_eq!(result["rows"]["jobs"]["0"]["icon"], "second");
+        assert!(result["state"].get("jobs").is_none());
     }
     #[test]
     fn finished_previews_release_slots_without_losing_current_preview_details() {

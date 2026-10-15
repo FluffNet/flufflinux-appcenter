@@ -43,6 +43,7 @@ struct CatalogState {
 pub struct Manager {
     properties: Value,
     dirty: Map<String, Value>,
+    row_changes: Map<String, Value>,
     signals: Vec<Value>,
     commands: Vec<Value>,
     tasks: HashMap<String, Task>,
@@ -66,6 +67,7 @@ pub struct Manager {
     installed_again: bool,
     desktop_commands: VecDeque<Value>,
     desktop_again: bool,
+    desktop_icons_pending: bool,
     source_refresh_pending: bool,
     update_sources_changed: bool,
     pending_inputs: Vec<String>,
@@ -85,6 +87,7 @@ impl Manager {
             "repositories":[],"sourcesBusy":false,"sourceInputStatus":"","sourcesError":"","popularity":super::popularity::cached()});
         let mut manager = Self {
             dirty: properties.as_object().unwrap().clone(),
+            row_changes: Map::new(),
             properties,
             signals: vec![],
             commands: vec![],
@@ -112,6 +115,7 @@ impl Manager {
             installed_again: false,
             desktop_commands: VecDeque::new(),
             desktop_again: false,
+            desktop_icons_pending: false,
             source_refresh_pending: false,
             update_sources_changed: false,
             pending_inputs: vec![],
@@ -130,14 +134,74 @@ impl Manager {
     }
     fn set(&mut self, key: &str, value: Value) {
         if self.properties[key] != value {
+            self.row_changes.remove(key);
             self.properties[key] = value.clone();
             self.dirty.insert(key.into(), value);
         }
     }
     fn merge(&mut self, key: &str, patch: Value) {
-        let mut value = self.properties[key].clone();
-        merge(&mut value, &patch);
-        self.set(key, value);
+        let (Some(target), Value::Object(patch)) = (self.properties[key].as_object_mut(), patch)
+        else {
+            return;
+        };
+        let mut changed = false;
+        for (field, value) in patch {
+            if target.get(&field) != Some(&value) {
+                target.insert(field, value);
+                changed = true;
+            }
+        }
+        // A repeated status/date must not clone all remaining update plans.
+        // Move patch values into state and copy only an actual notification.
+        if changed {
+            self.dirty.insert(key.into(), self.properties[key].clone());
+        }
+    }
+    fn set_job_rows(&mut self, values: Vec<Value>) {
+        self.set_indexed_rows("jobs", values, |a, b| a["index"] == b["index"]);
+    }
+    fn set_installed_rows(&mut self, values: Vec<Value>) {
+        self.set_indexed_rows("installedApps", values, |a, b| {
+            ["id", "installation", "installedRef"]
+                .iter()
+                .all(|key| a[*key] == b[*key])
+        });
+    }
+    fn set_indexed_rows(
+        &mut self,
+        key: &str,
+        values: Vec<Value>,
+        same_identity: fn(&Value, &Value) -> bool,
+    ) {
+        let previous = rows(&self.properties[key]);
+        // Membership/order changes are snapshots. Ordinary progress transports
+        // only changed rows, not 200 unchanged plans through JSON and QVariant.
+        if self.dirty.contains_key(key)
+            || previous.len() != values.len()
+            || previous
+                .iter()
+                .zip(&values)
+                .any(|(a, b)| !same_identity(a, b))
+        {
+            self.row_changes.remove(key);
+            self.set(key, values.into());
+            return;
+        }
+        let changes = self
+            .row_changes
+            .entry(key.to_owned())
+            .or_insert_with(|| json!({}))
+            .as_object_mut()
+            .unwrap();
+        for (row, (old, new)) in previous.iter().zip(&values).enumerate() {
+            if old != new {
+                changes.insert(row.to_string(), new.clone());
+            }
+        }
+        if changes.is_empty() {
+            self.row_changes.remove(key);
+        }
+        self.properties[key] = values.into();
     }
     fn signal(&mut self, name: &str, args: Value) {
         self.signals.push(json!({"name":name,"args":args}));
@@ -249,6 +313,10 @@ impl Manager {
         // Move the owned payload into the reply. json! serializes its value
         // expressions again, briefly duplicating the entire catalog/queue.
         Value::Object(Map::from_iter([
+            (
+                "rows".into(),
+                Value::Object(std::mem::take(&mut self.row_changes)),
+            ),
             (
                 "state".into(),
                 Value::Object(std::mem::take(&mut self.dirty)),
@@ -392,6 +460,7 @@ impl Manager {
         }
         self.drain_links();
         self.refresh_after_queue();
+        self.refresh_desktop_icons_if_idle();
         self.start_catalog_refresh();
         self.finish_envelope(result)
     }

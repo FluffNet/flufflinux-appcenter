@@ -3,6 +3,7 @@
 #include "rust_cache_fixture.h"
 #include "../../src/background_queue.h"
 #include "../../src/flatpak_manager.h"
+#include "../../src/sleep_inhibitor.h"
 #include <QApplication>
 #include <QWindow>
 #include <QDBusVirtualObject>
@@ -24,6 +25,8 @@
 class Desktop final : public QDBusVirtualObject {
 public:
     int created = 0, inhibits = 0, releases = 0;
+    int rejectedInhibits = 0;
+    bool rejectInhibit = false;
     QMap<QString, QVariantMap> views;
     QList<uint> results;
     QList<QString> summaries;
@@ -44,6 +47,11 @@ public:
             summaries << args[4].toString();
             bus.send(message.createReply(QVariant::fromValue(uint(summaries.size()))));
         } else if (message.member() == "Inhibit") {
+            if (rejectInhibit) {
+                ++rejectedInhibits;
+                bus.send(message.createErrorReply("org.example.TemporaryFailure", "fixture failure"));
+                return true;
+            }
             ++inhibits; bus.send(message.createReply(QVariant::fromValue(uint(inhibits))));
         } else if (message.member() == "UnInhibit") {
             ++releases; bus.send(message.createReply());
@@ -291,7 +299,21 @@ int main(int argc, char **argv) {
     window.show(); window.close();
     QElapsedTimer offlineExit; offlineExit.start(); app.exec();
     assert(offlineExit.elapsed() < 3000);
-    std::cout << "PASS: close/reopen/minimize, real manager queue, one running vs queued view, exact progress and continuous average-speed timer, success/failure/cancel/crash, hidden removal confirmation, suspend inhibit/release, batch 2/5 and history/cancellation accounting, escaped once-only closed-window summary\n";
+    {
+        SleepInhibitor retry;
+        desktop.rejectInhibit = true;
+        retry.setActive(true);
+        waitFor([&] { return desktop.rejectedInhibits == 1; });
+        for (int tick = 0; tick < 1000; ++tick) retry.setActive(true);
+        QCoreApplication::processEvents();
+        assert(desktop.rejectedInhibits == 1);
+        const auto acquired = desktop.inhibits, released = desktop.releases;
+        desktop.rejectInhibit = false;
+        waitFor([&] { return desktop.inhibits == acquired + 1; });
+        retry.setActive(false);
+        waitFor([&] { return desktop.releases == released + 1; });
+    }
+    std::cout << "PASS: close/reopen/minimize, real manager queue, one running vs queued view, exact progress and continuous average-speed timer, success/failure/cancel/crash, hidden removal confirmation, suspend inhibit/release with bounded failure retries, batch 2/5 and history/cancellation accounting, escaped once-only closed-window summary\n";
     std::cout << "PASS: idle shutdown waits for the post-queue catalog cache, without extending its source-refresh age\n";
     std::cout << "PASS: stuck cache work is stopped, the previous file is preserved, and reopen/close does not restart the deadline\n";
 }

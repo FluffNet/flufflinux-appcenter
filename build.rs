@@ -117,6 +117,16 @@ fn main() {
         .expect("failed to run Qt moc")
         .success());
     let display_version = std::fs::read_to_string("VERSION").expect("VERSION is missing");
+    // Cargo's optimization setting does not automatically reach this compiler.
+    // Keep the small Qt transport optimized in release builds too: it handles
+    // every property/progress envelope on the UI thread.
+    let native_optimization = match env::var("OPT_LEVEL").as_deref() {
+        Ok("1") => "-O1",
+        Ok("2") => "-O2",
+        Ok("3") => "-O3",
+        Ok("s" | "z") => "-Os",
+        _ => "-O0",
+    };
     for source in [
         PathBuf::from("src/qt_bridge.cpp"),
         PathBuf::from("src/ui_format.cpp"),
@@ -135,6 +145,7 @@ fn main() {
             .with_extension("o");
         let status = Command::new("c++")
             .args(["-std=c++17", "-fPIC", "-pthread", "-Wall", "-Wextra", "-c"])
+            .arg(native_optimization)
             .arg(format!(
                 "-DAPPCENTER_DISPLAY_VERSION=\"{}\"",
                 display_version.trim()

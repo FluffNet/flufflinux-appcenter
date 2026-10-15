@@ -50,24 +50,70 @@ int main(int argc, char **argv) {
         assert(request["action"] == "update");
         assert(request["id"] == "org.example.Test.desktop");
         assert(request["installation"] != "system"); // Unselected deployment.
+        send({{"type", "plan"}, {"operations", QJsonArray{QJsonObject{{"ref", request["flatpakRef"]},
+            {"commit", request["commit"]}, {"downloadBytes", 1000}}}}});
+        send({{"type", "operation"}, {"ref", request["flatpakRef"]}, {"phase", "download"},
+            {"progress", 0.5}, {"downloadProgress", 0.5}, {"receivedBytes", 500}});
         send({{"type", "result"}, {"success", true}});
         return 0;
     }
     QTemporaryDir root;
     QFile flatpak(root.filePath("flatpak")); assert(flatpak.open(QIODevice::WriteOnly));
-    flatpak.write("#!/bin/sh\nexit 0\n"); flatpak.close();
+    flatpak.write("#!/bin/sh\nif [ \"$1\" = list ] && [ -n \"$APPCENTER_INSTALLED_VERSION\" ]; then\n"
+        "printf 'org.example.InstalledDiff\\tInstalled\\t1 MB\\tfixture\\tuser\\tstable\\tx86_64\\tTest\\t%s\\n' \"$APPCENTER_INSTALLED_VERSION\"\nfi\n"); flatpak.close();
     assert(flatpak.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
     qputenv("PATH", root.path().toUtf8() + ':' + qgetenv("PATH"));
     qputenv("XDG_DATA_HOME", (root.path() + "/data").toUtf8());
     qputenv("XDG_CONFIG_HOME", (root.path() + "/config").toUtf8());
+    qputenv("FLATPAK_USER_DIR", (root.path() + "/user").toUtf8());
+    qputenv("FLATPAK_SYSTEM_DIR", (root.path() + "/system").toUtf8());
+    qputenv("FLATPAK_CONFIG_DIR", (root.path() + "/flatpak-config").toUtf8());
+    qunsetenv("APPCENTER_INSTALLED_VERSION");
     qputenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent-update-test-bus");
     QGuiApplication app(argc, argv);
     FlatpakManager manager({});
+    QVariantList mirror = manager.jobs();
+    int changedRows = 0;
+    QObject::connect(&manager, &FlatpakManager::jobsSnapshotChanged, &app, [&] { mirror = manager.jobs(); });
+    QObject::connect(&manager, &FlatpakManager::jobRowsChanged, &app, [&](const QVariantMap &rows) {
+        for (auto it = rows.begin(); it != rows.end(); ++it) {
+            const int row = it.key().toInt();
+            assert(row >= 0 && row < mirror.size());
+            mirror[row] = it.value();
+            ++changedRows;
+        }
+        assert(mirror == manager.jobs());
+    });
     until([&] { return !manager.installedLoading(); });
     assert(manager.updates()["state"] == "idle");
     assert(manager.updates()["items"].toList().isEmpty());
+    int installedSnapshots = 0;
+    QObject::connect(&manager, &FlatpakManager::installedAppsChanged, &app, [&] { ++installedSnapshots; });
     manager.refreshInstalled(); until([&] { return !manager.installedLoading(); });
+    assert(installedSnapshots == 0); // Loading/error/icon changes do not republish an unchanged list.
     assert(manager.updates()["state"] == "idle"); // No indirect check.
+    QVariantList installedMirror = manager.installedApps();
+    int installedRowChanges = 0;
+    QObject::connect(&manager, &FlatpakManager::installedAppsSnapshotChanged, &app,
+        [&] { installedMirror = manager.installedApps(); });
+    QObject::connect(&manager, &FlatpakManager::installedAppRowsChanged, &app, [&](const QVariantMap &rows) {
+        for (auto it = rows.begin(); it != rows.end(); ++it) {
+            const int row = it.key().toInt();
+            assert(row >= 0 && row < installedMirror.size());
+            installedMirror[row] = it.value();
+            ++installedRowChanges;
+        }
+        assert(installedMirror == manager.installedApps());
+    });
+    qputenv("APPCENTER_INSTALLED_VERSION", "1");
+    manager.refreshInstalled(); until([&] { return !manager.installedLoading(); });
+    assert(installedMirror.size() == 1);
+    qputenv("APPCENTER_INSTALLED_VERSION", "2");
+    manager.refreshInstalled(); until([&] { return !manager.installedLoading(); });
+    assert(installedRowChanges == 1 && installedMirror[0].toMap()["installedVersion"] == "2");
+    qunsetenv("APPCENTER_INSTALLED_VERSION");
+    manager.refreshInstalled(); until([&] { return !manager.installedLoading(); });
+    assert(installedMirror.isEmpty());
     auto check = [&] {
         manager.checkForUpdates(); assert(manager.updates()["state"] == "checking");
         assert(manager.jobs().isEmpty());
@@ -106,6 +152,7 @@ int main(int argc, char **argv) {
     manager.installSelectedUpdates(); // Busy double-click must not duplicate.
     until([&] { return !manager.busy(); });
     assert(manager.jobs().size() == 2);
+    assert(changedRows > 0 && mirror == manager.jobs());
     assert(manager.updates()["items"].toList().size() == 1);
     assert(manager.updates()["items"].toList()[0].toMap()["installation"] == "system");
     assert(manager.updates()["state"] == "ready"); // Completion never triggers a check.
