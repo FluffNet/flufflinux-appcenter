@@ -135,6 +135,18 @@ fn run() -> Result<i32, String> {
         println!("{result}");
         return Ok(0);
     }
+    if args.first().map(String::as_str) == Some("--sizes-worker") {
+        if args.len() != 2 {
+            return Err("Missing sizes request".into());
+        }
+        if unsafe { libc::geteuid() } == 0 {
+            return Err("Run App Center as your desktop user.".into());
+        }
+        backend::process::parent_death_signal()?;
+        let request = serde_json::from_str(&args[1]).map_err(|e| e.to_string())?;
+        println!("{}", backend::sizes::local(&request));
+        return Ok(0);
+    }
     if args.first().map(String::as_str) == Some("--permissions-worker") {
         if args.len() != 2 {
             return Err("Missing permissions request".into());

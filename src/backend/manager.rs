@@ -59,6 +59,7 @@ pub struct Manager {
     clock: Instant,
     catalog: CatalogState,
     size_app: Value,
+    catalog_after_queue: bool,
     permissions_token: u64,
     addons_token: u64,
     installed_revision: u64,
@@ -104,6 +105,7 @@ impl Manager {
                 ..Default::default()
             },
             size_app: json!({}),
+            catalog_after_queue: false,
             permissions_token: 0,
             addons_token: 0,
             installed_revision: 0,
@@ -244,7 +246,23 @@ impl Manager {
         ) {
             self.command(json!({"command":"background","data":data}));
         }
-        json!({"state":std::mem::take(&mut self.dirty),"signals":std::mem::take(&mut self.signals),"commands":std::mem::take(&mut self.commands),"return":result})
+        // Move the owned payload into the reply. json! serializes its value
+        // expressions again, briefly duplicating the entire catalog/queue.
+        Value::Object(Map::from_iter([
+            (
+                "state".into(),
+                Value::Object(std::mem::take(&mut self.dirty)),
+            ),
+            (
+                "signals".into(),
+                Value::Array(std::mem::take(&mut self.signals)),
+            ),
+            (
+                "commands".into(),
+                Value::Array(std::mem::take(&mut self.commands)),
+            ),
+            ("return".into(), result),
+        ]))
     }
     pub fn initial(&mut self) -> Value {
         self.finish_envelope(Value::Null)
@@ -258,7 +276,7 @@ impl Manager {
             "retryRecoveryIo" => self.retry_recovery_io(),
             "dismissRecovery" => self.dismiss_recovery(),
             "reviewRecovery" => self.review_recovery(arg(0).as_u64().unwrap_or(u64::MAX) as usize),
-            "event" => self.event(&arg(0)),
+            "event" => self.event(args.get(0).unwrap_or(&Value::Null)),
             "backgroundEnable" => self.background.enabled = true,
             "backgroundClosed" => self.background.closed = arg(0) == true,
             "backgroundIdle" => {
@@ -328,9 +346,13 @@ impl Manager {
             }
             "cancelAll" => self.cancel_all(),
             "clearFailedJob" => {
-                if let Some(index) = arg(0).as_u64().and_then(|index| usize::try_from(index).ok()) {
+                if let Some(index) = arg(0)
+                    .as_u64()
+                    .and_then(|index| usize::try_from(index).ok())
+                {
                     if let Some(job) = self.jobs.get_mut(index) {
-                        if flag(job, "failed") && !flag(job, "active")
+                        if flag(job, "failed")
+                            && !flag(job, "active")
                             && text(job, "action") != "uninstall"
                         {
                             job["hidden"] = true.into();
@@ -369,6 +391,7 @@ impl Manager {
             _ => {}
         }
         self.drain_links();
+        self.refresh_after_queue();
         self.start_catalog_refresh();
         self.finish_envelope(result)
     }
@@ -408,6 +431,7 @@ impl Manager {
                 "recovery" | "journal" => self.recovery_finished(role, task.context, event),
                 "installed" => self.installed_finished(task.context, event),
                 "permissions" | "addons" => self.reader_finished(role, task.context, event),
+                "sizes" => self.sizes_finished(task.context, event),
                 "updates" => self.updates_finished(flag(&task.context, "result"), event),
                 "desktop" => self.next_desktop_cache(),
                 "popularity" => {

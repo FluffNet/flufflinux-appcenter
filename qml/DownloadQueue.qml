@@ -3,6 +3,11 @@ import QtQuick
 QtObject {
     id: queue
     property var jobs: []
+    readonly property var jobsByIndex: {
+        const indexed = {}
+        for (const job of jobs) indexed[job.index] = job
+        return indexed
+    }
     property bool completionSeen: false
     readonly property bool hasError: jobs.some(function(job) { return job.failed === true })
     readonly property bool buttonVisible: jobs.length > 0

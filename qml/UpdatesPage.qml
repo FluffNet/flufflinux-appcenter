@@ -47,16 +47,27 @@ Page {
         let i = 0; while (bytes >= 1024 && i < units.length - 1) { bytes /= 1024; i++ }
         return bytes.toLocaleString(Qt.locale(), 'f', i ? 2 : 0) + " " + units[i]
     }
+    readonly property var updateJobsByKey: {
+        const grouped = {}
+        for (const job of window.backendJobs) {
+            if (job.action !== "update") continue
+            const key = "$" + job.key
+            if (!grouped[key]) grouped[key] = []
+            grouped[key].push(job)
+        }
+        return grouped
+    }
     function jobFor(row) {
-        const jobs = (window.backend && window.backend.jobs || []).filter(job => {
-            if (job.action !== "update" || job.key !== row.key) return false
+        const jobs = updateJobsByKey["$" + row.key] || []
+        for (let index = jobs.length - 1; index >= 0; --index) {
+            const job = jobs[index]
             // Finished history must not supply sizes/status for a later scan
             // of another release (including dependency-only refreshes).
-            if (row.commit && (job.commit !== row.commit || job.oldCommit !== row.oldCommit)) return false
-            return !row.plan || !job.plan || (row.plan.length === job.plan.length
-                && row.plan.every(op => job.plan.some(other => op.ref === other.ref && op.commit === other.commit)))
-        })
-        return jobs.length ? jobs[jobs.length - 1] : null
+            if (row.commit && (job.commit !== row.commit || job.oldCommit !== row.oldCommit)) continue
+            if (!row.plan || !job.plan || (row.plan.length === job.plan.length
+                && row.plan.every(op => job.plan.some(other => op.ref === other.ref && op.commit === other.commit)))) return job
+        }
+        return null
     }
     function versionLabel(row) {
         const oldVersion = String(row.oldVersion || "").trim()

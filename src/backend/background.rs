@@ -81,7 +81,13 @@ impl Background {
         }
         for job in jobs {
             if self.batch != 0 && number(job, "queueBatch") == self.batch {
-                self.batch_jobs.insert(number(job, "index"), job.clone());
+                // Completion summaries need no plans, permission metadata or
+                // per-operation progress. Do not retain another full queue.
+                self.batch_jobs.insert(number(job, "index"), json!({
+                    "id":job["id"], "name":job["name"], "action":job["action"],
+                    "active":flag(job,"active"), "failed":flag(job,"failed"),
+                    "cancelled":flag(job,"cancelled")
+                }));
             }
         }
         let mut finished = !self.reported && !self.batch_jobs.is_empty();

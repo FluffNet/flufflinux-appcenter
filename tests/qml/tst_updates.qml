@@ -14,6 +14,7 @@ TestCase {
         property var installedApps: []
         property var installSizes: ({})
         property bool installedLoading: false
+        property bool catalogLoading: false
         property string installedError: ""
         property bool busy: false
         property int iconRevision: 0
@@ -46,10 +47,27 @@ TestCase {
         root().openCategory("Installed")
         backend.updates = {state:"idle", items:[]}; backend.checks = 0; backend.submitted = []; backend.busy = false
         backend.jobs = []; backend.review = ({})
+        backend.catalogLoading = false
         main.width = 1180; main.height = 760; main.requestActivate()
         waitForPolish(root()); wait(30)
     }
     function open() { main.showUpdates(); tryCompare(stack(), "busy", false); waitForPolish(page()); wait(30) }
+    function test_updates_navigation_disabled_while_catalog_loads() {
+        const button = findChild(root(), "updatesButton")
+        const previousCategory = main.selectedCategory
+        backend.catalogLoading = true
+        verify(!button.enabled)
+        compare(button.contentItem.opacity, 0.38)
+        mouseClick(button)
+        compare(main.selectedCategory, previousCategory)
+        compare(backend.checks, 0)
+        backend.catalogLoading = false
+        verify(button.enabled)
+        compare(button.contentItem.opacity, 1)
+        mouseClick(button)
+        tryVerify(() => root().updatesView)
+        compare(backend.checks, 0, "Enabling navigation must not start an update check")
+    }
     function test_update_icons_follow_theme_data() {
         return [{tag:"dark", background:"#202326", foreground:"#ffffff"},
             {tag:"light", background:"#eff0f1", foreground:"#202326"},

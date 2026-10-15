@@ -23,7 +23,10 @@ impl Manager {
                 continue;
             }
             if !flag(&job, "addon") {
-                job["icon"] = self.metadata(text(&job, "id"))["icon"].clone();
+                job["icon"] = self
+                    .catalog_app(text(&job, "id"))
+                    .map(|app| app["icon"].clone())
+                    .unwrap_or_else(|| job["id"].clone());
             }
             visible.push(job);
         }
@@ -50,7 +53,15 @@ impl Manager {
             self.publish_jobs();
         }
     }
-    pub(super) fn enqueue(&mut self, mut request: Value) {
+    pub(super) fn enqueue(&mut self, request: Value) {
+        if self.enqueue_request(request) {
+            self.publish_jobs();
+            self.start_next();
+        }
+    }
+    // Batch callers publish once, after all selections have been validated.
+    // Do not rebuild/copy the growing queue for every selected update.
+    pub(super) fn enqueue_request(&mut self, mut request: Value) -> bool {
         let id = normalized_id(text(&request, "id")).to_owned();
         if request["action"] != "update" {
             request["id"] = id.clone().into();
@@ -64,7 +75,7 @@ impl Manager {
                         || job["key"] == request["key"]))
                     || (id.is_empty() && job["source"] == request["source"]))
         }) {
-            return;
+            return false;
         }
         if !flag(&request, "prepareOnly") {
             self.replace_recovered(&request);
@@ -109,7 +120,6 @@ impl Manager {
             self.requests[index] = request.clone();
             self.jobs[index] = request.clone();
         }
-        self.publish_jobs();
         if !flag(&request, "prepareOnly") {
             self.queue_changed();
         }
@@ -124,7 +134,7 @@ impl Manager {
             };
             self.queue_review(json!({"localRemoval":true,"kind":"transaction","removing":true,"appId":id,"operations":[],"title":format!("Uninstall {name}?"),"titleKey":"Uninstall %1?","message":message_key.replace("%1",name),"messageKey":message_key,"textArguments":[name]}),index);
         }
-        self.start_next();
+        true
     }
     pub(super) fn start_next(&mut self) {
         if self.stopping {
@@ -232,6 +242,7 @@ impl Manager {
                     json!({"active":false,"queued":false,"cancelled":true,"status":""}),
                 );
                 self.queue_changed();
+                self.release_finished_jobs();
             }
             return;
         }
@@ -262,6 +273,7 @@ impl Manager {
         if !flag(&self.jobs[index], "prepareOnly") {
             self.queue_changed();
         }
+        self.release_finished_jobs();
     }
     pub(super) fn cancel_all(&mut self) {
         self.cancel_updates();
@@ -380,6 +392,7 @@ impl Manager {
                 if request["action"] != "uninstall"
                     && id == normalized_id(text(&self.size_app, "id"))
                 {
+                    self.cancel_reader("sizes");
                     self.set("installSizes", json!({id:message}));
                 }
             }
@@ -566,11 +579,28 @@ impl Manager {
         self.requests[index] = Value::Null;
         self.release_finished_jobs();
         if !preparation && !self.stopping {
-            if !text(&self.size_app, "id").is_empty() {
-                self.install_info(self.size_app.clone());
-            }
+            self.catalog_after_queue = true;
             self.refresh_desktop_caches();
-            self.reload_catalog(false);
+        }
+    }
+    pub(super) fn refresh_after_queue(&mut self) {
+        if !self.catalog_after_queue
+            || self.stopping
+            || self.jobs.iter().any(|job| flag(job, "active"))
+            || ["install", "remove"]
+                .iter()
+                .any(|role| self.tasks.contains_key(*role))
+        {
+            return;
+        }
+        self.catalog_after_queue = false;
+        // Each deployment changes the catalog fingerprint. Rebuilding after
+        // every item duplicates a large metadata load across a running batch.
+        // Installed state and launcher caches are still updated per item.
+        self.reload_catalog(false);
+        // A rebuilt catalog refreshes sizes itself when it arrives.
+        if !self.tasks.contains_key("catalog") && !text(&self.size_app, "id").is_empty() {
+            self.install_info(self.size_app.clone());
         }
     }
     pub(super) fn release_finished_jobs(&mut self) {
@@ -583,12 +613,13 @@ impl Manager {
         for index in 0..self.jobs.len() {
             let job = &self.jobs[index];
             if !flag(job, "active")
-                && (flag(job, "prepareOnly") || flag(job, "hidden"))
+                && (flag(job, "prepareOnly") || flag(job, "hidden") || flag(job, "cancelled"))
                 && self.job_role(index).is_none()
             {
                 // Cleared history still contributes to a running batch's
                 // 2/5 position. Keep only that accounting until it finishes.
                 self.jobs[index] = if !flag(job, "prepareOnly")
+                    && !flag(job, "cancelled")
                     && active_batches.contains(&number(job, "queueBatch"))
                 {
                     json!({"index":index,"queueBatch":job["queueBatch"],"hidden":true,"cancelled":flag(job,"cancelled")})
@@ -657,7 +688,11 @@ mod tests {
             json!({"index":1,"queueBatch":1,"action":"update","failed":true,"active":false}),
             json!({"index":2,"queueBatch":1,"action":"install","active":true}),
         ];
-        manager.requests = vec![request("a.b.First"), request("a.b.Second"), request("a.b.Third")];
+        manager.requests = vec![
+            request("a.b.First"),
+            request("a.b.Second"),
+            request("a.b.Third"),
+        ];
         manager.dispatch("clearFailedJob", &json!([0]));
         assert_eq!(manager.properties["jobs"].as_array().unwrap().len(), 2);
         assert_eq!(manager.properties["jobs"][0]["index"], 1);
@@ -682,7 +717,15 @@ mod tests {
         ];
         manager.requests = vec![Value::Null; 3];
         let before = manager.jobs.clone();
-        for index in [json!(0), json!(1), json!(2), json!(999), json!(-1), Value::Null, json!("0")] {
+        for index in [
+            json!(0),
+            json!(1),
+            json!(2),
+            json!(999),
+            json!(-1),
+            Value::Null,
+            json!("0"),
+        ] {
             manager.dispatch("clearFailedJob", &json!([index]));
             assert_eq!(manager.jobs, before);
         }
@@ -768,6 +811,35 @@ mod tests {
         manager.job_message("install", &json!({"type":"status","status":"Downloading"}));
         assert_eq!(manager.properties["jobs"], json!([]));
         assert!(!flag(&manager.jobs[0], "active"));
+    }
+    #[test]
+    fn invisible_cancelled_requests_are_released_without_clear_history() {
+        let mut manager = Manager::new(vec![]);
+        manager.initial();
+        for _ in 0..1000 {
+            let mut pending = request("a.b.Cancelled");
+            pending["previewPayload"] = "x".repeat(16384).into();
+            manager.enqueue_request(pending);
+            manager.cancel_job(0);
+            assert!(manager.jobs.is_empty() && manager.requests.is_empty());
+            manager.initial();
+        }
+        manager.enqueue(request("a.b.Running"));
+        manager.enqueue(request("a.b.Waiting"));
+        manager.cancel_job(1);
+        assert_eq!(manager.jobs.len(), 1);
+        manager.cancel_job(0);
+        assert_eq!(
+            manager.jobs.len(),
+            1,
+            "Keep running worker index until it exits"
+        );
+        let serial = manager.tasks["install"].serial;
+        manager.dispatch(
+            "event",
+            &json!([{"kind":"finished","role":"install","serial":serial,"code":1}]),
+        );
+        assert!(manager.jobs.is_empty() && manager.requests.is_empty());
     }
     #[test]
     fn removal_waits_for_its_own_consent() {

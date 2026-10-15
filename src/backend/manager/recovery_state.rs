@@ -329,6 +329,6 @@ mod tests {
         manager.answer_review(token, false);
         manager.initial();
         assert!(manager.tasks.contains_key("journal"));
-        assert!(!flag(&manager.jobs[0], "active"));
+        assert!(manager.jobs.is_empty() && manager.requests.is_empty());
     }
 }

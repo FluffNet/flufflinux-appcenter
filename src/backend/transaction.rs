@@ -262,8 +262,11 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
             );
         }
         progress.set_update_frequency(100);
-        let s = s.clone();
+        // State owns progress objects until operation-done. An error or cancel
+        // can skip that signal, so the callback must not own State in return.
+        let s = Rc::downgrade(&s);
         progress.connect_changed(move |progress| {
+            let Some(s) = s.upgrade() else { return };
             let w = s.borrow();
             let raw = progress.status().unwrap_or_default();
             let percent = (progress.progress() as f64 / 100.0).clamp(0.0, 1.0);
@@ -808,6 +811,11 @@ pub fn run(request: Value) -> i32 {
         progress: HashMap::new(),
     }));
     let result = execute(state.clone());
+    debug_assert_eq!(
+        Rc::strong_count(&state),
+        1,
+        "transaction callbacks retained worker state"
+    );
     let success = result.is_ok();
     let error = result.err().unwrap_or_default();
     let cancelled =

@@ -647,7 +647,7 @@ Page {
                     FluffToolButton {
                         id: updatesButton
                         objectName: "updatesButton"
-                        enabled: !window.networkOffline
+                        enabled: !window.networkOffline && !window.catalogLoading
                         width: parent.width; height: sidebar.navigationRowHeight
                         text: qsTr("App Updates"); icon.name: "system-upgrade"
                         icon.width: sidebar.navigationIconSize; icon.height: sidebar.navigationIconSize

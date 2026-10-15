@@ -19,7 +19,7 @@ ColumnLayout {
     readonly property bool showDependencyTotal: !(sizeInfo.appSize && sizeInfo.totalSize
                                                   && sizeInfo.appSize === sizeInfo.totalSize)
     function sizeText(field) {
-        return sizeInfo[field] || qsTr("Unavailable")
+        return sizeInfo[field] || (sizeInfo.state === "loading" ? qsTr("Loading...") : qsTr("Unavailable"))
     }
     visible: typeof window.backend !== "undefined" && !!window.backend
     Layout.fillWidth: true

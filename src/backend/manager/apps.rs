@@ -38,23 +38,53 @@ impl Manager {
         }
         let id = normalized_id(text(&app, "id")).to_owned();
         self.size_app = app.clone();
-        let result = self
-            .install_request(&app)
-            .map(|request| {
-                // Local-file sizes come from a complete disposable transaction,
-                // not a registered source or the metadata-only preview plan.
-                let preview = &request["previewSizes"];
-                if preview["state"] == "ready" {
-                    return preview.clone();
-                }
-                let result = sizes::local(&request);
-                if result["state"] == "unavailable" && preview["appBytes"].is_u64() {
-                    return preview.clone();
-                }
-                result
-            })
-            .unwrap_or_else(|| json!({"state":"unavailable"}));
-        self.set("installSizes", json!({id:result}));
+        self.cancel_reader("sizes");
+        if rows(&self.properties["installedApps"])
+            .iter()
+            .any(|installed| normalized_id(text(installed, "id")) == id)
+        {
+            // Installed pages display deployment size, not a new-install estimate.
+            // Keep size_app so removal completion can calculate it when needed.
+            self.set("installSizes", json!({}));
+            return;
+        }
+        let Some(request) = self.install_request(&app) else {
+            self.set("installSizes", json!({id:{"state":"unavailable"}}));
+            return;
+        };
+        let preview = request["previewSizes"].clone();
+        // A complete disposable local-file preview already resolved dependencies.
+        if preview["state"] == "ready" {
+            self.set("installSizes", json!({id:preview}));
+            return;
+        }
+        self.set("installSizes", json!({id.as_str():{"state":"loading"}}));
+        // Remote-ref enumeration can allocate a whole repository's metadata.
+        // Keep it out of the GUI process and bound its lifetime and output.
+        self.worker(
+            "sizes",
+            "--sizes-worker",
+            request,
+            30000,
+            64 * 1024,
+            false,
+            json!({"id":id,"preview":preview}),
+        );
+    }
+    pub(super) fn sizes_finished(&mut self, context: Value, event: &Value) {
+        let mut result: Value = if success(event) && !flag(event, "timedOut") {
+            serde_json::from_str(text(event, "stdout")).unwrap_or(Value::Null)
+        } else {
+            Value::Null
+        };
+        if !matches!(text(&result, "state"), "ready" | "partial") {
+            result = if context["preview"]["appBytes"].is_u64() {
+                context["preview"].clone()
+            } else {
+                json!({"state":"unavailable"})
+            };
+        }
+        self.set("installSizes", json!({text(&context,"id"):result}));
     }
     fn installed_match(&self, app: &Value) -> Option<Value> {
         rows(&self.properties["installedApps"])
@@ -433,5 +463,84 @@ fn scope_arg(scope: &str) -> String {
         "user" => "--user".into(),
         "system" => "--system".into(),
         _ => format!("--installation={scope}"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn installed_details_do_not_enumerate_remotes_until_the_app_is_removed() {
+        let mut manager = Manager::new(vec![]);
+        manager.initial();
+        let app = json!({"id":"a.b.App"});
+        manager.properties["installedApps"] = json!([app]);
+        manager.install_info(app.clone());
+        assert!(!manager.tasks.contains_key("sizes"));
+        assert_eq!(manager.size_app, app);
+        manager.properties["installedApps"] = json!([]);
+        manager.install_info(manager.size_app.clone());
+        assert!(manager.tasks.contains_key("sizes"));
+    }
+
+    #[test]
+    fn size_reads_are_bounded_async_and_ignore_replaced_worker_results() {
+        let mut manager = Manager::new(vec![]);
+        manager.initial();
+        let first = manager.dispatch("requestInstallInfo", &json!([{"id":"a.b.First"}]));
+        let command = rows(&first["commands"])
+            .iter()
+            .find(|c| c["role"] == "sizes")
+            .unwrap();
+        assert_eq!(command["args"][0], "--sizes-worker");
+        assert_eq!(command["timeout"], 30000);
+        assert_eq!(command["limit"], 65536);
+        let serial = command["serial"].clone();
+        manager.dispatch("requestInstallInfo", &json!([{"id":"a.b.Second"}]));
+        manager.event(
+            &json!({"role":"sizes","serial":serial,"kind":"finished","code":0,
+            "stdout":"{\"state\":\"ready\",\"appSize\":\"1 MiB\"}"}),
+        );
+        assert!(manager.properties["installSizes"]
+            .get("a.b.First")
+            .is_none());
+        assert_eq!(
+            manager.properties["installSizes"]["a.b.Second"]["state"],
+            "loading"
+        );
+        let serial = manager.tasks["sizes"].serial;
+        manager.event(
+            &json!({"role":"sizes","serial":serial,"kind":"finished","code":0,
+            "stdout":"{\"state\":\"ready\",\"appSize\":\"2 MiB\"}"}),
+        );
+        assert_eq!(
+            manager.properties["installSizes"]["a.b.Second"]["appSize"],
+            "2 MiB"
+        );
+        assert!(!manager.tasks.contains_key("sizes"));
+    }
+
+    #[test]
+    fn failed_size_reads_keep_partial_local_preview_without_inventing_a_total() {
+        for event in [
+            json!({"code":1}),
+            json!({"code":0,"stdout":"bad json"}),
+            json!({"code":1,"timedOut":true}),
+        ] {
+            let mut manager = Manager::new(vec![]);
+            manager.sizes_finished(
+                json!({"id":"a.b.App","preview":{
+                "state":"partial","appBytes":1024,"appSize":"1 KiB"}}),
+                &event,
+            );
+            assert_eq!(
+                manager.properties["installSizes"]["a.b.App"]["state"],
+                "partial"
+            );
+            assert!(manager.properties["installSizes"]["a.b.App"]
+                .get("totalBytes")
+                .is_none());
+        }
     }
 }

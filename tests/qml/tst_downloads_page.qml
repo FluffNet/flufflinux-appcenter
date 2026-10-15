@@ -44,7 +44,7 @@ TestCase {
                      {name: app.id, status: "Downloading", downloadSize: "128.00 MiB"}]
     } }
     function stack() { return findChild(main, "navigationStack") }
-    function card() { return findChild(stack().currentItem, "downloadJobs").itemAt(0) }
+    function card() { return findChild(stack().currentItem, "downloadJobs").itemAtIndex(0) }
     function visibleText(item) {
         if (!item.visible) return ""
         let result = item.text || ""
@@ -184,14 +184,14 @@ TestCase {
         const other = Object.assign({}, job, {index: 8, id: "org.example.Other", name: "Other"})
         backend.jobs = [other, job]
         compare(rows.count, 2)
-        compare(rows.itemAt(1), original)
-        const otherCard = rows.itemAt(0)
+        compare(rows.itemAtIndex(1), original)
+        const otherCard = rows.itemAtIndex(0)
         backend.jobs = [job, other]
-        compare(rows.itemAt(0), original)
-        compare(rows.itemAt(1), otherCard)
+        compare(rows.itemAtIndex(0), original)
+        compare(rows.itemAtIndex(1), otherCard)
         backend.jobs = [other]
         compare(rows.count, 1)
-        compare(rows.itemAt(0), otherCard)
+        compare(rows.itemAtIndex(0), otherCard)
         mouseClick(findChild(otherCard, "cancelDownloadButton"))
         compare(backend.cancelledIndex, 8, "Removing history must not change a surviving job's cancellation ID")
     }
@@ -260,19 +260,19 @@ TestCase {
             Object.assign({}, job, {index:12}),
             Object.assign({}, job, {index:15, active:false})]
         const rows = findChild(stack().currentItem, "downloadJobs")
-        const survivor = rows.itemAt(1)
+        const survivor = rows.itemAtIndex(1)
         const clear = findChild(card(), "clearFailedDownloadButton")
         verify(clear.visible)
         compare(clear.text, "Clear")
         compare(clear.icon.name, findChild(stack().currentItem, "clearDownloadHistoryButton").icon.name)
-        verify(!findChild(rows.itemAt(2), "clearFailedDownloadButton").visible)
-        verify(!findChild(rows.itemAt(3), "clearFailedDownloadButton").visible)
+        verify(!findChild(rows.itemAtIndex(2), "clearFailedDownloadButton").visible)
+        verify(!findChild(rows.itemAtIndex(3), "clearFailedDownloadButton").visible)
         waitForPolish(stack().currentItem)
         waitForRendering(clear)
         mouseClick(clear)
         compare(backend.clearedIndex, 3)
         compare(backend.jobs.map(job => job.index).join(","), "8,12,15")
-        compare(rows.itemAt(0), survivor)
+        compare(rows.itemAtIndex(0), survivor)
         waitForPolish(stack().currentItem)
         waitForRendering(survivor)
         mouseClick(findChild(survivor, "clearFailedDownloadButton"))

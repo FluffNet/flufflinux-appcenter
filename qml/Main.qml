@@ -65,12 +65,24 @@ ApplicationWindow {
     readonly property int catalogProgress: backend && typeof backend.catalogProgress === "number"
         ? Math.max(0, Math.min(100, backend.catalogProgress)) : 0
     readonly property bool catalogLoaded: !catalogLoading || catalog.length > 0
+    // Read the native QVariant queue once per notification, not once per card.
+    readonly property var backendJobs: backend ? backend.jobs : []
+    readonly property var jobsByAppId: {
+        const grouped = {}
+        for (const job of backendJobs) {
+            if (job.cancelled === true) continue
+            const key = "$" + String(job.id).replace(/\.desktop$/, "")
+            if (!grouped[key]) grouped[key] = []
+            grouped[key].push(job)
+        }
+        return grouped
+    }
     DownloadQueue {
         id: downloads
         objectName: "downloadQueue"
-        jobs: window.backend ? window.backend.jobs.filter(function(job) {
+        jobs: window.backendJobs.filter(function(job) {
             return job.action !== "uninstall" && job.cancelled !== true
-        }) : []
+        })
     }
     readonly property alias downloadQueue: downloads
     function findInstalled(app) {
@@ -87,11 +99,13 @@ ApplicationWindow {
         const id = String(app.id).replace(/\.desktop$/, "")
         // App/Installed progress also includes removals, which never belong
         // in Downloads or its badge. Cancellations are never status history.
-        const matches = (backend ? backend.jobs : []).filter(function(job) {
-            return String(job.id).replace(/\.desktop$/, "") === id && job.cancelled !== true
-                && (job.action !== "update" || !app.installation || (job.installation === app.installation && job.flatpakRef === app.installedRef))
-        })
-        return matches.length ? matches[matches.length - 1] : null
+        const matches = jobsByAppId["$" + id] || []
+        for (let index = matches.length - 1; index >= 0; --index) {
+            const job = matches[index]
+            if (job.action !== "update" || !app.installation
+                    || (job.installation === app.installation && job.flatpakRef === app.installedRef)) return job
+        }
+        return null
     }
     function iconSource(icon) {
         let source = icon || "application-x-executable"
