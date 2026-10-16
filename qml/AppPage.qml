@@ -7,6 +7,27 @@ Page {
     focusPolicy: Qt.ClickFocus
     id: page
     required property var app
+    property int screenshotRequest: 0
+    property string requestedScreenshots: ""
+    readonly property var screenshotFiles: window.backend && window.backend.screenshotFiles || ({})
+    function refreshScreenshots() {
+        if (!window.backend || typeof window.backend.requestScreenshots !== "function") return
+        const urls = visible && app ? app.screenshots || [] : []
+        const signature = JSON.stringify(urls)
+        if (signature === requestedScreenshots) return
+        requestedScreenshots = signature
+        if (screenshotRequest) window.backend.cancelScreenshots(screenshotRequest)
+        screenshotRequest = urls.length ? window.backend.requestScreenshots(urls) : 0
+    }
+    function screenshotSource(url) {
+        if (!/^https?:/.test(String(url)) || !window.backend || typeof window.backend.requestScreenshots !== "function") return url
+        return screenshotFiles[url] && screenshotFiles[url].source || ""
+    }
+    function screenshotLoading(url) { return !!screenshotFiles[url] && screenshotFiles[url].state === "loading" }
+    onAppChanged: Qt.callLater(refreshScreenshots)
+    onVisibleChanged: Qt.callLater(refreshScreenshots)
+    Component.onCompleted: refreshScreenshots()
+    Component.onDestruction: if (screenshotRequest && window.backend) window.backend.cancelScreenshots(screenshotRequest)
     property string previewScreenshot: ""
     property int previewScreenshotIndex: -1
     property real previewZoom: 1
@@ -487,14 +508,14 @@ Page {
                             id: screenshotThumbnail
                             anchors.fill: parent
                             anchors.margins: 1
-                            source: screenshotButton.modelData
+                            source: page.screenshotSource(screenshotButton.modelData)
                             asynchronous: true
                             fillMode: Image.PreserveAspectFit
                         }
                         LoadingSpinner {
                             objectName: "screenshotLoadingSpinner"
                             anchors.centerIn: parent
-                            running: screenshotThumbnail.status === Image.Loading
+                            running: screenshotThumbnail.status === Image.Loading || page.screenshotLoading(screenshotButton.modelData)
                             color: window.textColor
                         }
                     }
@@ -942,7 +963,7 @@ Page {
                         y: page.previewPanY
                         scale: page.previewZoom
                         transformOrigin: Item.Center
-                        source: page.previewScreenshot
+                        source: page.screenshotSource(page.previewScreenshot)
                         asynchronous: true
                         fillMode: Image.PreserveAspectFit
                         onPaintedWidthChanged: page.setPreviewPan(page.previewPanX,
@@ -953,7 +974,7 @@ Page {
                     LoadingSpinner {
                         objectName: "previewLoadingSpinner"
                         anchors.centerIn: parent
-                        running: previewImage.status === Image.Loading
+                        running: previewImage.status === Image.Loading || page.screenshotLoading(page.previewScreenshot)
                         color: window.textColor
                     }
                     Item {

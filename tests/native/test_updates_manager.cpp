@@ -72,6 +72,28 @@ int main(int argc, char **argv) {
     qputenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent-update-test-bus");
     QGuiApplication app(argc, argv);
     FlatpakManager manager({});
+    const int imageToken = manager.requestScreenshots({"https://example.org/one.png", "https://example.org/two.png"});
+    assert(imageToken > 0 && manager.screenshotFiles().size() == 2);
+    manager.cancelScreenshots(imageToken);
+    assert(manager.screenshotFiles().isEmpty());
+    QVariantList updateMirror = manager.updateItems();
+    int updateSnapshots = 0, updateRowChanges = 0;
+    QObject::connect(&manager, &FlatpakManager::updateItemsSnapshotChanged, &app, [&] {
+        updateMirror = manager.updateItems();
+        ++updateSnapshots;
+    });
+    QObject::connect(&manager, &FlatpakManager::updateItemRowsChanged, &app, [&](const QVariantMap &rows) {
+        const auto removed = rows.value("removed").toList();
+        for (auto row = removed.rbegin(); row != removed.rend(); ++row) updateMirror.removeAt(row->toInt());
+        for (auto it = rows.begin(); it != rows.end(); ++it) {
+            if (it.key() == "removed") continue;
+            const int row = it.key().toInt();
+            assert(row >= 0 && row < updateMirror.size());
+            updateMirror[row] = it.value();
+            ++updateRowChanges;
+        }
+        assert(updateMirror == manager.updateItems());
+    });
     QVariantList mirror = manager.jobs();
     int changedRows = 0;
     QObject::connect(&manager, &FlatpakManager::jobsSnapshotChanged, &app, [&] { mirror = manager.jobs(); });
@@ -122,8 +144,11 @@ int main(int argc, char **argv) {
     check();
     auto rows = manager.updates()["items"].toList();
     assert(rows.size() == 3);
+    assert(updateMirror == rows && !manager.updateStatus().contains("items"));
+    const int snapshotsBeforeSelection = updateSnapshots;
     for (const auto &row : rows) assert(row.toMap()["selected"].toBool());
     manager.selectAllUpdates(false);
+    assert(updateSnapshots == snapshotsBeforeSelection && updateRowChanges == 3);
     for (const auto &row : manager.updates()["items"].toList()) assert(!row.toMap()["selected"].toBool());
     manager.selectAllUpdates(true);
     for (const auto &row : rows) if (row.toMap()["installation"] == "system") manager.selectUpdate(row.toMap()["key"].toString(), false);

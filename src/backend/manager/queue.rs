@@ -543,7 +543,7 @@ impl Manager {
             self.error(text(message, "error"));
         }
         if ok && job["action"] == "update" {
-            let items: Vec<_> = rows(&self.properties["updates"]["items"])
+            let items: Vec<_> = rows(&self.properties["updateItems"])
                 .iter()
                 .filter(|row| row["key"] != self.requests[index]["key"])
                 .cloned()

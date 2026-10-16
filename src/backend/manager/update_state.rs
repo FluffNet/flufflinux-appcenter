@@ -27,7 +27,7 @@ impl Manager {
         if self.properties["updates"]["state"] != "ready" || self.busy() {
             return;
         }
-        let mut items = rows(&self.properties["updates"]["items"]).to_vec();
+        let mut items = rows(&self.properties["updateItems"]).to_vec();
         for row in &mut items {
             if key.is_none_or(|key| text(row, "key") == key) {
                 row["selected"] = selected.into();
@@ -39,7 +39,7 @@ impl Manager {
         if self.properties["updates"]["state"] != "ready" || self.busy() {
             return;
         }
-        let selected: Vec<_> = rows(&self.properties["updates"]["items"])
+        let selected: Vec<_> = rows(&self.properties["updateItems"])
             .iter()
             .filter(|row| flag(row, "selected"))
             .cloned()
@@ -108,12 +108,14 @@ mod tests {
     fn status_merge_preserves_update_items_and_skips_unchanged_notifications() {
         let mut manager = Manager::new(vec![]);
         let items = json!([{"id":"org.example.App","plan":[{"downloadBytes":1000}]}]);
-        manager.properties["updates"] =
-            json!({"state":"ready","items":items,"lastUpdated":"today"});
+        manager.merge(
+            "updates",
+            json!({"state":"ready","items":items,"lastUpdated":"today"}),
+        );
         manager.initial();
         // The unchanged items allocation must survive both a no-op and a
         // status-only update, instead of deep-cloning the entire property.
-        let original = manager.properties["updates"]["items"]
+        let original = manager.properties["updateItems"]
             .as_array()
             .unwrap()
             .as_ptr();
@@ -121,14 +123,47 @@ mod tests {
         assert!(!manager.dirty.contains_key("updates"));
         manager.merge("updates", json!({"lastUpdated":"tomorrow"}));
         assert_eq!(
-            manager.properties["updates"]["items"]
+            manager.properties["updateItems"]
                 .as_array()
                 .unwrap()
                 .as_ptr(),
             original
         );
-        assert_eq!(manager.dirty["updates"]["items"], items);
+        assert!(manager.dirty["updates"].get("items").is_none());
+        assert!(!manager.dirty.contains_key("updateItems"));
         assert_eq!(manager.dirty["updates"]["lastUpdated"], "tomorrow");
+    }
+
+    #[test]
+    fn update_selection_and_removal_only_transport_changed_rows() {
+        let mut manager = Manager::new(vec![]);
+        manager.merge(
+            "updates",
+            json!({"state":"ready","items":[
+                {"key":"user:one","selected":true,"plan":[{"ref":"one"}]},
+                {"key":"system:two","selected":true,"plan":[{"ref":"two"}]}
+            ]}),
+        );
+        manager.initial();
+        let reply = manager.dispatch("selectUpdate", &json!(["user:one", false]));
+        assert!(reply["state"].get("updates").is_none());
+        assert!(reply["state"].get("updateItems").is_none());
+        assert_eq!(reply["rows"]["updateItems"].as_object().unwrap().len(), 1);
+        assert_eq!(reply["rows"]["updateItems"]["0"]["selected"], false);
+        manager.merge(
+            "updates",
+            json!({"items":[manager.properties["updateItems"][1]]}),
+        );
+        let reply = manager.finish_envelope(Value::Null);
+        assert!(reply["state"].get("updateItems").is_none());
+        assert_eq!(reply["rows"]["updateItems"], json!({"removed":[0]}));
+        assert_eq!(manager.properties["updateItems"][0]["key"], "system:two");
+        // A second edit in one envelope must not mix old and new row indices.
+        manager.merge("updates", json!({"items":[]}));
+        manager.merge("updates", json!({"items":[{"key":"user:new"}]}));
+        let reply = manager.initial();
+        assert!(reply["rows"].get("updateItems").is_none());
+        assert_eq!(reply["state"]["updateItems"][0]["key"], "user:new");
     }
 
     #[test]
@@ -146,7 +181,7 @@ mod tests {
                     })
                 })
                 .collect();
-            manager.properties["updates"] = json!({"state":"ready","items":items});
+            manager.merge("updates", json!({"state":"ready","items":items}));
             manager.dispatch("installSelectedUpdates", &json!([]));
             // Desktop subprocesses are simulated, never run by this state test.
             manager.tasks.insert("desktop".into(), Task::default());
@@ -235,7 +270,7 @@ mod tests {
                 })
             })
             .collect();
-        manager.properties["updates"] = json!({"state":"ready","items":items});
+        manager.merge("updates", json!({"state":"ready","items":items}));
         let start = Instant::now();
         let reply = manager.dispatch("installSelectedUpdates", &json!([]));
         eprintln!("QUEUE_BATCH 200 updates: {:?}", start.elapsed());

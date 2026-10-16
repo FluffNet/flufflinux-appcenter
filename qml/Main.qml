@@ -66,6 +66,12 @@ ApplicationWindow {
     readonly property bool networkReady: !networkStatus || networkStatus.ready !== false
     property bool catalogSourcesUnavailable: !!backend && backend.catalogSourcesUnavailable === true
     property var installedApps: []
+    property var updateItems: []
+    function syncUpdateItems() {
+        const items = !backend ? [] : typeof backend.updateItems !== "undefined"
+            ? backend.updateItems : backend.updates && backend.updates.items || []
+        updateItems = Array.from(items, item => Object.assign({}, item))
+    }
     function syncInstalledApps() {
         installedApps = backend ? Array.from(backend.installedApps || [], app => Object.assign({}, app)) : []
     }
@@ -119,14 +125,15 @@ ApplicationWindow {
     Timer { id: jobProgressTimer; interval: 33; onTriggered: window.flushJobRows() }
     function patchedRows(current, rows) {
         const values = current.slice()
+        for (let i = (rows.removed || []).length - 1; i >= 0; --i) values.splice(rows.removed[i], 1)
         for (const key of Object.keys(rows)) {
             const index = Number(key)
             if (Number.isInteger(index) && index >= 0 && index < values.length) values[index] = Object.assign({}, rows[key])
         }
         return values
     }
-    onBackendChanged: { syncBackendJobs(); syncInstalledApps() }
-    Component.onCompleted: { syncBackendJobs(); syncInstalledApps() }
+    onBackendChanged: { syncBackendJobs(); syncInstalledApps(); syncUpdateItems() }
+    Component.onCompleted: { syncBackendJobs(); syncInstalledApps(); syncUpdateItems() }
     readonly property var jobsByAppId: {
         const grouped = {}
         for (const job of backendJobs) {
@@ -243,6 +250,11 @@ ApplicationWindow {
             window.scheduleJobRows(rows)
         }
         function onInstalledAppsSnapshotChanged() { window.syncInstalledApps() }
+        function onUpdateItemsSnapshotChanged() { window.syncUpdateItems() }
+        function onUpdateItemRowsChanged(rows) { window.updateItems = window.patchedRows(window.updateItems, rows) }
+        function onUpdatesChanged() {
+            if (typeof window.backend.updateItemRowsChanged !== "function") window.syncUpdateItems()
+        }
         function onInstalledAppRowsChanged(rows) { window.installedApps = window.patchedRows(window.installedApps, rows) }
         function onInstalledAppsChanged() {
             if (typeof window.backend.installedAppRowsChanged !== "function") window.syncInstalledApps()

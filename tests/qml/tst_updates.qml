@@ -84,6 +84,25 @@ TestCase {
         tryCompare(list, "count", 30)
         tryVerify(() => Math.abs(list.contentY - 400) < 1)
     }
+    function test_status_selection_and_completion_preserve_surviving_delegates() {
+        open(); ready()
+        const list = findChild(page(), "updatesList")
+        tryCompare(list, "count", 2)
+        waitForPolish(list)
+        const survivor = list.itemAtIndex(1)
+        verify(survivor)
+        backend.updates = Object.assign({}, backend.updates, {lastUpdated: "today"})
+        waitForPolish(list)
+        verify(list.itemAtIndex(1) === survivor)
+        backend.selectUpdate("user:Alpha", false)
+        verify(list.itemAtIndex(1) === survivor)
+        compare(page().selected.length, 1)
+        backend.updates = Object.assign({}, backend.updates, {items: backend.updates.items.slice(1)})
+        tryCompare(list, "count", 1)
+        waitForPolish(list)
+        verify(list.itemAtIndex(0) === survivor, "Completing another update must not recreate this card")
+        compare(survivor.modelData.name, "Beta")
+    }
     function test_update_icons_follow_theme_data() {
         return [{tag:"dark", background:"#202326", foreground:"#ffffff"},
             {tag:"light", background:"#eff0f1", foreground:"#202326"},

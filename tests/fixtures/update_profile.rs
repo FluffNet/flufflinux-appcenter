@@ -119,6 +119,9 @@ fn main() {
                 }
             }
             Some("--sizes-worker") => send(json!({"state":"unavailable"})),
+            Some("--image-worker") => send(backend::images::worker(
+                &serde_json::from_str(&args[2]).unwrap(),
+            )),
             Some("--popularity-worker") => send(json!({})),
             Some("--recovery-worker") => send(backend::recovery::worker(
                 &args[2],

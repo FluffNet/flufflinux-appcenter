@@ -4,6 +4,7 @@ pub mod background;
 pub mod catalog;
 pub mod ffi;
 mod http;
+pub mod images;
 mod local_preview;
 pub mod locale;
 pub mod manager;

@@ -72,6 +72,17 @@ fn c_path(path: &Path) -> Result<CString, String> {
 
 fn run() -> Result<i32, String> {
     let args: Vec<String> = env::args().skip(1).collect();
+    if args.first().map(String::as_str) == Some("--image-worker") && args.len() == 2 {
+        if unsafe { libc::geteuid() } == 0 {
+            return Err("Run App Center as your desktop user.".into());
+        }
+        backend::process::parent_death_signal()?;
+        println!(
+            "{}",
+            backend::images::worker(&serde_json::from_str(&args[1]).map_err(|e| e.to_string())?)
+        );
+        return Ok(0);
+    }
     if args.first().map(String::as_str) == Some("--recovery-worker") {
         if args.len() != 3 || unsafe { libc::geteuid() } == 0 {
             return Err(

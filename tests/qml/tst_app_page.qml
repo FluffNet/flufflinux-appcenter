@@ -25,6 +25,7 @@ TestCase {
         property color borderColor: "#50545a"
         property color hoverColor: "#393d43"
         property var selectedApp: null
+        property var backend: null
         property bool showCatalogCalled: false
         property var previewApp: ({
             id: "org.fluff.PreviewTest",
@@ -54,6 +55,7 @@ TestCase {
     }
 
     function init() {
+        window.backend = null
         appPage.LayoutMirroring.enabled = false
         appPage.LayoutMirroring.childrenInherit = true
         window.showCatalogCalled = false
@@ -65,6 +67,42 @@ TestCase {
         window.height = 760
         tryCompare(appPage, "mirrored", false)
         waitForRendering(appPage)
+    }
+
+    QtObject {
+        id: screenshotBackend
+        property var screenshotFiles: ({})
+        property int requests: 0
+        property int cancellations: 0
+        function requestScreenshots(urls) { ++requests; return requests }
+        function cancelScreenshots(token) { ++cancellations }
+    }
+    function test_remote_screenshot_loading_cancellation_and_preview() {
+        window.backend = screenshotBackend
+        const url = "https://example.org/screenshot.png"
+        appPage.app = appWithScreenshots([url])
+        screenshotBackend.screenshotFiles = {[url]: {state: "loading", source: ""}}
+        wait(30)
+        compare(screenshotBackend.requests, 1, "Completion and deferred bindings must not launch duplicate requests")
+        compare(appPage.screenshotSource(url), "")
+        verify(appPage.screenshotLoading(url))
+        screenshotBackend.screenshotFiles = {[url]: {state: "ready", source: window.previewApp.screenshots[0]}}
+        verify(!appPage.screenshotLoading(url))
+        appPage.openScreenshot(0)
+        const image = findChild(appPage.screenshotPreviewDialog, "previewImage")
+        tryCompare(image, "status", Image.Ready)
+        compare(String(image.source), window.previewApp.screenshots[0])
+        appPage.screenshotPreviewDialog.close()
+        appPage.visible = false
+        tryCompare(screenshotBackend, "cancellations", 1)
+        appPage.visible = true
+        tryCompare(screenshotBackend, "requests", 2)
+        screenshotBackend.screenshotFiles = {[url]: {state: "error", source: ""}}
+        verify(!appPage.screenshotLoading(url), "Failed downloads must not leave a spinner stuck")
+        appPage.visible = false
+        tryCompare(screenshotBackend, "cancellations", 2)
+        window.backend = null
+        appPage.visible = true
     }
 
     function appWithScreenshots(screenshots) {

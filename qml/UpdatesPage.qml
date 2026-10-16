@@ -7,8 +7,31 @@ Page {
     id: page
     objectName: "updatesPage"
     focusPolicy: Qt.ClickFocus
-    readonly property var updateData: visible && window.backend && window.backend.updates || ({state: "idle", items: []})
-    readonly property var rows: updateData.items || []
+    readonly property var updateData: !visible || !window.backend ? ({state: "idle"})
+        : typeof window.backend.updateStatus !== "undefined" ? window.backend.updateStatus : window.backend.updates
+    readonly property var rows: visible ? window.updateItems : []
+    readonly property var rowsByKey: {
+        const result = {}
+        for (const row of rows) result["$" + row.key] = row
+        return result
+    }
+    readonly property string membership: JSON.stringify(rows.map(row => row.key))
+    ListModel { id: updateRows }
+    function syncRows() {
+        const keys = page.rows.map(row => row.key)
+        const present = new Set(keys)
+        for (let row = updateRows.count - 1; row >= 0; --row)
+            if (!present.has(updateRows.get(row).updateKey)) updateRows.remove(row)
+        for (let row = 0; row < keys.length; ++row) {
+            if (row < updateRows.count && updateRows.get(row).updateKey === keys[row]) continue
+            let existing = row + 1
+            while (existing < updateRows.count && updateRows.get(existing).updateKey !== keys[row]) ++existing
+            if (existing < updateRows.count) updateRows.move(existing, row, 1)
+            else updateRows.insert(row, {updateKey: keys[row]})
+        }
+    }
+    onMembershipChanged: syncRows()
+    Component.onCompleted: syncRows()
     readonly property bool checking: updateData.state === "checking"
     readonly property var skipped: updateData.skipped || []
     readonly property bool busy: !!window.backend && window.backend.busy
@@ -215,7 +238,7 @@ Page {
                 clip: true; spacing: 12; contentWidth: width
                 // A hidden Updates page must not rebuild native controls for
                 // each completion while the user is scrolling Queue/App view.
-                model: page.visible && !page.checking ? page.rows : []
+                model: updateRows
                 onContentYChanged: if (page.visible && !page.restoringScroll) page.savedScrollY = contentY
                 reuseItems: true
                 cacheBuffer: 200
@@ -229,7 +252,9 @@ Page {
                 PageWheelScroll { scrollTarget: list }
                 delegate: Rectangle {
                     id: updateRow
-                    required property var modelData
+                    required property string updateKey
+                    readonly property var modelData: page.rowsByKey["$" + updateKey]
+                        || ({key: updateKey, name: "", selected: false, remote: "", permissions: {state: "unchanged"}})
                     objectName: "updateRow-" + modelData.key
                     readonly property var job: page.jobFor(modelData)
                     width: list.width; implicitHeight: contents.implicitHeight + 32

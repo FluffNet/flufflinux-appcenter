@@ -72,6 +72,11 @@ void FlatpakManager::applyResponse(const QJsonObject &response) {
     for (auto it = rowChanges.begin(); it != rowChanges.end(); ++it) {
         auto values = m_state.value(it.key()).toList();
         const auto patches = it.value().toObject();
+        const auto removed = patches["removed"].toArray();
+        for (qsizetype row = removed.size(); row > 0; --row) {
+            const auto index = removed.at(row - 1).toInt(-1);
+            if (index >= 0 && index < values.size()) values.removeAt(index);
+        }
         for (auto patch = patches.begin(); patch != patches.end(); ++patch) {
             bool valid = false;
             const auto row = patch.key().toLongLong(&valid);
@@ -85,6 +90,8 @@ void FlatpakManager::applyResponse(const QJsonObject &response) {
     else if (rowChanges.contains("jobs")) emit jobRowsChanged(rowChanges["jobs"].toObject().toVariantMap());
     if (changes.contains("installedApps")) emit installedAppsSnapshotChanged();
     else if (rowChanges.contains("installedApps")) emit installedAppRowsChanged(rowChanges["installedApps"].toObject().toVariantMap());
+    if (changes.contains("updateItems")) emit updateItemsSnapshotChanged();
+    else if (rowChanges.contains("updateItems")) emit updateItemRowsChanged(rowChanges["updateItems"].toObject().toVariantMap());
     QSet<QByteArray> notifications;
     if (changes.contains("installedApps") || rowChanges.contains("installedApps")) notifications.insert("installedAppsChanged");
     if (changes.contains("popularity")) notifications.insert("popularityChanged");
@@ -95,7 +102,10 @@ void FlatpakManager::applyResponse(const QJsonObject &response) {
     if (changes.contains("installSizes")) notifications.insert("installSizesChanged");
     if (changes.contains("appPermissions")) notifications.insert("appPermissionsChanged");
     if (changes.contains("appAddons")) notifications.insert("appAddonsChanged");
-    if (changes.contains("updates")) notifications.insert("updatesChanged");
+    if (changes.contains("screenshotFiles")) notifications.insert("screenshotFilesChanged");
+    if (changes.contains("updates")) notifications.insert("updateStatusChanged");
+    if (changes.contains("updateItems") || rowChanges.contains("updateItems")) notifications.insert("updateItemsChanged");
+    if (changes.contains("updates") || changes.contains("updateItems") || rowChanges.contains("updateItems")) notifications.insert("updatesChanged");
     // Loading/status changes must not reconstruct QML's catalog and icon models.
     if (changes.contains("catalog")) notifications.insert("catalogDataChanged");
     if (changes.contains("catalog") || changes.contains("catalogLoading") || changes.contains("catalogSourcesUnavailable")) notifications.insert("catalogChanged");

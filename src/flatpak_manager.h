@@ -22,7 +22,10 @@ class FlatpakManager final : public QObject {
     Q_PROPERTY(QVariantMap installSizes READ installSizes NOTIFY installSizesChanged)
     Q_PROPERTY(QVariantMap appPermissions READ appPermissions NOTIFY appPermissionsChanged)
     Q_PROPERTY(QVariantMap appAddons READ appAddons NOTIFY appAddonsChanged)
+    Q_PROPERTY(QVariantMap screenshotFiles READ screenshotFiles NOTIFY screenshotFilesChanged)
     Q_PROPERTY(QVariantMap updates READ updates NOTIFY updatesChanged)
+    Q_PROPERTY(QVariantMap updateStatus READ updateStatus NOTIFY updateStatusChanged)
+    Q_PROPERTY(QVariantList updateItems READ updateItems NOTIFY updateItemsChanged)
     Q_PROPERTY(QVariantList catalog READ catalog NOTIFY catalogDataChanged)
     Q_PROPERTY(bool catalogLoading READ catalogLoading NOTIFY catalogChanged)
     Q_PROPERTY(int catalogProgress READ catalogProgress NOTIFY catalogProgressChanged)
@@ -50,7 +53,12 @@ public:
     QVariantMap installSizes() const { return m_state.value("installSizes").toMap(); }
     QVariantMap appPermissions() const { return m_state.value("appPermissions").toMap(); }
     QVariantMap appAddons() const { return m_state.value("appAddons").toMap(); }
-    QVariantMap updates() const { return m_state.value("updates").toMap(); }
+    QVariantMap screenshotFiles() const { return m_state.value("screenshotFiles").toMap(); }
+    Q_INVOKABLE int requestScreenshots(QVariantList urls) { return dispatch("requestScreenshots", {QVariant::fromValue(urls)}).toInt(); }
+    Q_INVOKABLE void cancelScreenshots(int token) { dispatch("cancelScreenshots", {token}); }
+    QVariantMap updateStatus() const { return m_state.value("updates").toMap(); }
+    QVariantList updateItems() const { return m_state.value("updateItems").toList(); }
+    QVariantMap updates() const { auto value = updateStatus(); value["items"] = updateItems(); return value; }
     QVariantList catalog() const { return m_state.value("catalog").toList(); }
     bool catalogLoading() const { return m_state.value("catalogLoading").toBool(); }
     int catalogProgress() const { return m_state.value("catalogProgress").toInt(); }
@@ -108,7 +116,12 @@ signals:
     void installSizesChanged();
     void appPermissionsChanged();
     void appAddonsChanged();
+    void screenshotFilesChanged();
     void updatesChanged();
+    void updateStatusChanged();
+    void updateItemsChanged();
+    void updateItemsSnapshotChanged();
+    void updateItemRowsChanged(QVariantMap rows);
     void catalogChanged();
     void catalogDataChanged();
     void catalogProgressChanged();

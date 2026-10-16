@@ -55,9 +55,9 @@ App.Main {
             if (main.phase === 0 && !main.catalogLoading && !main.installedLoading && !main.backend.busy && main.catalog.length) {
                 console.log("PROFILE_CHECK", main.catalog.length)
                 main.showUpdates(); main.backend.checkForUpdates(); main.phase = 1
-            } else if (main.phase === 1 && main.backend.updates.state === "ready" && !main.backend.busy) {
+            } else if (main.phase === 1 && main.backend.updateStatus.state === "ready" && !main.backend.busy) {
                 const button = probe.findChild(stack().currentItem, "installUpdatesButton")
-                if (!button || !button.enabled || main.backend.updates.items.length !== main.expectedJobs) { console.error("PROFILE_SETUP_FAILED"); Qt.exit(1); return }
+                if (!button || !button.enabled || main.updateItems.length !== main.expectedJobs) { console.error("PROFILE_SETUP_FAILED"); Qt.exit(1); return }
                 const start = Date.now()
                 console.log("PROFILE_BEFORE_UPDATE_ALL")
                 probe.mouseClick(button, button.width/2, button.height/2, Qt.LeftButton, Qt.NoModifier, 0)

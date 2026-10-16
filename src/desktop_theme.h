@@ -4,6 +4,7 @@
 #include <QEvent>
 #include <QIcon>
 #include <QQuickImageProvider>
+#include <QThread>
 #include <KIconLoader>
 
 // Theme icons take precedence over the bundled icon, including for source
@@ -13,6 +14,9 @@ public:
     explicit ThemeIconProvider(const QIcon &fallback)
         : QQuickImageProvider(QQuickImageProvider::Pixmap), m_fallback(fallback) {}
     QPixmap requestPixmap(const QString &request, QSize *size, const QSize &requested) override {
+#if APPCENTER_NATIVE_TESTS
+        if (QThread::currentThread() != qApp->thread()) qFatal("Theme icon requested outside the GUI thread");
+#endif
         const auto id = request.section('?', 0, 0);
         const QSize target = requested.isValid() ? requested : QSize(64, 64);
         QIcon icon = QIcon::fromTheme(id);

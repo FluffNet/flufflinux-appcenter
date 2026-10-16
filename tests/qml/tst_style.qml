@@ -22,6 +22,18 @@ TestCase {
         main.showCatalog()
         tryCompare(findChild(main, "navigationStack"), "busy", false)
     }
+    Component { id: iconFixture; AppCenter.AppIcon { property var window: main; width: 32; height: 32 } }
+    function test_theme_icon_fallback_stays_on_gui_thread_without_binding_loop() {
+        failOnWarning(/Binding loop|TypeError|ReferenceError/)
+        const icon = createTemporaryObject(iconFixture, main.contentItem, {icon: "missing-theme-icon"})
+        verify(icon)
+        compare(icon.asynchronous, false)
+        tryCompare(icon, "loadFailed", true)
+        icon.icon = "file:///nonexistent/appcenter-icon-fixture.png"
+        compare(icon.asynchronous, true, "Local application artwork must remain asynchronous")
+        tryCompare(icon, "loadFailed", true)
+        compare(icon.asynchronous, false, "The fallback is a native theme icon")
+    }
     function test_surfaces_data() {
         return [{tag: "dark", background: "#202326", foreground: "#ffffff"},
                 {tag: "light", background: "#eff0f1", foreground: "#202326"},

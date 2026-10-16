@@ -2,6 +2,7 @@
 //! it does not choose sources, plan jobs, validate requests, or manage the cache.
 mod apps;
 mod catalog_state;
+mod images;
 mod navigation;
 mod queue;
 mod recovery_state;
@@ -74,6 +75,8 @@ pub struct Manager {
     pending_links: Vec<String>,
     pending_installed_links: Vec<String>,
     popularity_attempt: Option<Instant>,
+    image_token: u64,
+    pending_images: VecDeque<String>,
     background: super::background::Background,
     recovery: recovery_state::RecoveryState,
 }
@@ -81,8 +84,8 @@ impl Manager {
     pub fn new(catalog: Vec<Value>) -> Self {
         let properties = json!({"jobs":[],"review":{},"recovery":{"items":[],"error":"","checking":false,"saving":false,"notice":0},"busy":false,"backgroundWorkPending":false,
             "installedApps":[],"installedLoading":true,"installedError":"","iconRevision":0,
-            "installSizes":{},"appPermissions":{},"appAddons":{},
-            "updates":{"state":"idle","items":[],"status":"","skipped":[],"error":"","lastChecked":"","lastUpdated":""},
+            "installSizes":{},"appPermissions":{},"appAddons":{},"screenshotFiles":{},
+            "updates":{"state":"idle","status":"","skipped":[],"error":"","lastChecked":"","lastUpdated":""},"updateItems":[],
             "catalog":[],"catalogLoading":false,"catalogProgress":0,"catalogSourcesUnavailable":false,
             "repositories":[],"sourcesBusy":false,"sourceInputStatus":"","sourcesError":"","popularity":super::popularity::cached()});
         let mut manager = Self {
@@ -122,6 +125,8 @@ impl Manager {
             pending_links: vec![],
             pending_installed_links: vec![],
             popularity_attempt: None,
+            image_token: 0,
+            pending_images: VecDeque::new(),
             background: Default::default(),
             recovery: Default::default(),
         };
@@ -139,7 +144,15 @@ impl Manager {
             self.dirty.insert(key.into(), value);
         }
     }
-    fn merge(&mut self, key: &str, patch: Value) {
+    fn merge(&mut self, key: &str, mut patch: Value) {
+        // Update dates/status must not republish every dependency plan. Items
+        // use the same bounded row-delta transport as jobs and installed apps.
+        if key == "updates" {
+            if let Some(Value::Array(items)) = patch.as_object_mut().and_then(|p| p.remove("items"))
+            {
+                self.set_indexed_rows("updateItems", items, |a, b| a["key"] == b["key"]);
+            }
+        }
         let (Some(target), Value::Object(patch)) = (self.properties[key].as_object_mut(), patch)
         else {
             return;
@@ -174,9 +187,36 @@ impl Manager {
         same_identity: fn(&Value, &Value) -> bool,
     ) {
         let previous = rows(&self.properties[key]);
+        // Completed updates only remove rows. Keep the remaining plans in the
+        // UI instead of serializing the whole shrinking list after every app.
+        if key == "updateItems"
+            && !self.dirty.contains_key(key)
+            && !self.row_changes.contains_key(key)
+            && values.len() < previous.len()
+        {
+            let mut next = 0;
+            let mut removed = vec![];
+            for (index, old) in previous.iter().enumerate() {
+                if values.get(next) == Some(old) {
+                    next += 1;
+                } else {
+                    removed.push(index);
+                }
+            }
+            if next == values.len() {
+                self.row_changes
+                    .insert(key.into(), json!({"removed":removed}));
+                self.properties[key] = values.into();
+                return;
+            }
+        }
         // Membership/order changes are snapshots. Ordinary progress transports
         // only changed rows, not 200 unchanged plans through JSON and QVariant.
         if self.dirty.contains_key(key)
+            || self
+                .row_changes
+                .get(key)
+                .is_some_and(|patch| patch.get("removed").is_some())
             || previous.len() != values.len()
             || previous
                 .iter()
@@ -345,6 +385,8 @@ impl Manager {
             "dismissRecovery" => self.dismiss_recovery(),
             "reviewRecovery" => self.review_recovery(arg(0).as_u64().unwrap_or(u64::MAX) as usize),
             "event" => self.event(args.get(0).unwrap_or(&Value::Null)),
+            "requestScreenshots" => result = self.request_screenshots(&arg(0)).into(),
+            "cancelScreenshots" => self.cancel_screenshots(arg(0).as_u64().unwrap_or(0)),
             "backgroundEnable" => self.background.enabled = true,
             "backgroundClosed" => self.background.closed = arg(0) == true,
             "backgroundIdle" => {
@@ -454,6 +496,7 @@ impl Manager {
             }
             "shutdown" => {
                 self.stopping = true;
+                self.cancel_screenshots(self.image_token);
                 self.cancel_all();
             }
             _ => {}
@@ -494,6 +537,7 @@ impl Manager {
         } else if text(event, "kind") == "finished" {
             let task = self.tasks.remove(role).unwrap();
             match role {
+                "image0" | "image1" => self.image_finished(task.context, event),
                 "install" | "remove" => self.job_finished(role, task.context, event),
                 "sources" => self.source_finished(event),
                 "catalog" => self.catalog_finished(event),

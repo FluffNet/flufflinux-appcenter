@@ -15,12 +15,34 @@ TestCase {
         property int iconRevision: 0
         property bool busy: false
         property var installSizes: ({})
+        property var updateItems: []
+        property var updates: ({state: "idle"})
+        signal updateItemsSnapshotChanged()
+        signal updateItemRowsChanged(var rows)
         signal jobsSnapshotChanged()
         signal jobRowsChanged(var rows)
         signal installedAppsSnapshotChanged()
         signal installedAppRowsChanged(var rows)
     }
     App.Main { id: main; backend: backend; visible: true; width: 1180; height: 800 }
+
+    function test_update_status_does_not_reconvert_rows() {
+        backend.updateItems = [{key: "one", selected: true, plan: [{ref: "runtime"}]},
+            {key: "two", selected: true, plan: []}]
+        backend.updateItemsSnapshotChanged()
+        const unchanged = main.updateItems[1], first = main.updateItems[0]
+        backend.updates = {state: "ready", lastUpdated: "today"}
+        verify(main.updateItems[0] === first && main.updateItems[1] === unchanged)
+        backend.updateItemRowsChanged({"0": {key: "one", selected: false, plan: [{ref: "runtime"}]}})
+        compare(main.updateItems[0].selected, false)
+        verify(main.updateItems[1] === unchanged)
+        backend.updateItemRowsChanged({removed: [0]})
+        compare(main.updateItems.length, 1)
+        verify(main.updateItems[0] === unchanged)
+        backend.updateItems = []
+        backend.updateItemsSnapshotChanged()
+        compare(main.updateItems.length, 0)
+    }
 
     function test_installed_rows_preserve_unchanged_metadata() {
         backend.installedApps = [

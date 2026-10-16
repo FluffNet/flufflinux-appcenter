@@ -175,7 +175,8 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     std::unique_ptr<WindowPreferences> windowPreferences;
     if (manageWindow) windowPreferences = std::make_unique<WindowPreferences>();
     bool firstFrame = true, firstCatalog = true;
-    QQmlApplicationEngine engine;
+    auto engineOwner = std::make_unique<QQmlApplicationEngine>();
+    auto &engine = *engineOwner;
     engine.addImageProvider("icon", new ThemeIconProvider(fallbackIcon));
     engine.rootContext()->setContextProperty("fluffBackend", &manager);
     engine.rootContext()->setContextProperty("fluffCatalogStats", &catalogStats);
@@ -276,6 +277,16 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     // still valid, then destroy the scene before QApplication/font teardown.
     engine.collectGarbage();
     qDeleteAll(engine.rootObjects());
+    // StackView/async image callbacks can leave deferred QObject deletions
+    // behind after exec() has stopped. Destroy them with a live QML engine,
+    // without running arbitrary timers, IPC or starting another transaction.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     engine.collectGarbage();
+    // Engine destruction joins its asynchronous image reader. That reader can
+    // post final deferred deletions while joining, after the first drain.
+    // Release those replies/textures before QApplication tears down fonts and
+    // thread-local GUI resources. Do not restart the general event loop here.
+    engineOwner.reset();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
     return result;
 }
