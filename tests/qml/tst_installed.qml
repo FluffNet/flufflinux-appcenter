@@ -6,6 +6,29 @@ TestCase {
     name: "Installed"
     when: main.visible
     AppCenter.Main { id: main; visible: true }
+    function test_detailed_list_error_is_plain_and_fits_narrow_page() {
+        const previousWidth = main.width, previousHeight = main.height
+        try {
+            main.width = 720; main.height = 520
+            main.showCatalog()
+            const stack = findChild(main, "navigationStack")
+            tryCompare(stack, "busy", false)
+            main.selectedCategory = "Installed"
+            main.installedLoading = false
+            main.installedError = "App Center could not read the installed-app list: line 2 has 6 fields; expected 7-9. Entry: <b>org.example.Broken</b>\nThis is a list-reading error, not an update failure. No apps were removed by this check. Run flatpak list --app to inspect the installed apps."
+            const label = findChild(stack.currentItem, "catalogEmptyMessage")
+            waitForPolish(stack.currentItem)
+            verify(label.visible)
+            compare(label.textFormat, Text.PlainText)
+            verify(label.font.bold)
+            verify(label.contentWidth <= label.width + 1)
+            verify(label.height <= label.parent.height)
+        } finally {
+            main.installedError = ""
+            main.selectedCategory = "All Apps"
+            main.width = previousWidth; main.height = previousHeight
+        }
+    }
     function test_compact_vertical_padding_data() {
         return [{tag:"wide", width:1180, version:"156.0.1", date:"24/09/2026 12:39"},
                 {tag:"narrow-wrapped", width:720, version:"2026.09.28.1234567890.1234567890.1234567890", date:"24 September 2026 12:39"}]

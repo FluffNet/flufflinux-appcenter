@@ -10,6 +10,19 @@ TestCase {
         return {index: name === "VLC" ? 1 : 0, name: name, progress: progress, active: active, failed: failed,
                 status: active ? "Installing" : failed ? "Failed" : "Complete", operations: []}
     }
+    SignalSpy { id: membershipSpy; target: main.downloadQueue; signalName: "membershipChanged" }
+    function test_progress_does_not_reconcile_membership() {
+        const queue = main.downloadQueue
+        queue.jobs = [job("Firefox", 0, true, false), job("VLC", 0, true, false)]
+        membershipSpy.clear()
+        for (let tick = 0; tick < 100; ++tick)
+            queue.jobs = [job("Firefox", tick / 100, true, false), job("VLC", 0, true, false)]
+        compare(membershipSpy.count, 0)
+        queue.jobs = [job("VLC", 0, true, false), job("Firefox", 1, false, false)]
+        compare(membershipSpy.count, 1)
+        queue.jobs = []
+        compare(membershipSpy.count, 2)
+    }
     function test_app_icons_in_downloads_data() {
         return [{tag: "downloading", active: true, failed: false},
                 {tag: "completed", active: false, failed: false},
@@ -22,7 +35,7 @@ TestCase {
         queue.jobs = [Object.assign(job("Test App", 0.5, data.active, data.failed), {icon: artwork})]
         main.showDownloads()
         tryCompare(stack, "busy", false)
-        const row = findChild(stack.currentItem, "downloadJobs").itemAt(0)
+        const row = findChild(stack.currentItem, "downloadJobs").itemAtIndex(0)
         const icon = findChild(row, "downloadAppIcon")
         const title = findChild(row, "downloadAppName")
         const textColumn = findChild(row, "downloadAppText")
@@ -40,11 +53,11 @@ TestCase {
         // Invalid local artwork gets a themed fallback, then a new source
         // recovers automatically rather than keeping the previous error.
         queue.jobs = [Object.assign(job("Missing", 0, data.active, data.failed), {icon: "file:///nonexistent/appcenter-test-icon.png"})]
-        const missing = findChild(findChild(stack.currentItem, "downloadJobs").itemAt(0), "downloadAppIcon")
+        const missing = findChild(findChild(stack.currentItem, "downloadJobs").itemAtIndex(0), "downloadAppIcon")
         tryCompare(missing, "loadFailed", true)
         compare(missing.source.toString(), main.iconSource("application-x-executable"))
         queue.jobs = [Object.assign(job("Recovered", 1, false, false), {icon: artwork})]
-        tryCompare(findChild(findChild(stack.currentItem, "downloadJobs").itemAt(0), "downloadAppIcon"), "status", Image.Ready)
+        tryCompare(findChild(findChild(stack.currentItem, "downloadJobs").itemAtIndex(0), "downloadAppIcon"), "status", Image.Ready)
         main.goBack(); tryCompare(stack, "busy", false)
         queue.jobs = []
     }

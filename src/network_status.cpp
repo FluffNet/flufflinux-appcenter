@@ -1,4 +1,5 @@
 #include "network_status.h"
+#include "rust_backend.h"
 #include <QDBusMessage>
 #include <QDBusPendingCallWatcher>
 #include <QDBusPendingReply>
@@ -12,28 +13,9 @@ const QString propertiesInterface = QStringLiteral("org.freedesktop.DBus.Propert
 }
 
 QString NetworkStatus::classify(const QVariantMap &properties) {
-    // NMState, not NMConnectivityState: Connectivity=NONE can also mean a
-    // working LAN with no default Internet route. Never block that connection.
-    // UNKNOWN/missing NM is not evidence that the machine is offline.
-    const uint state = properties.value("State").toUInt();
-    const uint connectivity = properties.value("Connectivity").toUInt();
-    switch (state) {
-    case 10: // Networking disabled/asleep.
-    case 20: // No active network connection (including no network interfaces).
-        return QStringLiteral("offline");
-    case 30: // Disconnecting.
-    case 40: // Connecting; do not lock out a connection still being established.
-        return QStringLiteral("connecting");
-    case 50: // CONNECTED_LOCAL: LAN only, no default route.
-        return QStringLiteral("local");
-    case 60: // CONNECTED_SITE: default route, Internet check did not succeed.
-    case 70: // CONNECTED_GLOBAL.
-        if (connectivity == 2) return QStringLiteral("portal");
-        if (state == 60 || connectivity == 3) return QStringLiteral("limited");
-        return QStringLiteral("online");
-    default:
-        return QStringLiteral("unknown");
-    }
+    auto request = QJsonObject::fromVariantMap(properties);
+    request["operation"] = "network";
+    return rustUtility(request)["state"].toString();
 }
 
 NetworkStatus::NetworkStatus(QObject *parent, const QDBusConnection &bus)

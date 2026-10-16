@@ -105,6 +105,7 @@ TestCase {
         }]
 
         function openApp(app) { selectedApp = app }
+        function findInstalled(app) { return null } // This fixture has no installed apps.
 
         AppCenter.CatalogPage {
             id: catalogPage
@@ -113,6 +114,7 @@ TestCase {
     }
 
     function init() {
+        failOnWarning(/(ReferenceError|TypeError|Binding loop|Cannot assign)/)
         window.searchText = ""
         window.searchCategoryFilter = "All Apps"
         window.selectedCategory = "All Apps"
@@ -274,11 +276,11 @@ TestCase {
         verify(catalogGrid !== null)
         verify(naturalScroll !== null)
         verify(categoryScroll !== null)
-        compare(naturalScroll.wheelStep, 100)
-        compare(naturalScroll.touchpadStep, 42)
-        compare(naturalScroll.touchpadPixelScale, 2.15)
-        compare(categoryScroll.touchpadPixelScale, 2.15)
-        compare(categoryScroll.smoothScrolling, false)
+        compare(naturalScroll.target, catalogGrid)
+        compare(naturalScroll.blockTargetWheel, true)
+        compare(naturalScroll.scrollFlickableTarget, true)
+        compare(categoryScroll.blockTargetWheel, true)
+        compare(categoryScroll.filterMouseEvents, false)
     }
 
     function test_category_sidebar_grows_for_translated_labels() {

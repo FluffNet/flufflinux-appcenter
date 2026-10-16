@@ -1,6 +1,7 @@
 #include "../../src/window_preferences.h"
 #include <QTemporaryDir>
 #include <QTest>
+#include <QSettings>
 #include <QQuickWindow>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>

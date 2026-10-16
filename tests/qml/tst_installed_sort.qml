@@ -40,6 +40,25 @@ TestCase {
             {tag: "size-asc", index: 5, expected: "Empty,Beta,Alpha,Delta,Gamma"}
         ]
     }
+    function test_hidden_list_releases_rows_and_restores_position() {
+        const many = []
+        for (let i = 0; i < 200; ++i) many.push(Object.assign({}, apps[0], {id:"a.b.App" + i, name:"App " + i}))
+        main.installedApps = many
+        const list = findChild(page(), "installedList")
+        tryCompare(list, "count", 200)
+        waitForPolish(list); wait(30)
+        list.contentY = 400
+        wait(30)
+        main.showDownloads()
+        tryCompare(findChild(main, "navigationStack"), "busy", false)
+        compare(list.count, 0)
+        main.showCatalog()
+        tryCompare(findChild(main, "navigationStack"), "busy", false)
+        tryCompare(list, "count", 200)
+        tryVerify(() => Math.abs(list.contentY - 400) < 1)
+        main.showUpdates()
+        tryCompare(list, "count", 0)
+    }
     function test_orders(data) {
         page().installedSortIndex = data.index
         compare(names(), data.expected)

@@ -10,7 +10,12 @@ ApplicationWindow {
     // The native launcher restores geometry before showing the real window.
     // Standalone QML fixtures keep their explicit, non-persistent geometry.
     visible: typeof fluffWindowManaged === "undefined" || !fluffWindowManaged
-    title: "App Center"
+    title: qsTr("App Center")
+    readonly property bool rtl: Qt.application.layoutDirection === Qt.RightToLeft
+    contentItem.LayoutMirroring.enabled: rtl
+    contentItem.LayoutMirroring.childrenInherit: true
+    Overlay.overlay.LayoutMirroring.enabled: rtl
+    Overlay.overlay.LayoutMirroring.childrenInherit: true
     // Inherit the native launcher's desktop font and rendering preferences,
     // not a control style's independent default family.
     font: Qt.application.font
@@ -35,12 +40,25 @@ ApplicationWindow {
     // background tint only; hovering must not look like keyboard focus.
     readonly property color hoverColor: Qt.tint(surfaceColor, Qt.rgba(textColor.r, textColor.g, textColor.b, 0.085))
     readonly property int cornerRadius: 8
-    readonly property int iconThemeRevision: typeof fluffDesktopTheme !== "undefined"
-        ? fluffDesktopTheme.revision : 0
+    property var desktopTheme: typeof fluffDesktopTheme !== "undefined" ? fluffDesktopTheme : null
+    // KDE notifies both the theme adapter and Flatpak's desktop integration.
+    // Use one revision source, otherwise every icon is decoded twice for the
+    // same change. The backend revision remains the non-KDE/test fallback.
+    readonly property int iconThemeRevision: desktopTheme ? desktopTheme.revision : iconRevision
     readonly property url appIconUrl: iconSource("flufflinux-appcenter")
 
-    property var catalog: typeof fluffInitialCatalog !== "undefined"
-                          ? fluffInitialCatalog : []
+    property var catalog: backend ? Array.from(backend.catalog || []) : []
+    property int catalogIconRevision: 0
+    onCatalogChanged: ++catalogIconRevision
+    readonly property var catalogByAppId: {
+        const indexed = {}
+        for (const app of catalog) {
+            const key = "$" + String(app.id).replace(/\.desktop$/, "")
+            if (!indexed[key]) indexed[key] = app
+        }
+        return indexed
+    }
+    function catalogApp(id) { return catalogByAppId["$" + String(id).replace(/\.desktop$/, "")] || null }
     property var selectedApp: null
     property var backend: typeof fluffBackend !== "undefined" ? fluffBackend : null
     property var catalogStats: typeof fluffCatalogStats !== "undefined" ? fluffCatalogStats : null
@@ -50,7 +68,28 @@ ApplicationWindow {
     readonly property bool networkOffline: networkState === "offline"
     readonly property bool networkReady: !networkStatus || networkStatus.ready !== false
     property bool catalogSourcesUnavailable: !!backend && backend.catalogSourcesUnavailable === true
-    property var installedApps: backend ? backend.installedApps : []
+    property var installedApps: []
+    property var updateItems: []
+    function syncUpdateItems() {
+        const items = !backend ? [] : typeof backend.updateItems !== "undefined"
+            ? backend.updateItems : backend.updates && backend.updates.items || []
+        // Nested QVariant plans/permissions otherwise remain references into
+        // backend.updateItems by index. Removing a completed row would make
+        // every surviving card read the next row's nested data.
+        updateItems = JSON.parse(JSON.stringify(items))
+    }
+    function syncInstalledApps() {
+        installedApps = backend ? Array.from(backend.installedApps || [], app => Object.assign({}, app)) : []
+    }
+    readonly property var installedByAppId: {
+        const grouped = {}
+        for (const app of installedApps) {
+            const key = "$" + String(app.id).replace(/\.desktop$/, "")
+            if (!grouped[key]) grouped[key] = []
+            grouped[key].push(app)
+        }
+        return grouped
+    }
     property bool installedLoading: backend ? backend.installedLoading : false
     property string installedError: backend ? backend.installedError : ""
     readonly property int iconRevision: backend ? backend.iconRevision : 0
@@ -61,20 +100,69 @@ ApplicationWindow {
     readonly property int catalogProgress: backend && typeof backend.catalogProgress === "number"
         ? Math.max(0, Math.min(100, backend.catalogProgress)) : 0
     readonly property bool catalogLoaded: !catalogLoading || catalog.length > 0
+    // Keep unchanged rows in JS. Native progress transports only changed rows,
+    // avoiding conversion of every app's dependency plan on each tick.
+    property var backendJobs: []
+    property var pendingJobRows: ({})
+    function syncBackendJobs() {
+        if (jobProgressTimer) jobProgressTimer.stop()
+        pendingJobRows = ({})
+        backendJobs = backend ? Array.from(backend.jobs || [], job => Object.assign({}, job)) : []
+    }
+    function flushJobRows() {
+        jobProgressTimer.stop()
+        const rows = pendingJobRows
+        pendingJobRows = ({})
+        if (Object.keys(rows).length) backendJobs = patchedRows(backendJobs, rows)
+    }
+    function scheduleJobRows(rows) {
+        let urgent = false
+        for (const key of Object.keys(rows)) {
+            const next = Object.assign({}, rows[key]), previous = backendJobs[Number(key)]
+            pendingJobRows[key] = next
+            // Completion/cancellation and queue membership must be immediate.
+            // Only replaceable in-flight progress is coalesced to one frame.
+            if (!previous || ["active", "queued", "cancelled", "failed", "id", "action", "index"]
+                    .some(field => previous[field] !== next[field])) urgent = true
+        }
+        if (urgent) flushJobRows()
+        else if (!jobProgressTimer.running) jobProgressTimer.start()
+    }
+    Timer { id: jobProgressTimer; interval: 33; onTriggered: window.flushJobRows() }
+    function patchedRows(current, rows, detachNested) {
+        const values = current.slice()
+        for (let i = (rows.removed || []).length - 1; i >= 0; --i) values.splice(rows.removed[i], 1)
+        for (const key of Object.keys(rows)) {
+            const index = Number(key)
+            if (Number.isInteger(index) && index >= 0 && index < values.length)
+                values[index] = detachNested ? JSON.parse(JSON.stringify(rows[key])) : Object.assign({}, rows[key])
+        }
+        return values
+    }
+    onBackendChanged: { syncBackendJobs(); syncInstalledApps(); syncUpdateItems() }
+    Component.onCompleted: { syncBackendJobs(); syncInstalledApps(); syncUpdateItems() }
+    readonly property var jobsByAppId: {
+        const grouped = {}
+        for (const job of backendJobs) {
+            if (job.cancelled === true) continue
+            const key = "$" + String(job.id).replace(/\.desktop$/, "")
+            if (!grouped[key]) grouped[key] = []
+            grouped[key].push(job)
+        }
+        return grouped
+    }
     DownloadQueue {
         id: downloads
         objectName: "downloadQueue"
-        jobs: window.backend ? window.backend.jobs.filter(function(job) {
+        jobs: window.backendJobs.filter(function(job) {
             return job.action !== "uninstall" && job.cancelled !== true
-        }) : []
+        })
     }
     readonly property alias downloadQueue: downloads
     function findInstalled(app) {
         if (!app) return null
         const id = String(app.id).replace(/\.desktop$/, "")
-        const matches = installedApps.filter(function(item) {
-            return String(item.id).replace(/\.desktop$/, "") === id
-        })
+        const matches = installedByAppId["$" + id] || []
         return matches.find(function(item) { return item.installation === app.installation
             && item.installedBranch === app.installedBranch }) || matches[0] || null
     }
@@ -83,21 +171,42 @@ ApplicationWindow {
         const id = String(app.id).replace(/\.desktop$/, "")
         // App/Installed progress also includes removals, which never belong
         // in Downloads or its badge. Cancellations are never status history.
-        const matches = (backend ? backend.jobs : []).filter(function(job) {
-            return String(job.id).replace(/\.desktop$/, "") === id && job.cancelled !== true
-                && (job.action !== "update" || !app.installation || (job.installation === app.installation && job.flatpakRef === app.installedRef))
-        })
-        return matches.length ? matches[matches.length - 1] : null
+        const matches = jobsByAppId["$" + id] || []
+        for (let index = matches.length - 1; index >= 0; --index) {
+            const job = matches[index]
+            if (job.action !== "update" || !app.installation
+                    || (job.installation === app.installation && job.flatpakRef === app.installedRef)) return job
+        }
+        return null
     }
     function iconSource(icon) {
         let source = icon || "application-x-executable"
         if (source.indexOf("://") < 0)
             source = source.indexOf("/") >= 0 ? "file://" + source : "image://icon/" + source
         if (source.startsWith("image://icon/"))
-            return source + "?revision=" + iconRevision + "&theme=" + iconThemeRevision
-        return source.startsWith("file://") ? source + "?revision=" + iconRevision : source
+            return source + "?theme=" + iconThemeRevision
+        // Desktop icon invalidation does not change AppStream files. Reload
+        // those only with the catalog, not after every item in a large queue.
+        return source.startsWith("file://") ? source + "?revision=" + catalogIconRevision : source
     }
     function installApp(app) { if (backend) backend.installApp(app) }
+    function publisherIndex(apps) {
+        const indexed = {}
+        for (const entry of apps) for (const candidate of [entry].concat(entry.sources || [])) {
+            const developer = String(candidate.developer || "").trim()
+            if (!developer) continue
+            const ref = String(candidate.installedRef || candidate.flatpakRef || "")
+            const parts = ref.split("/")
+            const id = parts.length === 4 ? parts[1] : String(candidate.id || "")
+            const key = "$" + id
+            if (!indexed[key]) indexed[key] = []
+            indexed[key].push({developer: developer, ref: ref,
+                remote: candidate.installedOrigin || candidate.remote || "", sourceUrl: candidate.sourceUrl || ""})
+        }
+        return indexed
+    }
+    readonly property var catalogPublishers: publisherIndex(catalog)
+    readonly property var installedPublishers: publisherIndex(installedApps)
     function publisherFor(app) {
         if (!app) return ""
         const direct = String(app.developer || "").trim()
@@ -115,16 +224,14 @@ ApplicationWindow {
         // or a different branch/source. This does not make a network request.
         for (const alias of [false, true]) {
             if (alias && ref) break
-            for (const entry of (installedApps || []).concat(catalog || [])) {
-                for (const candidate of [entry].concat(entry.sources || [])) {
-                    const candidateId = identity(candidate)
-                    if ((alias ? candidateId + ".desktop" : candidateId) !== id) continue
-                    if (ref && (candidate.installedRef || candidate.flatpakRef || "") !== ref) continue
-                    if (remote && (candidate.installedOrigin || candidate.remote || "") !== remote) continue
-                    if (app.sourceUrl && candidate.sourceUrl !== app.sourceUrl) continue
-                    const publisher = String(candidate.developer || "").trim()
-                    if (publisher) return publisher
-                }
+            if (alias && !id.endsWith(".desktop")) continue
+            const key = "$" + (alias ? id.slice(0, -8) : id)
+            const candidates = (installedPublishers[key] || []).concat(catalogPublishers[key] || [])
+            for (const candidate of candidates) {
+                if (ref && candidate.ref !== ref) continue
+                if (remote && candidate.remote !== remote) continue
+                if (app.sourceUrl && candidate.sourceUrl !== app.sourceUrl) continue
+                return candidate.developer
             }
         }
         return ""
@@ -132,8 +239,12 @@ ApplicationWindow {
     function detailsFor(app) {
         const installed = findInstalled(app)
         if (installed) return installed
+        const installedFields = ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedRef", "installedBranch", "installedArch", "installedAt", "installedDate", "updatedAt", "updatedDate"]
+        // Keep the app identity stable when an unrelated installed-list refresh
+        // arrives, so an open permissions dialog is not treated as a new app.
+        if (app && !installedFields.some(field => field in app)) return app
         const clean = Object.assign({}, app)
-        for (const field of ["installedSize", "installedBytes", "installedVersion", "installedOrigin", "installation", "installedRef", "installedBranch", "installedArch", "installedAt", "installedDate", "updatedAt", "updatedDate"])
+        for (const field of installedFields)
             delete clean[field]
         return clean
     }
@@ -141,10 +252,28 @@ ApplicationWindow {
     Connections {
         target: window.backend
         ignoreUnknownSignals: true
+        function onJobsSnapshotChanged() { window.syncBackendJobs() }
+        function onJobRowsChanged(rows) {
+            window.scheduleJobRows(rows)
+        }
+        function onInstalledAppsSnapshotChanged() { window.syncInstalledApps() }
+        function onUpdateItemsSnapshotChanged() { window.syncUpdateItems() }
+        function onUpdateItemRowsChanged(rows) { window.updateItems = window.patchedRows(window.updateItems, rows, true) }
+        function onUpdatesChanged() {
+            if (typeof window.backend.updateItemRowsChanged !== "function") window.syncUpdateItems()
+        }
+        function onInstalledAppRowsChanged(rows) { window.installedApps = window.patchedRows(window.installedApps, rows) }
+        function onInstalledAppsChanged() {
+            if (typeof window.backend.installedAppRowsChanged !== "function") window.syncInstalledApps()
+        }
+        function onJobsChanged() {
+            // Standalone fixtures and simple alternate backends use snapshots.
+            if (typeof window.backend.jobRowsChanged !== "function") window.syncBackendJobs()
+        }
         function onAppOpened(app) { window.openApp(app) }
         function onHomeRequested() { window.showHome() }
+        function onUpdatesRequested() { window.showUpdates() }
         function onInputError(message) { inputError.text = message; errorDialog.open() }
-        function onCatalogChanged() { window.catalog = window.backend.catalog }
     }
     function showDownloads() {
         if (stack.currentItem.objectName !== "downloadsPage")
@@ -156,6 +285,8 @@ ApplicationWindow {
         if (backend && typeof backend.refreshSources === "function") backend.refreshSources()
     }
     function showAbout() { aboutDialog.open() }
+    function showRecovery() { recoveryDialog.open() }
+    RecoveryDialog { id: recoveryDialog; backend: window.backend }
     function showHome() {
         aboutDialog.close()
         errorDialog.close()
@@ -254,13 +385,12 @@ ApplicationWindow {
         objectName: "aboutDialog"
         anchors.centerIn: parent; width: Math.min(window.width - 48, 440)
         title: qsTr("About App Center")
-        modal: true; standardButtons: Dialog.Close
+        modal: true
         footer: DialogButtonBox {
-            standardButtons: Dialog.Close
             alignment: Qt.AlignHCenter
             topPadding: 8; bottomPadding: 8
             leftPadding: 8; rightPadding: 8
-            delegate: FluffButton { objectName: "aboutCloseButton" }
+            FluffButton { objectName: "aboutCloseButton"; text: qsTr("Close"); DialogButtonBox.buttonRole: DialogButtonBox.RejectRole }
             onRejected: aboutDialog.close()
         }
         contentItem: ColumnLayout {
@@ -269,10 +399,10 @@ ApplicationWindow {
                 objectName: "aboutAppIcon"
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 72; Layout.preferredHeight: 72
-                source: window.appIconUrl; fillMode: Image.PreserveAspectFit
+                source: visible ? window.appIconUrl : ""; fillMode: Image.PreserveAspectFit
             }
             Label { text: qsTr("App Center"); font.pixelSize: 26; font.bold: true; Layout.alignment: Qt.AlignHCenter }
-            Label { objectName: "aboutVersion"; text: qsTr("Version %1").arg(Qt.application.version || "2026.09 (Beta)"); Layout.alignment: Qt.AlignHCenter }
+            Label { objectName: "aboutVersion"; text: qsTr("Version %1").arg(Qt.application.version || "2026.10"); Layout.alignment: Qt.AlignHCenter }
             Label { text: qsTr("Discover and manage Flatpak apps on Fluff Linux."); Layout.fillWidth: true; wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter }
             Label {
                 objectName: "aboutCopyright"
@@ -285,6 +415,7 @@ ApplicationWindow {
     TransactionReview { backend: window.backend }
     Dialog {
         id: errorDialog
+        objectName: "flatpakErrorDialog"
         anchors.centerIn: parent; width: Math.min(window.width - 48, 600)
         title: qsTr("Could not open Flatpak")
         modal: true; standardButtons: Dialog.Ok

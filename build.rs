@@ -64,33 +64,81 @@ fn main() {
         "failed to generate Flatpak manager bindings"
     );
     let stats_generated = output_dir.join("moc_catalog_stats.cpp");
-    assert!(Command::new(&moc).arg("src/catalog_stats.h").arg("-o").arg(&stats_generated)
-        .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
-        .status().expect("failed to run Qt moc").success());
+    assert!(Command::new(&moc)
+        .arg("src/catalog_stats.h")
+        .arg("-o")
+        .arg(&stats_generated)
+        .args(
+            cflags
+                .split_whitespace()
+                .filter(|flag| flag.starts_with("-I") || flag.starts_with("-D"))
+        )
+        .status()
+        .expect("failed to run Qt moc")
+        .success());
     let preferences_generated = output_dir.join("moc_catalog_preferences.cpp");
-    assert!(Command::new(&moc).arg("src/catalog_preferences.h").arg("-o").arg(&preferences_generated)
-        .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
-        .status().expect("failed to run Qt moc").success());
+    assert!(Command::new(&moc)
+        .arg("src/catalog_preferences.h")
+        .arg("-o")
+        .arg(&preferences_generated)
+        .args(
+            cflags
+                .split_whitespace()
+                .filter(|flag| flag.starts_with("-I") || flag.starts_with("-D"))
+        )
+        .status()
+        .expect("failed to run Qt moc")
+        .success());
     let mut objects = Vec::new();
     let theme_generated = output_dir.join("moc_desktop_theme.cpp");
-    assert!(Command::new(&moc).arg("src/desktop_theme.h").arg("-o").arg(&theme_generated)
-        .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
-        .status().expect("failed to run Qt moc").success());
+    assert!(Command::new(&moc)
+        .arg("src/desktop_theme.h")
+        .arg("-o")
+        .arg(&theme_generated)
+        .args(
+            cflags
+                .split_whitespace()
+                .filter(|flag| flag.starts_with("-I") || flag.starts_with("-D"))
+        )
+        .status()
+        .expect("failed to run Qt moc")
+        .success());
     let network_generated = output_dir.join("moc_network_status.cpp");
-    assert!(Command::new(&moc).arg("src/network_status.h").arg("-o").arg(&network_generated)
-        .args(cflags.split_whitespace().filter(|flag| flag.starts_with("-I") || flag.starts_with("-D")))
-        .status().expect("failed to run Qt moc").success());
+    assert!(Command::new(&moc)
+        .arg("src/network_status.h")
+        .arg("-o")
+        .arg(&network_generated)
+        .args(
+            cflags
+                .split_whitespace()
+                .filter(|flag| flag.starts_with("-I") || flag.starts_with("-D"))
+        )
+        .status()
+        .expect("failed to run Qt moc")
+        .success());
     let display_version = std::fs::read_to_string("VERSION").expect("VERSION is missing");
+    // Cargo's optimization setting does not automatically reach this compiler.
+    // Keep the small Qt transport optimized in release builds too: it handles
+    // every property/progress envelope on the UI thread.
+    let native_optimization = match env::var("OPT_LEVEL").as_deref() {
+        Ok("1") => "-O1",
+        Ok("2") => "-O2",
+        Ok("3") => "-O3",
+        Ok("s" | "z") => "-Os",
+        _ => "-O0",
+    };
+    // Opt-in diagnostics only. Never add sanitizer runtimes to normal builds.
+    let sanitize_native = env::var("APPCENTER_SANITIZE_NATIVE").as_deref() == Ok("1");
+    println!("cargo:rerun-if-env-changed=APPCENTER_SANITIZE_NATIVE");
+    if sanitize_native {
+        println!("cargo:rustc-link-lib=dylib=asan");
+        println!("cargo:rustc-link-lib=dylib=ubsan");
+    }
     for source in [
         PathBuf::from("src/qt_bridge.cpp"),
+        PathBuf::from("src/ui_format.cpp"),
         PathBuf::from("src/background_queue.cpp"),
         PathBuf::from("src/flatpak_manager.cpp"),
-        PathBuf::from("src/flatpak_worker.cpp"),
-        PathBuf::from("src/flatpak_sizes.cpp"),
-        PathBuf::from("src/flatpak_permissions.cpp"),
-        PathBuf::from("src/flatpak_addons.cpp"),
-        PathBuf::from("src/flatpak_updates.cpp"),
-        PathBuf::from("src/flatpak_catalog.cpp"),
         PathBuf::from("src/catalog_stats.cpp"),
         PathBuf::from("src/network_status.cpp"),
         generated,
@@ -102,9 +150,21 @@ fn main() {
         let object = output_dir
             .join(source.file_stem().unwrap())
             .with_extension("o");
-        let status = Command::new("c++")
+        let mut compiler = Command::new("c++");
+        if sanitize_native {
+            compiler.args(["-fsanitize=address,undefined", "-fno-omit-frame-pointer", "-g"]);
+        }
+        let status = compiler
             .args(["-std=c++17", "-fPIC", "-pthread", "-Wall", "-Wextra", "-c"])
-            .arg(format!("-DAPPCENTER_DISPLAY_VERSION=\"{}\"", display_version.trim()))
+            .arg(native_optimization)
+            .arg(format!(
+                "-DAPPCENTER_NATIVE_TESTS={}",
+                u8::from(env::var_os("CARGO_FEATURE_NATIVE_TESTS").is_some())
+            ))
+            .arg(format!(
+                "-DAPPCENTER_DISPLAY_VERSION=\"{}\"",
+                display_version.trim()
+            ))
             .arg(&source)
             .arg("-o")
             .arg(&object)
@@ -143,38 +203,20 @@ fn main() {
     }
 
     println!("cargo:rerun-if-changed=src/qt_bridge.cpp");
+    println!("cargo:rerun-if-changed=src/ui_format.cpp");
+    println!("cargo:rerun-if-changed=src/rust_backend.h");
     println!("cargo:rerun-if-changed=src/desktop_theme.h");
     println!("cargo:rerun-if-changed=src/background_queue.cpp");
     println!("cargo:rerun-if-changed=src/background_queue.h");
     println!("cargo:rerun-if-changed=src/sleep_inhibitor.h");
     println!("cargo:rerun-if-changed=src/catalog_stats.h");
-    println!("cargo:rerun-if-changed=src/catalog_cache.h");
-    println!("cargo:rerun-if-changed=src/catalog_inputs.h");
     println!("cargo:rerun-if-changed=src/catalog_stats.cpp");
     println!("cargo:rerun-if-changed=src/network_status.h");
     println!("cargo:rerun-if-changed=src/network_status.cpp");
     println!("cargo:rerun-if-changed=src/catalog_preferences.h");
     println!("cargo:rerun-if-changed=VERSION");
-    println!("cargo:rerun-if-changed=src/source_removal.h");
     println!("cargo:rerun-if-changed=src/window_preferences.h");
     println!("cargo:rerun-if-changed=src/ui_typography.h");
     println!("cargo:rerun-if-changed=src/flatpak_manager.h");
-    println!("cargo:rerun-if-changed=src/flatpak_addons.h");
-    println!("cargo:rerun-if-changed=src/flatpak_addons.cpp");
-    println!("cargo:rerun-if-changed=src/flatpak_sources.h");
-    println!("cargo:rerun-if-changed=src/flatpak_catalog.cpp");
     println!("cargo:rerun-if-changed=src/flatpak_manager.cpp");
-    println!("cargo:rerun-if-changed=src/install_history.h");
-    println!("cargo:rerun-if-changed=src/flatpak_worker.cpp");
-    println!("cargo:rerun-if-changed=src/transaction_status.h");
-    println!("cargo:rerun-if-changed=src/transaction_progress.h");
-    println!("cargo:rerun-if-changed=src/download_rate.h");
-    println!("cargo:rerun-if-changed=src/download_size.h");
-    println!("cargo:rerun-if-changed=src/flatpak_sizes.cpp");
-    println!("cargo:rerun-if-changed=src/flatpak_sizes.h");
-    println!("cargo:rerun-if-changed=src/flatpak_permissions.cpp");
-    println!("cargo:rerun-if-changed=src/flatpak_permissions.h");
-    println!("cargo:rerun-if-changed=src/flatpak_updates.cpp");
-    println!("cargo:rerun-if-changed=src/update_plan.h");
-    println!("cargo:rerun-if-changed=src/update_sources.h");
 }

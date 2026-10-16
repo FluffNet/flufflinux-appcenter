@@ -1,34 +1,22 @@
 #pragma once
 #include <QObject>
 #include <QVariantMap>
-#include <QJsonObject>
-#include <QDateTime>
-#include <QNetworkAccessManager>
+#include "flatpak_manager.h"
 
-// Presentation metadata only. No installed-app IDs are sent and this object
-// cannot start a Flatpak check, install, update, or source operation.
+// QML-facing projection of the Rust popularity state.
 class CatalogStats final : public QObject {
     Q_OBJECT
     Q_PROPERTY(QVariantMap counts READ counts NOTIFY changed)
     Q_PROPERTY(QString state READ state NOTIFY changed)
     Q_PROPERTY(QString fetchedAt READ fetchedAt NOTIFY changed)
 public:
-    explicit CatalogStats(QObject *parent = nullptr);
-    QVariantMap counts() const { return m_counts.toVariantMap(); }
-    QString state() const { return m_state; }
-    QString fetchedAt() const { return m_fetchedAt.toString(Qt::ISODate); }
-    Q_INVOKABLE void loadPopularity();
-    static QJsonObject validCounts(const QJsonObject &raw);
-    static bool readPage(const QByteArray &bytes, int page, int &totalPages, QJsonObject &counts);
+    explicit CatalogStats(FlatpakManager *manager, QObject *parent = nullptr);
+    QVariantMap counts() const { return m_manager->popularity().value("counts").toMap(); }
+    QString state() const { return m_manager->popularity().value("state").toString(); }
+    QString fetchedAt() const { return m_manager->popularity().value("fetchedAt").toString(); }
+    Q_INVOKABLE void loadPopularity() { m_manager->loadPopularity(); }
 signals:
     void changed();
 private:
-    void fetchPage(int page);
-    void failed();
-    QString cachePath() const;
-    QNetworkAccessManager m_network;
-    QJsonObject m_counts, m_pending;
-    QString m_state = "idle";
-    QDateTime m_fetchedAt, m_lastAttempt;
-    int m_totalPages = 0;
+    FlatpakManager *m_manager;
 };

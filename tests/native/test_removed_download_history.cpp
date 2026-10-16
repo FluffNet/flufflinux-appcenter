@@ -40,6 +40,7 @@ static QVariantMap download(const FlatpakManager &manager, const QString &id) {
     return found;
 }
 int main(int argc, char **argv) {
+    if (argc == 2 && QByteArray(argv[1]) == "--catalog") { std::cout << "[]"; return 0; }
     if (argc == 3 && QByteArray(argv[1]) == "--transaction-worker") {
         QCoreApplication child(argc, argv);
         const auto request = QJsonDocument::fromJson(argv[2]).object();
@@ -59,6 +60,7 @@ int main(int argc, char **argv) {
         });
         return child.exec();
     }
+    if (argc > 1) return 2; // Unknown worker modes must not rerun the test.
     QTemporaryDir temporary; assert(temporary.isValid());
     const auto data = temporary.path() + "/data";
     assert(QDir().mkpath(data));

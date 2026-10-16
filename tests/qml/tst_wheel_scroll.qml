@@ -4,7 +4,7 @@ import QtTest
 import "../../qml" as AppCenter
 
 TestCase {
-    name: "WheelScroll"
+    name: "KirigamiPageScroll"
     when: window.visible
 
     ApplicationWindow {
@@ -16,11 +16,11 @@ TestCase {
         Flickable {
             id: scrollView
             anchors.fill: parent
-            contentWidth: width
+            contentWidth: 2000
             contentHeight: 2000
             boundsBehavior: Flickable.StopAtBounds
 
-            AppCenter.NaturalWheelScroll {
+            AppCenter.PageWheelScroll {
                 id: naturalWheel
                 scrollTarget: scrollView
             }
@@ -28,8 +28,11 @@ TestCase {
     }
 
     function init() {
-        naturalWheel.stopSmoothScroll()
+        naturalWheel.enabled = false
+        scrollView.cancelFlick()
+        scrollView.contentX = 0
         scrollView.contentY = 0
+        naturalWheel.enabled = true
     }
 
     function test_mouse_wheel_uses_a_normal_step() {
@@ -43,45 +46,37 @@ TestCase {
                    -120,
                    Qt.NoButton)
 
-        compare(scrollView.contentY, 100)
+        tryVerify(() => scrollView.contentY > 0)
+        wait(500)
+        verify(scrollView.contentY < scrollView.height)
     }
 
-    function test_touchpad_uses_smaller_continuous_deltas() {
-        verify((naturalWheel.acceptedDevices & PointerDevice.Mouse) !== 0)
-        verify((naturalWheel.acceptedDevices & PointerDevice.TouchPad) !== 0)
-        compare(naturalWheel.wheelStep, 100)
-        compare(naturalWheel.touchpadStep, 42)
-        compare(naturalWheel.touchpadPixelScale, 2.15)
-        compare(naturalWheel.isTouchpadDevice(null, true), true)
-        compare(naturalWheel.isTouchpadDevice({
-                    deviceType: PointerDevice.TouchPad,
-                    pointerType: PointerDevice.Finger,
-                    maximumPoints: 2
-                }, false), true)
-        compare(naturalWheel.isTouchpadDevice({
-                    deviceType: PointerDevice.Mouse,
-                    pointerType: PointerDevice.Generic,
-                    maximumPoints: 1
-                }, false), false)
+    function test_kirigami_is_the_page_wheel_owner() {
+        compare(naturalWheel.target, scrollView)
+        compare(naturalWheel.blockTargetWheel, true)
+        compare(naturalWheel.scrollFlickableTarget, true)
+        compare(naturalWheel.filterMouseEvents, false)
+        compare(scrollView.interactive, true)
+        compare(naturalWheel.keyNavigationEnabled, false)
     }
 
-    function test_touchpad_scroll_follows_a_smooth_target() {
-        naturalWheel.applyTouchpadDelta(215, false)
-        compare(naturalWheel.smoothScrolling, true)
-        compare(naturalWheel.smoothTargetY, 215)
-        verify(scrollView.contentY < naturalWheel.smoothTargetY)
-
-        tryCompare(scrollView, "contentY", 215, 1000)
-        compare(naturalWheel.smoothScrolling, false)
+    function test_both_axes_and_bounds() {
+        naturalWheel.scrollDown(215)
+        tryCompare(scrollView, "contentY", 215)
+        naturalWheel.scrollRight(80)
+        tryCompare(scrollView, "contentX", 80)
+        naturalWheel.scrollDown(10000); naturalWheel.scrollRight(10000)
+        tryCompare(scrollView, "contentY", scrollView.contentHeight - scrollView.height)
+        tryCompare(scrollView, "contentX", scrollView.contentWidth - scrollView.width)
+        naturalWheel.scrollUp(10000); naturalWheel.scrollLeft(10000)
+        tryCompare(scrollView, "contentY", 0); tryCompare(scrollView, "contentX", 0)
     }
 
-    function test_high_resolution_touchpad_scroll_has_no_catch_up_delay() {
-        naturalWheel.applyTouchpadDelta(20, true)
-        compare(naturalWheel.smoothScrolling, false)
-        compare(scrollView.contentY, 43)
-
-        naturalWheel.applyTouchpadDelta(10, true)
-        compare(naturalWheel.smoothScrolling, false)
-        compare(scrollView.contentY, 64.5)
+    function test_handler_detaches_for_modal_image_preview() {
+        naturalWheel.enabled = false; compare(naturalWheel.target, null)
+        naturalWheel.enabled = true; compare(naturalWheel.target, scrollView)
+        mouseWheel(scrollView, 250, 200, 0, -120)
+        tryVerify(() => scrollView.contentY > 0)
+        wait(500)
     }
 }

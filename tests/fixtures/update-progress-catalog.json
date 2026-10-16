@@ -1,0 +1,6 @@
+[
+  {"id":"org.example.Alpha","name":"01 Alpha","developer":"Fixture","icon":"","category":"Utilities"},
+  {"id":"org.example.Beta","name":"02 Beta","developer":"Fixture","icon":"","category":"Utilities"},
+  {"id":"org.example.Gamma","name":"03 Gamma","developer":"Fixture","icon":"","category":"Utilities"},
+  {"id":"org.example.Delta","name":"04 Delta","developer":"Fixture","icon":"","category":"Utilities"}
+]

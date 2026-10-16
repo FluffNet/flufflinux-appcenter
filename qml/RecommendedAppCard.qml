@@ -5,6 +5,7 @@ import QtQuick.Layouts
 AbstractButton {
     id: card
     required property var app
+    property bool installed: false
     readonly property bool tight: width < 128
     readonly property bool dense: width < 180 || height < 96
     implicitWidth: 190; implicitHeight: 96
@@ -12,18 +13,26 @@ AbstractButton {
     focusPolicy: Qt.TabFocus
     PointerFocusHandler {}
     Accessible.name: app.name
-    Accessible.description: publisher.text + (app.summary ? "\n" + app.summary : "")
+    Accessible.description: (installed ? qsTr("Installed") + "\n" : "") + publisher.text + (app.summary ? "\n" + app.summary : "")
     ToolTip.visible: hovered
     ToolTip.delay: 700
-    ToolTip.text: app.name + (publisher.text ? "\n" + publisher.text : "") + (app.summary ? "\n" + app.summary : "")
+    ToolTip.text: app.name + (installed ? "\n" + qsTr("Installed") : "") + (publisher.text ? "\n" + publisher.text : "") + (app.summary ? "\n" + app.summary : "")
     background: FluffButtonBackground { idleColor: window.surfaceColor }
     contentItem: RowLayout {
         spacing: card.tight ? 4 : card.dense ? 6 : 12
-        AppIcon {
+        Item {
             Layout.preferredWidth: card.tight ? 20 : card.dense ? 28 : 40
             Layout.preferredHeight: card.tight ? 20 : card.dense ? 28 : 40
-            sourceSize: Qt.size(64, 64)
-            icon: card.app.icon || ""
+            AppIcon {
+                anchors.fill: parent
+                sourceSize: Qt.size(64, 64)
+                icon: card.app.icon || ""
+            }
+            InstalledBadge {
+                anchors.right: parent.right; anchors.bottom: parent.bottom
+                width: card.tight ? 12 : card.dense ? 16 : 20; height: width
+                visible: card.installed
+            }
         }
         ColumnLayout {
             Layout.fillWidth: true; Layout.fillHeight: false

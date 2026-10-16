@@ -60,6 +60,44 @@ TestCase {
         return [{tag: "user", message: "If you proceed, Calculator and its app data will be removed."},
                 {tag: "system", message: "If you proceed, Calculator will be removed for all users, and its app data for this account will be deleted."}]
     }
+    function test_local_source_note_data() {
+        return [{tag: "dark", background: "#202326", foreground: "white", width: 1180},
+                {tag: "light-narrow", background: "#eff0f1", foreground: "#202326", width: 720}]
+    }
+    function test_local_source_note(data) {
+        const previousWindow = main.palette.window
+        const previousText = main.palette.windowText
+        main.palette.window = data.background; main.palette.windowText = data.foreground
+        main.width = data.width
+        const app = {id: "org.example.Local", name: "Local file", summary: "Preview", description: "About the app",
+            icon: "", screenshots: [], category: "", license: "", homepage: "", developer: "",
+            localSource: "file:///tmp/example.flatpakref", sourceUrl: "https://storage.googleapis.com/pieces-flatpak-repo"}
+        try {
+            main.openApp(app)
+            const stack = findChild(main, "navigationStack")
+            tryCompare(stack, "busy", false)
+            const page = stack.currentItem
+            waitForPolish(page)
+            const note = findChild(page, "localSourceNote")
+            const label = findChild(page, "localSourceNoteText")
+            const hero = findChild(page, "appHeroCard")
+            const about = findChild(page, "appAboutCard")
+            verify(note.visible)
+            compare(label.text, "This app comes from " + app.sourceUrl + "\nInstalling this app will add this source so the app can receive updates.")
+            compare(label.textFormat, Text.PlainText)
+            compare(label.color, main.textColor)
+            verify(note.y >= hero.y + hero.height, "The note belongs below the main app section")
+            verify(about.y >= note.y + note.height, "The note belongs above About this app")
+            verify(label.height >= label.implicitHeight, "The source note must wrap without clipping")
+            main.openApp(Object.assign({}, app, {localSource: ""}))
+            tryCompare(stack, "busy", false)
+            verify(!findChild(stack.currentItem, "localSourceNote").visible, "Regular catalog apps need no file-source note")
+        } finally {
+            main.showCatalog(); tryCompare(findChild(main, "navigationStack"), "busy", false)
+            main.width = 1180
+            main.palette.window = previousWindow; main.palette.windowText = previousText
+        }
+    }
     function test_version_stack_data() {
         return [{tag: "with-version", version: "0.28.0", total: "1.77 GiB", width: 1180},
                 {tag: "dependencies", version: "1.0", total: "2.35 GiB", width: 1180},
@@ -365,6 +403,30 @@ TestCase {
         compare(totalSize.text, "Unavailable")
         main.showCatalog(); tryCompare(stack, "busy", false)
         backend.installSizes = ({})
+    }
+    function test_website_follows_value_column_data() {
+        return [{tag:"ltr",rtl:false}, {tag:"rtl",rtl:true}]
+    }
+    function test_website_follows_value_column(data) {
+        main.contentItem.LayoutMirroring.enabled = data.rtl
+        const app = {id:"org.example.Rtl", name:"Unchanged Name", summary:"", description:"", category:"Utilities", license:"MIT", developer:"", icon:"", screenshots:[], homepage:"https://example.org/path?a=1&b=2"}
+        try {
+            main.openApp(app)
+            const stack = findChild(main, "navigationStack")
+            tryCompare(stack, "busy", false)
+            const page = stack.currentItem
+            const website = findChild(page, "appWebsiteLink")
+            const category = findChild(page, "appCategoryValue")
+            waitForPolish(page)
+            const linkEdge = website.mapToItem(page, data.rtl ? website.width : 0, 0).x
+            const columnEdge = category.mapToItem(page, data.rtl ? category.width : 0, 0).x
+            fuzzyCompare(linkEdge, columnEdge, 0.5)
+            compare(website.text, app.homepage)
+            compare(website.contentItem.text, app.homepage)
+            compare(main.selectedApp.name, app.name)
+        } finally {
+            main.contentItem.LayoutMirroring.enabled = Qt.binding(function() { return main.rtl })
+        }
     }
     function test_long_website_fits_narrow_window() {
         const previousWidth = main.width
@@ -872,8 +934,12 @@ TestCase {
         verify(!findChild(page, "cancelAppButton").visible)
         compare(findChild(page, "appJobStatus").text, "Pending…")
         main.showCatalog(); tryCompare(stack, "busy", false)
-        compare(findChild(row, "installedRemovalStatus").text, "Pending…")
-        verify(!findChild(row, "installedRemovalProgress").visible)
+        // Hidden Installed pages release delegates. Check the newly visible
+        // row rather than retaining a pointer to a destroyed offscreen card.
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const restoredRow = list.itemAtIndex(0)
+        compare(findChild(restoredRow, "installedRemovalStatus").text, "Pending…")
+        verify(!findChild(restoredRow, "installedRemovalProgress").visible)
         main.openApp(app); tryCompare(stack, "busy", false)
         const runningPage = stack.currentItem
         // A finished sub-step must not claim the whole removal is complete.
@@ -882,9 +948,11 @@ TestCase {
         verify(!findChild(runningPage, "cancelAppButton").visible)
         compare(findChild(runningPage, "appJobStatus").text, "Uninstalling…")
         main.showCatalog(); tryCompare(stack, "busy", false)
-        verify(findChild(row, "installedRemovalProgress").visible)
-        verify(findChild(row, "installedRemovalProgress").indeterminate)
-        compare(findChild(row, "installedRemovalStatus").text, "Uninstalling…")
+        tryVerify(function() { return list.itemAtIndex(0) !== null })
+        const runningRow = list.itemAtIndex(0)
+        verify(findChild(runningRow, "installedRemovalProgress").visible)
+        verify(findChild(runningRow, "installedRemovalProgress").indeterminate)
+        compare(findChild(runningRow, "installedRemovalStatus").text, "Uninstalling…")
         backend.jobs = []
         backend.installedApps = []
         main.selectedCategory = "All Apps"

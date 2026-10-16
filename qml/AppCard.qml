@@ -7,6 +7,9 @@ AbstractButton {
     focusPolicy: Qt.TabFocus
     PointerFocusHandler {}
     required property var app
+    property bool installed: false
+    Accessible.name: app.name
+    Accessible.description: (installed ? qsTr("Installed") + "\n" : "") + (app.summary || "")
     hoverEnabled: true
     implicitWidth: 250; implicitHeight: 142; padding: 18
     scale: down ? 0.985 : 1
@@ -36,6 +39,10 @@ AbstractButton {
                 running: appIcon.status === Image.Loading
                 color: window.textColor
             }
+            InstalledBadge {
+                anchors.right: parent.right; anchors.bottom: parent.bottom
+                visible: card.installed
+            }
         }
         ColumnLayout {
             Layout.fillWidth: true; Layout.fillHeight: true; spacing: 6
@@ -43,7 +50,7 @@ AbstractButton {
             AppPublisher { objectName: "catalogAppPublisher"; app: card.app; Layout.fillWidth: true; font.pixelSize: 12 }
             Label {
                 Layout.fillWidth: true; Layout.fillHeight: true
-                text: app.summary || "Application for Fluff Linux"
+                text: app.summary || qsTr("Application for Fluff Linux")
                 color: window.mutedTextColor; wrapMode: Text.WordWrap; maximumLineCount: 3
                 elide: Text.ElideRight; verticalAlignment: Text.AlignTop
             }

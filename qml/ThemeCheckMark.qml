@@ -7,6 +7,8 @@ Canvas {
     onColorChanged: requestPaint()
     onPartialChanged: requestPaint()
     onVisibleChanged: requestPaint()
+    onWidthChanged: requestPaint()
+    onHeightChanged: requestPaint()
     onPaint: {
         const ctx = getContext("2d")
         ctx.clearRect(0, 0, width, height)

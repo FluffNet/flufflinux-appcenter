@@ -1,6 +1,5 @@
 #include "flatpak_manager.h"
 #include "catalog_stats.h"
-#include "catalog_cache.h"
 #include "catalog_preferences.h"
 #include "network_status.h"
 #include "window_preferences.h"
@@ -22,14 +21,34 @@
 #include <QLockFile>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
+#if APPCENTER_NATIVE_TESTS
+#include <QQmlDebuggingEnabler>
+#endif
 #include <QQuickImageProvider>
 #include <QQuickWindow>
 #include <QStandardPaths>
 #include <QUrl>
+#include <QTranslator>
+#include <QLocale>
 #include <KWindowSystem>
 #include <cstdio>
 #include <memory>
 #include <unistd.h>
+
+extern "C" bool fluff_i18n_initialize(const char *languages);
+extern "C" char *fluff_i18n_translate(const char *context, const char *source);
+// Qt translation adapter only; language selection and catalogs live in Rust.
+class RustTranslator final : public QTranslator {
+public:
+    bool isEmpty() const override { return false; }
+    QString translate(const char *context, const char *source, const char *, int) const override {
+        char *translated = fluff_i18n_translate(context, source);
+        if (!translated) return {};
+        const auto result = QString::fromUtf8(translated);
+        fluff_backend_string_free(translated);
+        return result;
+    }
+};
 
 extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
                               int input_count, const char *const *inputs, const char *desktop_file) {
@@ -52,10 +71,25 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     if (!qEnvironmentVariableIsSet("PLASMA_INTEGRATION_USE_PORTAL"))
         qputenv("PLASMA_INTEGRATION_USE_PORTAL", "1");
     QApplication application(argc, argv);
+#if APPCENTER_NATIVE_TESTS
+    // Test-only, loopback-only profiler. Never enable a debugger or expose it
+    // in production builds. The fixture is isolated from the user's session.
+    const int profilePort = qEnvironmentVariableIntValue("APPCENTER_QML_PROFILE_PORT");
+    if (profilePort >= 1024 && profilePort <= 65535) {
+        QQmlDebuggingEnabler::enableDebugging(true);
+        QQmlDebuggingEnabler::setServices(QQmlDebuggingEnabler::profilerServices());
+        QQmlDebuggingEnabler::startTcpDebugServer(profilePort, QQmlDebuggingEnabler::WaitForClient, "127.0.0.1");
+    }
+#endif
+    const auto languageJson = QJsonDocument(QJsonArray::fromStringList(QLocale::system().uiLanguages())).toJson(QJsonDocument::Compact);
+    const bool rightToLeft = fluff_i18n_initialize(languageJson.constData());
+    RustTranslator translator;
+    application.installTranslator(&translator);
+    application.setLayoutDirection(rightToLeft ? Qt::RightToLeft : Qt::LeftToRight);
     trace("qt-ready");
     configureDesktopTypography(application);
     QCoreApplication::setApplicationName("flufflinux-appcenter");
-    QGuiApplication::setApplicationDisplayName("App Center");
+    QGuiApplication::setApplicationDisplayName(QCoreApplication::translate("AppCenter", "App Center"));
     QCoreApplication::setApplicationVersion(APPCENTER_DISPLAY_VERSION);
     QCoreApplication::setOrganizationName("FluffNet LLC");
     // Keep existing Plasma Discover pins associated with this window. The
@@ -114,6 +148,9 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     if (!server.listen(socketPath)) { qCritical("Cannot create the App Center link handler socket."); return 1; }
 
     FlatpakManager manager({});
+    if (!qEnvironmentVariableIsSet("FLUFF_APP_CENTER_QML")
+            || qEnvironmentVariableIntValue("FLUFF_APP_CENTER_RECOVERY_TEST") == 1)
+        manager.enableRecovery();
     NetworkStatus networkStatus;
     manager.setCatalogNetworkState(networkStatus.state(), networkStatus.ready());
     QObject::connect(&networkStatus, &NetworkStatus::changed, &manager, [&] {
@@ -125,9 +162,9 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     // Read-only UI fixtures keep the local-only worker unless explicitly
     // opting into the full startup flow with isolated source/cache paths.
     const bool cacheStartup = manageWindow || qEnvironmentVariableIntValue("FLUFF_APP_CENTER_CATALOG_TEST") == 1;
-    manager.loadCatalog(cacheStartup ? CatalogCache::defaultPath() : QString());
+    manager.loadCatalog(cacheStartup ? QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/application-list.json" : QString());
     if (!manager.catalogLoading()) trace("catalog-cache-ready");
-    CatalogStats catalogStats;
+    CatalogStats catalogStats(&manager);
     // Custom QML is used by read-only UI fixtures; it must not read/write the
     // desktop user's window preferences or override fixture geometry.
     // Explicitly opt-in live fixtures exercise this exact controller using an
@@ -137,25 +174,25 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
     CatalogPreferences catalogPreferences(manageWindow ? WindowPreferences::defaultPath() : QString());
     std::unique_ptr<WindowPreferences> windowPreferences;
     if (manageWindow) windowPreferences = std::make_unique<WindowPreferences>();
-    QQmlApplicationEngine engine;
+    bool firstFrame = true, firstCatalog = true;
+    auto engineOwner = std::make_unique<QQmlApplicationEngine>();
+    auto &engine = *engineOwner;
     engine.addImageProvider("icon", new ThemeIconProvider(fallbackIcon));
     engine.rootContext()->setContextProperty("fluffBackend", &manager);
     engine.rootContext()->setContextProperty("fluffCatalogStats", &catalogStats);
     engine.rootContext()->setContextProperty("fluffNetworkStatus", &networkStatus);
     engine.rootContext()->setContextProperty("fluffCatalogPreferences", &catalogPreferences);
     engine.rootContext()->setContextProperty("fluffDesktopTheme", &desktopTheme);
-    engine.rootContext()->setContextProperty("fluffInitialCatalog", manager.catalog());
     engine.rootContext()->setContextProperty("fluffWindowManaged", manageWindow);
     if (manageWindow) QTimer::singleShot(0, &manager, &FlatpakManager::initializeSources);
     engine.load(QUrl::fromLocalFile(QString::fromUtf8(qml_path)));
     if (engine.rootObjects().isEmpty()) return 4;
     trace("qml-ready");
-    bool firstFrame = true, firstCatalog = true;
-    QObject::connect(&manager, &FlatpakManager::catalogChanged, &application, [&] {
+    QObject::connect(&manager, &FlatpakManager::catalogChanged, &engine, [&] {
         if (firstCatalog && !manager.catalogLoading()) { firstCatalog = false; trace("catalog-ready"); }
     });
     if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first())) {
-        QObject::connect(window, &QQuickWindow::frameSwapped, &application, [&] {
+        QObject::connect(window, &QQuickWindow::frameSwapped, &engine, [&] {
             if (firstFrame) { firstFrame = false; trace("first-frame"); }
         }, Qt::QueuedConnection);
     }
@@ -197,11 +234,14 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
         }
     };
     std::unique_ptr<BackgroundQueue> background;
+    // IPC callbacks capture dispatch by reference. Their context must die
+    // before that closure, not with the longer-lived application or engine.
+    QObject launchCallbacks;
     if (manageBackground) {
         if (auto window = qobject_cast<QQuickWindow *>(engine.rootObjects().first()))
             background = std::make_unique<BackgroundQueue>(&manager, window, [&] { dispatch(QJsonArray{}); });
     }
-    QObject::connect(&server, &QLocalServer::newConnection, &engine, [&] {
+    QObject::connect(&server, &QLocalServer::newConnection, &launchCallbacks, [&] {
         while (auto socket = server.nextPendingConnection()) {
             QObject::connect(socket, &QLocalSocket::disconnected, socket, &QObject::deleteLater);
             const auto receive = [socket, &dispatch, &engine, &firstFrame] {
@@ -221,11 +261,32 @@ extern "C" int fluff_run_qml(const char *qml_path, const char *icon_path,
                     window->requestUpdate();
                 } else acknowledge();
             };
-            QObject::connect(socket, &QLocalSocket::readyRead, &engine, receive);
+            QObject::connect(socket, &QLocalSocket::readyRead, &launchCallbacks, receive);
             // A fast launcher can finish writing before newConnection is handled.
             receive();
         }
     });
-    QTimer::singleShot(0, &engine, [&] { if (!incoming.isEmpty()) dispatch(incoming); });
-    return application.exec();
+    QTimer::singleShot(0, &launchCallbacks, [&] { if (!incoming.isEmpty()) dispatch(incoming); });
+    const int result = application.exec();
+    server.close();
+    QObject::disconnect(&server, nullptr, &launchCallbacks, nullptr);
+    for (auto socket : server.findChildren<QLocalSocket *>()) socket->disconnect(&launchCallbacks);
+    background.reset();
+    windowPreferences.reset();
+    // Release page wrappers/delegates while their QML engine and contexts are
+    // still valid, then destroy the scene before QApplication/font teardown.
+    engine.collectGarbage();
+    qDeleteAll(engine.rootObjects());
+    // StackView/async image callbacks can leave deferred QObject deletions
+    // behind after exec() has stopped. Destroy them with a live QML engine,
+    // without running arbitrary timers, IPC or starting another transaction.
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    engine.collectGarbage();
+    // Engine destruction joins its asynchronous image reader. That reader can
+    // post final deferred deletions while joining, after the first drain.
+    // Release those replies/textures before QApplication tears down fonts and
+    // thread-local GUI resources. Do not restart the general event loop here.
+    engineOwner.reset();
+    QCoreApplication::sendPostedEvents(nullptr, QEvent::DeferredDelete);
+    return result;
 }

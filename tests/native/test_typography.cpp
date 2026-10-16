@@ -6,6 +6,8 @@
 #include <QQuickItem>
 #include <QTimer>
 #include <QImage>
+#include <QTextLayout>
+#include <QGlyphRun>
 #include <cassert>
 #include <iostream>
 #include "../../src/ui_typography.h"
@@ -67,6 +69,20 @@ int main(int argc, char **argv) {
     assert(argc > 1);
     expectedFamily = QFontInfo(QFontDatabase::systemFont(QFontDatabase::GeneralFont)).family();
     configureDesktopTypography(app);
+#if QT_VERSION >= QT_VERSION_CHECK(6, 8, 0)
+    if (QFontDatabase::families(QFontDatabase::Tamil).contains(QStringLiteral("Noto Sans Tamil"))) {
+        assert(QFontDatabase::applicationFallbackFontFamilies(QChar::Script_Tamil).contains(QStringLiteral("Noto Sans Tamil")));
+        QFont latinFont(QStringLiteral("Noto Sans"));
+        QTextLayout tamil(QString::fromUtf8("அமைப்புகள்"), latinFont);
+        tamil.beginLayout();
+        auto line = tamil.createLine();
+        line.setLineWidth(1000);
+        tamil.endLayout();
+        assert(!tamil.glyphRuns().isEmpty());
+        for (const auto &run : tamil.glyphRuns())
+            assert(run.rawFont().familyName() == QStringLiteral("Noto Sans Tamil"));
+    }
+#endif
     describe("system", QFontDatabase::systemFont(QFontDatabase::GeneralFont));
     describe("application", app.font());
     QQmlApplicationEngine engine;

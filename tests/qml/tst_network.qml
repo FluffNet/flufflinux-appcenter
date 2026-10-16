@@ -185,7 +185,7 @@ TestCase {
         }
     }
     function test_offline_categories_data() {
-        return ["All Apps", "Audio & Video", "Development", "Education", "Games", "Graphics", "Internet",
+        return ["All Apps", "Multimedia", "Development", "Education", "Games", "Graphics", "Internet",
             "Office", "Science", "System", "Utilities", "Other"].map(name => ({tag:name, category:name}))
     }
     function test_offline_categories(data) {

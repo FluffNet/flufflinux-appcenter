@@ -14,6 +14,7 @@ TestCase {
         property var installedApps: []
         property var installSizes: ({})
         property bool installedLoading: false
+        property bool catalogLoading: false
         property string installedError: ""
         property bool busy: false
         property int iconRevision: 0
@@ -42,14 +43,126 @@ TestCase {
     }
     function init() {
         failOnWarning(/(ReferenceError|TypeError|Binding loop|Cannot assign)/)
+        updateCountSpy.target = null
         main.showCatalog(); tryCompare(stack(), "busy", false)
         root().openCategory("Installed")
         backend.updates = {state:"idle", items:[]}; backend.checks = 0; backend.submitted = []; backend.busy = false
         backend.jobs = []; backend.review = ({})
+        backend.catalogLoading = false
         main.width = 1180; main.height = 760; main.requestActivate()
         waitForPolish(root()); wait(30)
     }
     function open() { main.showUpdates(); tryCompare(stack(), "busy", false); waitForPolish(page()); wait(30) }
+    function test_updates_navigation_disabled_while_catalog_loads() {
+        const button = findChild(root(), "updatesButton")
+        const previousCategory = main.selectedCategory
+        backend.catalogLoading = true
+        verify(!button.enabled)
+        compare(button.contentItem.opacity, 0.38)
+        mouseClick(button)
+        compare(main.selectedCategory, previousCategory)
+        compare(backend.checks, 0)
+        backend.catalogLoading = false
+        verify(button.enabled)
+        compare(button.contentItem.opacity, 1)
+        mouseClick(button)
+        tryVerify(() => root().updatesView)
+        compare(backend.checks, 0, "Enabling navigation must not start an update check")
+    }
+    function test_hidden_updates_release_rows_and_restore_scroll() {
+        open()
+        const items = []
+        for (let i = 0; i < 30; ++i) items.push(row("App " + i, "user"))
+        backend.updates = {state: "ready", items: items}
+        const list = findChild(page(), "updatesList")
+        tryCompare(list, "count", 30)
+        waitForPolish(list)
+        list.contentY = 400
+        wait(30)
+        main.showDownloads(); tryCompare(stack(), "busy", false)
+        compare(list.count, 0)
+        main.showCatalog(); tryCompare(stack(), "busy", false)
+        tryCompare(list, "count", 30)
+        tryVerify(() => Math.abs(list.contentY - 400) < 1)
+    }
+    function test_status_selection_and_completion_preserve_surviving_delegates() {
+        open(); ready()
+        const list = findChild(page(), "updatesList")
+        tryCompare(list, "count", 2)
+        waitForPolish(list)
+        const survivor = list.itemAtIndex(1)
+        verify(survivor)
+        backend.updates = Object.assign({}, backend.updates, {lastUpdated: "today"})
+        waitForPolish(list)
+        verify(list.itemAtIndex(1) === survivor)
+        backend.selectUpdate("user:Alpha", false)
+        verify(list.itemAtIndex(1) === survivor)
+        compare(page().selected.length, 1)
+        backend.updates = Object.assign({}, backend.updates, {items: backend.updates.items.slice(1)})
+        tryCompare(list, "count", 1)
+        waitForPolish(list)
+        verify(list.itemAtIndex(0) === survivor, "Completing another update must not recreate this card")
+        compare(survivor.modelData.name, "Beta")
+    }
+    function test_two_hundred_updates_repopulate_with_reduced_job_payload() {
+        open()
+        const items = Array.from({length:200}, (_, index) => row("App " + index, "user"))
+        backend.updates = {state:"ready", items:items}
+        const list = findChild(page(), "updatesList")
+        tryCompare(list, "count", 200)
+        // The production queue publishes identities and resolved transfer
+        // fields only. Permissions remain on the update row, not the job.
+        backend.jobs = [{index:0, action:"update", key:items[0].key, active:true,
+            plan:items[0].plan.map(op => ({ref:op.ref, commit:op.commit})),
+            operations:[{ref:"App 0", commit:"a", downloadBytes:100,
+                receivedBytes:60, downloadProgress:1}]}]
+        compare(page().jobFor(items[0], false).index, 0)
+        compare(page().selectedBytes, 20160)
+        const otherRelease = Object.assign({}, items[0], {plan:[{ref:"App 0", commit:"different"}]})
+        compare(page().jobFor(otherRelease, false), null)
+        main.showDownloads(); tryCompare(stack(), "busy", false)
+        compare(list.count, 0)
+        main.showCatalog(); tryCompare(stack(), "busy", false)
+        tryCompare(list, "count", 200)
+        compare(page().selected.length, 200)
+        compare(page().selectedBytes, 20160)
+        backend.updates = {state:"ready", items:[]}
+        tryCompare(list, "count", 0)
+    }
+    function test_long_update_diagnostic_keeps_full_details() {
+        open(); ready()
+        const message = "org.example.App (system): Flatpak requires removing runtime runtime/org.kde.Platform/x86_64/6.9. App Center does not yet support removals within an update plan. Use flatpak update to review and apply this update. Other app updates can continue."
+        backend.updates = Object.assign({}, backend.updates, {error: message})
+        const label = findChild(page(), "updatesError")
+        verify(label.visible)
+        compare(label.textFormat, Text.PlainText)
+        compare(label.ToolTip.text, message)
+        verify(findChild(page(), "installUpdatesButton").enabled,
+               "One unsupported plan must not prevent other selected updates")
+    }
+    SignalSpy { id: updateCountSpy; signalName: "countChanged" }
+    function test_explicit_navigation_does_not_rebuild_hidden_updates_data() {
+        return [{tag:"home", action:null},
+            {tag:"search", action:{type:"search", value:"firefox"}},
+            {tag:"category", action:{type:"category", value:"Games"}},
+            {tag:"mime", action:{type:"mime", value:"image/png"}},
+            {tag:"installed", action:{type:"mode", value:"Installed"}}]
+    }
+    function test_explicit_navigation_does_not_rebuild_hidden_updates(data) {
+        open()
+        backend.updates = {state:"ready", items:Array.from({length:200}, (_, i) => row("App " + i, "user"))}
+        const list = findChild(page(), "updatesList")
+        tryCompare(list, "count", 200)
+        main.showDownloads(); tryCompare(stack(), "busy", false)
+        compare(list.count, 0)
+        updateCountSpy.target = list
+        updateCountSpy.clear()
+        if (data.action) main.handleCliAction(data.action)
+        else main.showHome()
+        tryCompare(stack(), "busy", false)
+        compare(updateCountSpy.count, 0, "Do not reveal/rebuild the old Updates page before switching destination")
+        updateCountSpy.target = null
+    }
     function test_update_icons_follow_theme_data() {
         return [{tag:"dark", background:"#202326", foreground:"#ffffff"},
             {tag:"light", background:"#eff0f1", foreground:"#202326"},
@@ -97,6 +210,47 @@ TestCase {
         backend.updates = {state:"idle", items:[], lastUpdated:"24/09/2026 12:39", lastChecked:"24/09/2026 13:00"}
         compare(findChild(page(), "updateDates").text, "Apps were last updated: 24/09/2026 12:39")
         compare(backend.checks, 0)
+    }
+    function test_long_heading_at_narrow_width() {
+        main.width = 720
+        open()
+        const title = findChild(page(), "appUpdatesTitle")
+        const original = title.text
+        try {
+            title.text = "Anwendungsaktualisierungen"
+            tryCompare(title, "lineCount", 1)
+            verify(title.contentWidth <= title.width + 1)
+            verify(title.fontInfo.pixelSize >= 24)
+        } finally { title.text = original }
+    }
+    Component {
+        id: translatedTextOverride
+        Binding { property: "text"; restoreMode: Binding.RestoreBindingOrValue }
+    }
+    function test_long_translated_controls_stay_inside_window() {
+        main.width = 720
+        open(); ready()
+        const replacements = [
+            ["appUpdatesTitle", "செயலி புதுப்பிப்புகள்"],
+            ["checkForUpdatesButton", "செயலி புதுப்பிப்புகளைச் சரிபார்"],
+            ["selectAllUpdates", "அனைத்தையும் தேர்ந்தெடு"],
+            ["installUpdatesButton", "அனைத்துச் செயலிகளையும் புதுப்பி"],
+            ["updatesDownloadSummary", "2 தேர்ந்தெடுக்கப்பட்டது - மொத்த அளவு: 256.00 MiB"]
+        ]
+        const overrides = []
+        try {
+            for (const [name, text] of replacements) {
+                const item = findChild(page(), name)
+                overrides.push(createTemporaryObject(translatedTextOverride, page(), {target:item, value:text}))
+            }
+            for (const override of overrides) tryVerify(function() {
+                const item = override.target
+                const p = item.mapToItem(main.contentItem, 0, 0)
+                return p.x >= 0 && p.x + item.width <= main.width + 1
+            }, 2000, "long translated update controls fit the narrow window")
+        } finally {
+            for (const override of overrides) override.when = false
+        }
     }
     function test_manual_only_check_and_cancel() {
         mouseClick(findChild(root(), "updatesButton")); tryCompare(stack(), "busy", false)
@@ -247,7 +401,8 @@ TestCase {
         return [{tag:"unchanged", state:"unchanged", runtime:false, visible:false, text:""},
             {tag:"changed", state:"changed", runtime:false, visible:true, text:"Permissions changed"},
             {tag:"unavailable", state:"unavailable", runtime:false, visible:true, text:"Permission comparison unavailable"},
-            {tag:"runtime", state:"unavailable", runtime:true, visible:false, text:"Permission comparison unavailable"}]
+            {tag:"runtime", state:"unavailable", runtime:true, visible:false, text:"Permission comparison unavailable"},
+            {tag:"runtimeChanged", state:"changed", runtime:true, visible:false, text:"Permissions changed"}]
     }
     function test_permission_status(data) {
         open()
@@ -258,12 +413,68 @@ TestCase {
         const label = findChild(list.itemAtIndex(0), "updatePermissionsStatus")
         compare(label.visible, data.visible); compare(label.text, data.text)
         const button = findChild(list.itemAtIndex(0), "viewUpdatePermissionChanges")
-        compare(button.visible, data.state === "changed")
+        compare(button.visible, !data.runtime && data.state === "changed")
         if (button.visible) {
             waitForPolish(page()); waitForRendering(button); mouseClick(button)
             const dialog = findChild(page(), "appPermissionsDialog")
             tryCompare(dialog, "opened", true)
             dialog.close(); tryCompare(dialog, "visible", false)
+        }
+    }
+    function test_running_updates_hide_selection_and_permissions_data() {
+        return [{tag:"ltr", rtl:false}, {tag:"rtl", rtl:true}]
+    }
+    function test_running_updates_hide_selection_and_permissions(data) {
+        main.width = 900; main.height = 720
+        main.contentItem.LayoutMirroring.enabled = data.rtl
+        try {
+            open()
+            const alpha = Object.assign(row("Alpha", "user"), {permissions:{state:"changed", groups:[]}})
+            const beta = Object.assign(row("Beta", "user"), {runtime:true, permissions:null})
+            backend.updates = {state:"ready", items:[alpha, beta]}
+            const list = findChild(page(), "updatesList")
+            tryVerify(() => list.itemAtIndex(0) && list.itemAtIndex(1))
+            const first = list.itemAtIndex(0), second = list.itemAtIndex(1)
+            const permissionButton = findChild(first, "viewUpdatePermissionChanges")
+            verify(permissionButton.visible)
+            verify(!findChild(second, "updatePermissionsStatus").visible)
+            verify(!findChild(second, "viewUpdatePermissionChanges").visible)
+            waitForPolish(page()); waitForRendering(permissionButton)
+            mouseClick(permissionButton)
+            const dialog = findChild(page(), "appPermissionsDialog")
+            tryCompare(dialog, "opened", true)
+            backend.busy = true
+            backend.jobs = [
+                {index:0, key:alpha.key, action:"update", active:true, queued:false, progress:0.4,
+                    status:"Downloading…", phase:"download", operations:[{ref:"Alpha", commit:"a"}]},
+                {index:1, key:beta.key, action:"update", active:true, queued:true, status:"Queued"}]
+            verify(page().updating)
+            tryCompare(dialog, "visible", false)
+            for (const control of ["selectAllUpdates", "updatesDownloadSummary", "installUpdatesButton"])
+                verify(!findChild(page(), control).visible, control + " hidden")
+            for (const card of [first, second]) {
+                verify(!findChild(card, "selectUpdate-" + card.modelData.key).visible)
+                verify(!findChild(card, "updatePermissionsStatus").visible)
+                verify(!findChild(card, "viewUpdatePermissionChanges").visible)
+            }
+            verify(findChild(first, "updateJobProgress").visible)
+            compare(findChild(second, "updateJobStatus").text, "Queued…")
+            verify(findChild(second, "updateJobStatus").visible)
+            backend.updates = Object.assign({}, backend.updates, {items:[beta]})
+            backend.jobs = [
+                Object.assign({}, backend.jobs[0], {active:false, status:"Complete"}),
+                Object.assign({}, backend.jobs[1], {queued:false, phase:"download", progress:0.6,
+                    operations:[{ref:"Beta", commit:"a"}]})]
+            tryCompare(list, "count", 1)
+            waitForPolish(list)
+            tryVerify(() => list.itemAtIndex(0) && findChild(list.itemAtIndex(0), "updateJobProgress").visible,
+                      2000, "Next job retains progress after removing the first card")
+            backend.jobs = []; backend.busy = false
+            verify(!page().updating)
+            verify(findChild(page(), "updatesDownloadSummary").visible)
+            verify(findChild(list.itemAtIndex(0), "selectUpdate-user:Beta").visible)
+        } finally {
+            main.contentItem.LayoutMirroring.enabled = Qt.binding(function() { return main.rtl })
         }
     }
     function test_queued_updates_have_status_only_data() {

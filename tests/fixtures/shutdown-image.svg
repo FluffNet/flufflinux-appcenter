@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800" viewBox="0 0 1200 800">
+  <rect width="1200" height="800" fill="#28333a"/>
+  <g fill="white" font-family="sans-serif" font-size="56">
+    <text x="50" y="120">App Center 2026.10</text>
+    <text x="50" y="240">עברית العربية فارسی</text>
+    <text x="50" y="360">Deutsch 日本語 한국어</text>
+    <text x="50" y="480">தமிழ் हिन्दी 🙂</text>
+  </g>
+</svg>

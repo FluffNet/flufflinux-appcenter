@@ -1,0 +1,173 @@
+language	locale	label	direction
+af	af_ZA.UTF-8	Afrikaans	LTR
+sq	sq_AL.UTF-8	Shqip (Shqipëri)	LTR
+am	am_ET.UTF-8	አማርኛ	LTR
+ar	ar_SA.UTF-8	العربية (السعودية)	RTL
+hy	hy_AM.UTF-8	Հայերեն	LTR
+as	as_IN.UTF-8	অসমীয়া	LTR
+az	az_AZ.UTF-8	Azərbaycanca	LTR
+eu	eu_ES.UTF-8	Euskara	LTR
+be	be_BY.UTF-8	Беларуская	LTR
+bn	bn_BD.UTF-8	বাংলা (বাংলাদেশ)	LTR
+bs	bs_BA.UTF-8	Bosanski	LTR
+bg	bg_BG.UTF-8	Български	LTR
+my	my_MM.UTF-8	မြန်မာ	LTR
+ca	ca_ES.UTF-8	Català (Espanya)	LTR
+zh_Hans	zh_CN.UTF-8	简体中文 (中国大陆)	LTR
+zh_Hant	zh_TW.UTF-8	繁體中文 (臺灣)	LTR
+hr	hr_HR.UTF-8	Hrvatski	LTR
+cs	cs_CZ.UTF-8	Čeština	LTR
+da	da_DK.UTF-8	Dansk	LTR
+nl	nl_NL.UTF-8	Nederlands (Nederland)	LTR
+en	en_US.UTF-8	English (United States)	LTR
+et	et_EE.UTF-8	Eesti	LTR
+fil	fil_PH.UTF-8	Filipino	LTR
+fi	fi_FI.UTF-8	Suomi	LTR
+fr	fr_FR.UTF-8	Français (France)	LTR
+gl	gl_ES.UTF-8	Galego	LTR
+ka	ka_GE.UTF-8	ქართული	LTR
+de	de_DE.UTF-8	Deutsch (Deutschland)	LTR
+el	el_GR.UTF-8	Ελληνικά (Ελλάδα)	LTR
+gu	gu_IN.UTF-8	ગુજરાતી	LTR
+ha	ha_NG.UTF-8	Hausa	LTR
+he	he_IL.UTF-8	עברית	RTL
+hi	hi_IN.UTF-8	हिन्दी	LTR
+hu	hu_HU.UTF-8	Magyar	LTR
+is	is_IS.UTF-8	Íslenska	LTR
+ig	ig_NG.UTF-8	Igbo	LTR
+id	id_ID.UTF-8	Bahasa Indonesia	LTR
+ga	ga_IE.UTF-8	Gaeilge	LTR
+it	it_IT.UTF-8	Italiano (Italia)	LTR
+ja	ja_JP.UTF-8	日本語	LTR
+kn	kn_IN.UTF-8	ಕನ್ನಡ	LTR
+kk	kk_KZ.UTF-8	Қазақша	LTR
+km	km_KH.UTF-8	ខ្មែរ	LTR
+kok	kok_IN.UTF-8	कोंकणी	LTR
+ko	ko_KR.UTF-8	한국어	LTR
+ku	ku_TR.UTF-8	Kurdî	LTR
+lo	lo_LA.UTF-8	ລາວ	LTR
+lv	lv_LV.UTF-8	Latviešu	LTR
+lt	lt_LT.UTF-8	Lietuvių	LTR
+lb	lb_LU.UTF-8	Lëtzebuergesch	LTR
+mk	mk_MK.UTF-8	Македонски	LTR
+ms	ms_MY.UTF-8	Bahasa Melayu	LTR
+ml	ml_IN.UTF-8	മലയാളം	LTR
+mt	mt_MT.UTF-8	Malti	LTR
+mi	mi_NZ.UTF-8	Te reo Māori	LTR
+mr	mr_IN.UTF-8	मराठी	LTR
+mn	mn_MN.UTF-8	Монгол	LTR
+ne	ne_NP.UTF-8	नेपाली	LTR
+nb	nb_NO.UTF-8	Norsk bokmål	LTR
+nn	nn_NO.UTF-8	Norsk nynorsk	LTR
+or	or_IN.UTF-8	ଓଡ଼ିଆ	LTR
+om	om_ET.UTF-8	Afaan Oromoo (Itoophiyaa)	LTR
+ps	ps_AF.UTF-8	پښتو	RTL
+fa	fa_IR.UTF-8	فارسی	RTL
+pl	pl_PL.UTF-8	Polski	LTR
+pt	pt_PT.UTF-8	Português (Portugal)	LTR
+pa_Arab	pa_PK.UTF-8	پنجابی (شاہ مکھی)	RTL
+pa	pa_IN.UTF-8	ਪੰਜਾਬੀ	LTR
+quz	quz_PE.UTF-8	Runasimi	LTR
+ro	ro_RO.UTF-8	Română	LTR
+ru	ru_RU.UTF-8	Русский (Россия)	LTR
+gd	gd_GB.UTF-8	Gàidhlig	LTR
+sr	sr_RS.UTF-8	Српски (Србија)	LTR
+sr_Latn	sr_RS.UTF-8@latin	Srpski	LTR
+si	si_LK.UTF-8	සිංහල	LTR
+sk	sk_SK.UTF-8	Slovenčina	LTR
+sl	sl_SI.UTF-8	Slovenščina	LTR
+so	so_SO.UTF-8	Soomaali (Soomaaliya)	LTR
+es	es_ES.UTF-8	Español (España)	LTR
+sw	sw_TZ.UTF-8	Kiswahili (Tanzania)	LTR
+sv	sv_SE.UTF-8	Svenska (Sverige)	LTR
+ta	ta_IN.UTF-8	தமிழ் (இந்தியா)	LTR
+tt	tt_RU.UTF-8	Татарча	LTR
+te	te_IN.UTF-8	తెలుగు	LTR
+th	th_TH.UTF-8	ไทย	LTR
+tr	tr_TR.UTF-8	Türkçe	LTR
+uk	uk_UA.UTF-8	Українська	LTR
+ur	ur_PK.UTF-8	اردو (پاکستان)	RTL
+ug	ug_CN.UTF-8	ئۇيغۇرچە	RTL
+uz	uz_UZ.UTF-8	O‘zbekcha	LTR
+ca_valencia	ca_ES.UTF-8@valencia	Valencià	LTR
+vi	vi_VN.UTF-8	Tiếng Việt	LTR
+cy	cy_GB.UTF-8	Cymraeg	LTR
+xh	xh_ZA.UTF-8	isiXhosa	LTR
+yo	yo_NG.UTF-8	Yorùbá	LTR
+zu	zu_ZA.UTF-8	isiZulu	LTR
+sq	sq_MK.UTF-8	Shqip (Maqedonia e Veriut)	LTR
+ar	ar_JO.UTF-8	العربية (الأردن)	RTL
+ar	ar_AE.UTF-8	العربية (الإمارات العربية المتحدة)	RTL
+ar	ar_BH.UTF-8	العربية (البحرين)	RTL
+ar	ar_DZ.UTF-8	العربية (الجزائر)	RTL
+ar	ar_SD.UTF-8	العربية (السودان)	RTL
+ar	ar_IQ.UTF-8	العربية (العراق)	RTL
+ar	ar_KW.UTF-8	العربية (الكويت)	RTL
+ar	ar_MA.UTF-8	العربية (المغرب)	RTL
+ar	ar_IN.UTF-8	العربية (الهند)	RTL
+ar	ar_YE.UTF-8	العربية (اليمن)	RTL
+ar	ar_TN.UTF-8	العربية (تونس)	RTL
+ar	ar_SS.UTF-8	العربية (جنوب السودان)	RTL
+ar	ar_SY.UTF-8	العربية (سوريا)	RTL
+ar	ar_OM.UTF-8	العربية (عمان)	RTL
+ar	ar_QA.UTF-8	العربية (قطر)	RTL
+ar	ar_LB.UTF-8	العربية (لبنان)	RTL
+ar	ar_LY.UTF-8	العربية (ليبيا)	RTL
+ar	ar_EG.UTF-8	العربية (مصر)	RTL
+bn	bn_IN.UTF-8	বাংলা (ভারত)	LTR
+ca	ca_AD.UTF-8	Català (Andorra)	LTR
+ca	ca_FR.UTF-8	Català (França)	LTR
+ca	ca_IT.UTF-8	Català (Itàlia)	LTR
+zh_Hans	zh_SG.UTF-8	简体中文 (新加坡)	LTR
+zh_Hant	zh_HK.UTF-8	繁體中文 (香港)	LTR
+nl	nl_AW.UTF-8	Nederlands (Aruba)	LTR
+nl	nl_BE.UTF-8	Nederlands (België)	LTR
+en	en_AU.UTF-8	English (Australia)	LTR
+en	en_CA.UTF-8	English (Canada)	LTR
+en	en_IE.UTF-8	English (Ireland)	LTR
+en	en_NZ.UTF-8	English (New Zealand)	LTR
+en	en_ZA.UTF-8	English (South Africa)	LTR
+en	en_GB.UTF-8	English (United Kingdom)	LTR
+fr	fr_BE.UTF-8	Français (Belgique)	LTR
+fr	fr_CA.UTF-8	Français (Canada)	LTR
+fr	fr_LU.UTF-8	Français (Luxembourg)	LTR
+fr	fr_CH.UTF-8	Français (Suisse)	LTR
+de	de_BE.UTF-8	Deutsch (Belgien)	LTR
+de	de_IT.UTF-8	Deutsch (Italien)	LTR
+de	de_LI.UTF-8	Deutsch (Liechtenstein)	LTR
+de	de_LU.UTF-8	Deutsch (Luxemburg)	LTR
+de	de_AT.UTF-8	Deutsch (Österreich)	LTR
+de	de_CH.UTF-8	Deutsch (Schweiz)	LTR
+el	el_CY.UTF-8	Ελληνικά (Κύπρος)	LTR
+it	it_CH.UTF-8	Italiano (Svizzera)	LTR
+om	om_KE.UTF-8	Afaan Oromoo (Keeniyaa)	LTR
+pt	pt_BR.UTF-8	Português (Brasil)	LTR
+ru	ru_UA.UTF-8	Русский (Украина)	LTR
+sr	sr_ME.UTF-8	Српски (Црна Гора)	LTR
+so	so_ET.UTF-8	Soomaali (Itoobiya)	LTR
+so	so_DJ.UTF-8	Soomaali (Jabuuti)	LTR
+so	so_KE.UTF-8	Soomaali (Kiiniya)	LTR
+es	es_AR.UTF-8	Español (Argentina)	LTR
+es	es_BO.UTF-8	Español (Bolivia)	LTR
+es	es_CL.UTF-8	Español (Chile)	LTR
+es	es_CO.UTF-8	Español (Colombia)	LTR
+es	es_CR.UTF-8	Español (Costa Rica)	LTR
+es	es_CU.UTF-8	Español (Cuba)	LTR
+es	es_EC.UTF-8	Español (Ecuador)	LTR
+es	es_SV.UTF-8	Español (El Salvador)	LTR
+es	es_US.UTF-8	Español (Estados Unidos)	LTR
+es	es_GT.UTF-8	Español (Guatemala)	LTR
+es	es_HN.UTF-8	Español (Honduras)	LTR
+es	es_MX.UTF-8	Español (México)	LTR
+es	es_NI.UTF-8	Español (Nicaragua)	LTR
+es	es_PA.UTF-8	Español (Panamá)	LTR
+es	es_PY.UTF-8	Español (Paraguay)	LTR
+es	es_PE.UTF-8	Español (Perú)	LTR
+es	es_PR.UTF-8	Español (Puerto Rico)	LTR
+es	es_DO.UTF-8	Español (República Dominicana)	LTR
+es	es_UY.UTF-8	Español (Uruguay)	LTR
+es	es_VE.UTF-8	Español (Venezuela)	LTR
+sw	sw_KE.UTF-8	Kiswahili (Kenya)	LTR
+sv	sv_FI.UTF-8	Svenska (Finland)	LTR
+ta	ta_LK.UTF-8	தமிழ் (இலங்கை)	LTR
+ur	ur_IN.UTF-8	اردو (بھارت)	RTL

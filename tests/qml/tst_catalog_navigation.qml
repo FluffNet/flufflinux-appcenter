@@ -103,10 +103,10 @@ TestCase {
         grid.contentY = 0
         waitForRendering(page)
         const naturalScroll = findChild(page, "catalogNaturalScroll")
-        naturalScroll.scrollBy(100, false)
-        compare(grid.contentY, 100, "Mouse scrolling must not snap to rows")
-        naturalScroll.applyTouchpadDelta(10, true)
-        compare(grid.contentY, 121.5, "Touchpad scrolling must preserve its existing pixel movement")
+        naturalScroll.scrollDown(100)
+        tryCompare(grid, "contentY", 100)
+        naturalScroll.scrollDown(10)
+        tryCompare(grid, "contentY", 110)
         grid.contentY = 0
         waitForRendering(page)
         mousePress(bar, bar.width / 2, bar.contentItem.y + bar.contentItem.height / 2)
@@ -132,7 +132,8 @@ TestCase {
         verify(bar.interactive, "Breeze must not disable this scrollbar when touch input begins")
         for (let step = 1; step <= 8; ++step)
             drag.move(0, bar, x, startY + step * 30).commit()
-        verify(grid.contentY > grid.height, "Holding and dragging the thumb must scroll with a touchscreen")
+        tryVerify(() => grid.contentY > grid.height, 5000,
+                  "Holding and dragging the thumb must scroll with a touchscreen")
         drag.release(0, bar, x, startY + 240).commit()
         grid.contentY = 0
     }

@@ -12,11 +12,14 @@ CheckBox {
     contentItem: Label {
         text: control.text; font: control.font; color: window.textColor
         textFormat: Text.PlainText; verticalAlignment: Text.AlignVCenter
-        leftPadding: text.length ? control.indicator.width + control.spacing : 0
+        leftPadding: text.length && !control.mirrored ? control.indicator.width + control.spacing : 0
+        rightPadding: text.length && control.mirrored ? control.indicator.width + control.spacing : 0
+        wrapMode: Text.Wrap
     }
     indicator: Rectangle {
         implicitWidth: 22; implicitHeight: 22
-        x: control.leftPadding; y: (control.height - height) / 2
+        x: control.mirrored ? control.width - control.rightPadding - width : control.leftPadding
+        y: (control.height - height) / 2
         radius: 5
         color: control.checked ? window.accentColor : window.surfaceColor
         border.color: control.visualFocus || control.checked ? window.accentColor : window.mutedTextColor

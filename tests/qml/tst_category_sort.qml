@@ -88,6 +88,90 @@ TestCase {
         compare(findChild(page(), "catalogSort").currentIndex, 5)
         compare(preferences.homeSort, "release-asc")
     }
+    function test_orders_reused_but_invalidated_by_data() {
+        page().catalogSortIndex = 2
+        const cache = page().catalogOrders
+        const order = cache.orders[2]
+        verify(order !== undefined)
+        selectCategory("Updates")
+        selectCategory("All Apps")
+        verify(page().catalogOrders === cache)
+        verify(page().catalogOrders.orders[2] === order)
+        stats.counts = {"org.example.Alpha":100, "org.example.Beta":1}
+        verify(page().catalogOrders !== cache)
+        compare(page().visibleApps[0].name, "Alpha")
+        const refreshed = page().catalogOrders
+        main.catalog = [app("org.example.New", "New", "Utilities", "2026-10-01")]
+        verify(page().catalogOrders !== refreshed)
+        compare(names(), "New")
+        for (let index = 0; index < 6; ++index) page().orderedCatalog(index)
+        compare(Object.keys(page().catalogOrders.orders).length, 6)
+    }
+    function test_non_catalog_navigation_does_not_build_unused_sort() {
+        page().catalogSortIndex = 2
+        const cache = page().catalogOrders
+        delete cache.orders[0]
+        selectCategory("Updates")
+        compare(page().visibleApps.length, 0)
+        verify(cache.orders[0] === undefined)
+        selectCategory("Installed")
+        compare(page().visibleApps.length, 0)
+        verify(cache.orders[0] === undefined)
+        selectCategory("All Apps")
+        verify(page().visibleApps.length > 0)
+        verify(page().catalogOrders === cache)
+        verify(cache.orders[0] === undefined, "Returning Home must not build the previous category's sort")
+    }
+    function test_selection_reused_without_stale_search_or_metadata() {
+        page().catalogSortIndex = 2
+        const home = page().visibleApps
+        selectCategory("Updates")
+        compare(page().visibleApps.length, 0)
+        selectCategory("Installed")
+        selectCategory("All Apps")
+        verify(page().visibleApps === home, "Do not filter the unchanged catalog on returning Home")
+        main.searchText = "alpha"
+        compare(names(), "Alpha")
+        main.searchText = ""
+        verify(page().visibleApps === home)
+        const cache = page().catalogSelection
+        stats.counts = {"org.example.Alpha":100, "org.example.Beta":1}
+        verify(page().catalogSelection !== cache)
+        compare(names(), "Alpha,Beta,Outside,Unknown,Zero")
+        main.catalog = [app("org.example.New", "New", "Utilities", "2026-10-01")]
+        compare(names(), "New")
+        verify(!page().catalogSelection.apps.some(item => item.id === "org.example.Alpha"))
+        selectCategory("Games")
+        compare(names(), "")
+        selectCategory("Utilities")
+        compare(names(), "New")
+        page().openCliFilter("mime", "image/png")
+        compare(names(), "")
+        page().openCliFilter("search", "")
+        compare(names(), "New")
+    }
+    function test_multimedia_aliases_and_cached_categories_data() {
+        return ["Multimedia", "AudioVideo", "Audio & Video", "Audio/Video"].map(name => ({tag:name, name:name}))
+    }
+    function test_multimedia_aliases_and_cached_categories(data) {
+        main.catalog = [app("org.example.Old", "Old", "Audio & Video", ""),
+            app("org.example.New", "New", "Multimedia", ""),
+            app("org.example.Other", "Other", "Office", "")]
+        page().openCliFilter("category", data.name)
+        waitForPolish(page())
+        compare(main.selectedCategory, "Multimedia")
+        compare(page().cliCategory, "")
+        compare(names(), "New,Old")
+        compare(findChild(page(), "catalogTitleLabel").text, "Multimedia")
+        compare(findChild(page(), "categoryButton-Multimedia").text, "Multimedia")
+
+        main.searchText = "test"
+        main.searchCategoryFilter = "Multimedia"
+        const filter = findChild(page(), "searchCategoryFilter")
+        compare(filter.displayText, "Category: Multimedia")
+        compare(filter.textAt(1), "Multimedia")
+        compare(names(), "New,Old")
+    }
     function test_category_popularity_loads_and_keeps_recommendations() {
         main.catalog = catalog("Utilities").concat([app("com.discordapp.Discord", "Discord", "Utilities", "")])
         selectCategory("Utilities")
@@ -163,7 +247,7 @@ TestCase {
     }
     function test_layout(data) {
         main.width = data.width; main.height = data.height
-        selectCategory("Audio & Video"); page().setCatalogSort(4)
+        selectCategory("Multimedia"); page().setCatalogSort(4)
         waitForPolish(page())
         const sort = findChild(page(), "catalogSort"), grid = findChild(page(), "catalogGrid")
         verify(sort.visible && sort.width >= 210)

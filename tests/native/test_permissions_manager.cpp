@@ -28,6 +28,7 @@ int main(int argc, char **argv) {
         });
         return child.exec();
     }
+    if (argc > 1) return 2;
     QTemporaryDir temporary; assert(temporary.isValid());
     const auto command = temporary.filePath("flatpak");
     QFile file(command); assert(file.open(QIODevice::WriteOnly));

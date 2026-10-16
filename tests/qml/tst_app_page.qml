@@ -25,6 +25,7 @@ TestCase {
         property color borderColor: "#50545a"
         property color hoverColor: "#393d43"
         property var selectedApp: null
+        property var backend: null
         property bool showCatalogCalled: false
         property var previewApp: ({
             id: "org.fluff.PreviewTest",
@@ -54,6 +55,9 @@ TestCase {
     }
 
     function init() {
+        window.backend = null
+        appPage.LayoutMirroring.enabled = false
+        appPage.LayoutMirroring.childrenInherit = true
         window.showCatalogCalled = false
         if (appPage.screenshotPreviewDialog.visible)
             appPage.screenshotPreviewDialog.close()
@@ -61,6 +65,44 @@ TestCase {
         appPage.app = window.previewApp
         window.width = 1180
         window.height = 760
+        tryCompare(appPage, "mirrored", false)
+        waitForRendering(appPage)
+    }
+
+    QtObject {
+        id: screenshotBackend
+        property var screenshotFiles: ({})
+        property int requests: 0
+        property int cancellations: 0
+        function requestScreenshots(urls) { ++requests; return requests }
+        function cancelScreenshots(token) { ++cancellations }
+    }
+    function test_remote_screenshot_loading_cancellation_and_preview() {
+        window.backend = screenshotBackend
+        const url = "https://example.org/screenshot.png"
+        appPage.app = appWithScreenshots([url])
+        screenshotBackend.screenshotFiles = {[url]: {state: "loading", source: ""}}
+        wait(30)
+        compare(screenshotBackend.requests, 1, "Completion and deferred bindings must not launch duplicate requests")
+        compare(appPage.screenshotSource(url), "")
+        verify(appPage.screenshotLoading(url))
+        screenshotBackend.screenshotFiles = {[url]: {state: "ready", source: window.previewApp.screenshots[0]}}
+        verify(!appPage.screenshotLoading(url))
+        appPage.openScreenshot(0)
+        const image = findChild(appPage.screenshotPreviewDialog, "previewImage")
+        tryCompare(image, "status", Image.Ready)
+        compare(String(image.source), window.previewApp.screenshots[0])
+        appPage.screenshotPreviewDialog.close()
+        appPage.visible = false
+        tryCompare(screenshotBackend, "cancellations", 1)
+        appPage.visible = true
+        tryCompare(screenshotBackend, "requests", 2)
+        screenshotBackend.screenshotFiles = {[url]: {state: "error", source: ""}}
+        verify(!appPage.screenshotLoading(url), "Failed downloads must not leave a spinner stuck")
+        appPage.visible = false
+        tryCompare(screenshotBackend, "cancellations", 2)
+        window.backend = null
+        appPage.visible = true
     }
 
     function appWithScreenshots(screenshots) {
@@ -76,6 +118,28 @@ TestCase {
             homepage: window.previewApp.homepage,
             screenshots: screenshots
         }
+    }
+
+    function test_translated_back_button_does_not_split_words_data() {
+        return [
+            {tag:"de", text:"Zurück", rtl:false},
+            {tag:"fr", text:"Retour", rtl:false},
+            {tag:"el", text:"Επιστροφή", rtl:false},
+            {tag:"he", text:"חזרה", rtl:true}
+        ]
+    }
+    function test_translated_back_button_does_not_split_words(data) {
+        window.width = 720
+        appPage.LayoutMirroring.enabled = data.rtl
+        const button = findChild(appPage, "backButton")
+        const label = findChild(button, "fluffButtonLabel")
+        button.text = data.text
+        waitForPolish(window.contentItem)
+        // Text changes schedule another implicit-size/layout pass.
+        tryCompare(label, "lineCount", 1)
+        verify(label.contentWidth <= label.width + 1)
+        verify(button.width <= appPage.width)
+        button.text = qsTr("Back")
     }
 
     function test_single_screenshot_is_large_and_centered() {
@@ -97,6 +161,64 @@ TestCase {
         const loadingSpinner = findChild(screenshotButton, "screenshotLoadingSpinner")
         verify(loadingSpinner !== null)
         compare(loadingSpinner.color, window.textColor)
+    }
+
+    function test_screenshots_stay_left_to_right_data() {
+        return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}]
+    }
+
+    function test_screenshots_stay_left_to_right(data) {
+        appPage.LayoutMirroring.enabled = data.rtl
+        tryCompare(appPage, "mirrored", data.rtl)
+        window.requestActivate()
+        tryCompare(window, "active", true)
+        const strip = findChild(appPage, "screenshotList")
+        tryCompare(strip, "count", 4)
+        compare(strip.effectiveLayoutDirection, Qt.LeftToRight)
+        strip.positionViewAtBeginning()
+        waitForRendering(strip)
+        verify(Math.abs(strip.contentX - strip.originX) < 1)
+
+        let previousX = -1
+        for (let index = 0; index < strip.count; ++index) {
+            strip.positionViewAtIndex(index, ListView.Contain)
+            tryVerify(function() { return strip.itemAtIndex(index) !== null })
+            const thumbnail = strip.itemAtIndex(index)
+            verify(thumbnail.x > previousX)
+            previousX = thumbnail.x
+            compare(thumbnail.modelData, window.previewApp.screenshots[index])
+            waitForRendering(strip)
+            const point = thumbnail.mapToItem(strip, thumbnail.width / 2,
+                                               thumbnail.height / 2)
+            mouseClick(strip, point.x, point.y)
+            const preview = appPage.screenshotPreviewDialog
+            tryCompare(preview, "opened", true)
+            compare(appPage.previewScreenshotIndex, index)
+            compare(appPage.previewScreenshot, window.previewApp.screenshots[index])
+            preview.close()
+            tryCompare(preview, "visible", false)
+        }
+
+        appPage.openScreenshot(1)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "opened", true)
+        const previous = findChild(preview, "previewPreviousButton")
+        const next = findChild(preview, "previewNextButton")
+        const frame = findChild(preview, "previewImageFrame")
+        verify(previous.mapToItem(frame, previous.width, 0).x <= 0)
+        verify(next.mapToItem(frame, 0, 0).x >= frame.width)
+        mouseClick(next, next.width / 2, next.height / 2)
+        compare(appPage.previewScreenshotIndex, 2)
+        mouseClick(previous, previous.width / 2, previous.height / 2)
+        compare(appPage.previewScreenshotIndex, 1)
+        preview.contentItem.forceActiveFocus()
+        keyClick(Qt.Key_Right)
+        compare(appPage.previewScreenshotIndex, 2)
+        keyClick(Qt.Key_Left)
+        compare(appPage.previewScreenshotIndex, 1)
+        preview.close()
+        tryCompare(preview, "visible", false)
+        strip.positionViewAtBeginning()
     }
 
     function test_hero_artwork_and_developer_label() {
@@ -201,11 +323,16 @@ TestCase {
         compare(appPage.previewScreenshot, appPage.app.screenshots[1])
     }
 
-    function test_back_control_has_text_and_icon() {
+    function test_back_control_has_text_and_icon_data() {
+        return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}]
+    }
+
+    function test_back_control_has_text_and_icon(data) {
+        appPage.LayoutMirroring.enabled = data.rtl
         const backButton = findChild(appPage, "backButton")
         verify(backButton !== null)
-        compare(backButton.text, "←  Back")
-        compare(backButton.icon.name, "")
+        compare(backButton.text, "Back")
+        compare(backButton.icon.name, data.rtl ? "go-next" : "go-previous")
         verify(backButton.width >= 106)
     }
 
@@ -234,7 +361,13 @@ TestCase {
         verify(window.showCatalogCalled)
     }
 
-    function test_page_supports_touch_and_touchpad_back_gestures() {
+    function test_page_supports_touch_and_touchpad_back_gestures_data() {
+        return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}]
+    }
+
+    function test_page_supports_touch_and_touchpad_back_gestures(data) {
+        appPage.LayoutMirroring.enabled = data.rtl
+        const direction = data.rtl ? -1 : 1
         const touchGesture = findChild(appPage, "pageTouchBackGesture")
         const touchpadGesture = findChild(appPage, "pageTouchpadBackGesture")
         verify(touchGesture !== null)
@@ -254,31 +387,62 @@ TestCase {
                     screenshotList.height / 2)
         compare(appPage.pointIsInsideScreenshotStrip(stripCenter.x,
                                                       stripCenter.y), true)
-        compare(appPage.finishPageSwipe(280, 10), true)
+        compare(appPage.finishPageSwipe(direction * 280, 10), true)
         compare(window.showCatalogCalled, true)
 
         window.showCatalogCalled = false
-        compare(appPage.finishPageSwipe(60, 10), false)
+        compare(appPage.finishPageSwipe(direction * 60, 10), false)
+        compare(appPage.finishPageSwipe(-direction * 280, 10), false)
+        compare(appPage.finishPageSwipe(direction * 280, 240), false)
         compare(window.showCatalogCalled, false)
 
         mouseWheel(swipeSurface,
                    stripCenter.x,
                    stripCenter.y,
-                   -240,
+                   direction * -240,
                    0,
                    Qt.NoButton)
         compare(window.showCatalogCalled, false)
 
+        mouseWheel(swipeSurface, swipeSurface.width / 2, 5,
+                   direction * 240, 0, Qt.NoButton)
+        compare(window.showCatalogCalled, false)
+        touchpadGesture.travel = 0
+
         mouseWheel(swipeSurface,
                    swipeSurface.width / 2,
                    5,
-                   -240,
+                   direction * -240,
                    0,
                    Qt.NoButton)
         compare(window.showCatalogCalled, true)
     }
 
-    function test_screenshot_strip_owns_touch_swipes_and_uses_natural_direction() {
+    function test_page_touch_back_direction_data() {
+        return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}]
+    }
+
+    function test_page_touch_back_direction(data) {
+        appPage.LayoutMirroring.enabled = data.rtl
+        const surface = findChild(appPage, "pageSwipeSurface")
+        const start = surface.width / 2
+        const direction = data.rtl ? -1 : 1
+        for (const correctDirection of [false, true]) {
+            const end = start + direction * (correctDirection ? 280 : -280)
+            const swipe = touchEvent(surface)
+            swipe.press(0, surface, start, 5).commit()
+            swipe.move(0, surface, end, 5).commit()
+            swipe.release(0, surface, end, 5).commit()
+            compare(window.showCatalogCalled, correctDirection)
+        }
+    }
+
+    function test_screenshot_strip_owns_touch_swipes_and_uses_natural_direction_data() {
+        return [{tag: "ltr", rtl: false}, {tag: "rtl", rtl: true}]
+    }
+
+    function test_screenshot_strip_owns_touch_swipes_and_uses_natural_direction(data) {
+        appPage.LayoutMirroring.enabled = data.rtl
         const screenshotList = findChild(appPage, "screenshotList")
         verify(screenshotList !== null)
         tryCompare(screenshotList, "count", 4)
@@ -324,12 +488,11 @@ TestCase {
                    0,
                    -120,
                    Qt.NoButton)
-        verify(details.contentY > 0)
-
-        details.contentY = 0
-        naturalScroll.applyTouchpadDelta(12, true)
-        compare(naturalScroll.smoothScrolling, false)
-        compare(details.contentY, 25.8)
+        tryVerify(() => details.contentY > 0)
+        wait(500)
+        compare(naturalScroll.target, details)
+        compare(naturalScroll.blockTargetWheel, true)
+        compare(naturalScroll.scrollFlickableTarget, true)
     }
 
     function test_preview_supports_touch_and_touchpad_swiping() {
@@ -399,7 +562,8 @@ TestCase {
     function test_preview_zoom_controls_and_cursor_centering() {
         appPage.openScreenshot(0)
         const preview = appPage.screenshotPreviewDialog
-        tryCompare(preview, "visible", true)
+        tryCompare(preview, "opened", true)
+        waitForRendering(preview.contentItem)
 
         const frame = findChild(preview, "previewImageFrame")
         const gestureSurface = findChild(preview, "previewGestureSurface")
@@ -548,7 +712,9 @@ TestCase {
     function test_mouse_wheel_outside_photo_browses_one_screenshot_per_notch() {
         appPage.openScreenshot(1)
         const preview = appPage.screenshotPreviewDialog
-        tryCompare(preview, "visible", true)
+        tryCompare(preview, "opened", true)
+        tryCompare(findChild(preview, "previewImage"), "status", Image.Ready)
+        waitForRendering(preview.contentItem)
         const gestureSurface = findChild(preview, "previewGestureSurface")
         const verticalWheel = appPage.previewVerticalWheelHandler
         const wheelSurface = appPage.previewWindowWheelSurfaceItem
@@ -597,6 +763,19 @@ TestCase {
                    Qt.NoButton)
         compare(appPage.previewScreenshotIndex, 1)
         compare(preview.visible, true)
+    }
+
+    function test_clipped_image_pixels_are_not_wheel_zoom_targets() {
+        appPage.openScreenshot(0)
+        const preview = appPage.screenshotPreviewDialog
+        tryCompare(preview, "opened", true)
+        tryCompare(findChild(preview, "previewImage"), "status", Image.Ready)
+        const frame = findChild(preview, "previewImageFrame")
+        appPage.setPreviewZoom(5)
+        verify(appPage.previewPointIsInsideImage(frame.width / 2, frame.height / 2))
+        for (const point of [[-1, frame.height / 2], [frame.width, frame.height / 2],
+                             [frame.width / 2, -1], [frame.width / 2, frame.height]])
+            verify(!appPage.previewPointIsInsideImage(point[0], point[1]))
     }
 
     function test_thumbnail_highlight_without_preview_badge() {

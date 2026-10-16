@@ -20,11 +20,16 @@ TestCase {
         property var launched: null
         property int cancelledIndex: -1
         property int clearCount: 0
+        property int clearedIndex: -1
         signal appOpened(var app)
         signal inputError(string message)
         function launchApp(app) { launched = app }
         function cancelJob(index) { cancelledIndex = index }
         function clearDownloadHistory() { ++clearCount; jobs = jobs.filter(job => job.active) }
+        function clearFailedJob(index) {
+            clearedIndex = index
+            jobs = jobs.filter(job => job.index !== index || job.active || !job.failed)
+        }
     }
     AppCenter.Main { id: main; backend: backend; visible: true }
     readonly property var app: { return {
@@ -39,7 +44,7 @@ TestCase {
                      {name: app.id, status: "Downloading", downloadSize: "128.00 MiB"}]
     } }
     function stack() { return findChild(main, "navigationStack") }
-    function card() { return findChild(stack().currentItem, "downloadJobs").itemAt(0) }
+    function card() { return findChild(stack().currentItem, "downloadJobs").itemAtIndex(0) }
     function visibleText(item) {
         if (!item.visible) return ""
         let result = item.text || ""
@@ -54,11 +59,45 @@ TestCase {
         waitForRendering(stack().currentItem)
     }
     function cleanup() {
+        main.contentItem.LayoutMirroring.enabled = main.rtl
         main.showCatalog()
         tryCompare(stack(), "busy", false)
         backend.jobs = []; backend.installedApps = []; backend.review = ({})
         backend.launched = null; backend.cancelledIndex = -1
         backend.clearCount = 0; main.catalog = []
+        backend.clearedIndex = -1
+    }
+    function test_scrollbar_has_separate_gutter_data() {
+        const cases = []
+        for (const rtl of [false, true]) for (const width of [720, 1180])
+            cases.push({tag: (rtl ? "rtl-" : "ltr-") + width, rtl: rtl, width: width})
+        return cases
+    }
+    function test_scrollbar_has_separate_gutter(data) {
+        main.width = data.width
+        main.contentItem.LayoutMirroring.enabled = data.rtl
+        backend.jobs = Array.from({length: 200}, (_, index) => Object.assign({}, job,
+            {index: index, id: "org.example.App" + index}))
+        const page = stack().currentItem
+        const rows = findChild(page, "downloadJobs")
+        const bar = findChild(page, "downloadsPageScrollBar")
+        waitForPolish(page)
+        tryCompare(bar, "visible", true)
+        compare(bar.parent, page.contentItem)
+        compare(bar.height, page.contentItem.height)
+        const rail = bar.mapToItem(page.contentItem, 0, 0)
+        const viewport = rows.mapToItem(page.contentItem, 0, 0)
+        verify(data.rtl ? rail.x + bar.width + 8 <= viewport.x
+                        : viewport.x + rows.width + 8 <= rail.x,
+               "The entire scrollbar must stay outside the card viewport with an 8px gap")
+        compare(data.rtl ? rail.x : rail.x + bar.width, data.rtl ? 0 : page.contentItem.width)
+        const thumb = bar.contentItem
+        mousePress(thumb, thumb.width / 2, thumb.height / 2)
+        mouseMove(thumb, thumb.width / 2, thumb.height / 2 + 100, 30)
+        mouseRelease(thumb, thumb.width / 2, thumb.height / 2 + 100)
+        verify(rows.contentY > 0, "Dragging the external rail still scrolls the queue")
+        backend.jobs = []
+        tryCompare(bar, "visible", false)
     }
     function test_open_details_from_icon_and_title_data() {
         return [{tag: "icon", object: "downloadAppIcon"}, {tag: "title", object: "downloadAppName"}]
@@ -156,13 +195,14 @@ TestCase {
         backend.jobs = [Object.assign({}, job, {active: false})]
         const page = stack().currentItem
         const clear = findChild(page, "clearDownloadHistoryButton")
-        const icon = findChild(clear, "fluffButtonIcon")
+        const icon = findChild(clear, "fluffButtonMonochromeIcon")
         const label = findChild(clear, "fluffButtonLabel")
         const title = findChild(page, "downloadsTitle")
         waitForPolish(main.contentItem)
         compare(clear.icon.name, "edit-clear-history")
         verify(icon.visible && label.visible)
-        compare(icon.source.toString(), main.iconSource("edit-clear-history"))
+        compare(icon.source.toString(), "edit-clear-history")
+        compare(icon.color, main.textColor)
         compare(icon.width, 20); compare(icon.height, 20)
         verify(icon.mapToItem(clear, icon.width, 0).x < label.mapToItem(clear, 0, 0).x)
         verify(Math.abs(icon.mapToItem(clear, 0, icon.height / 2).y
@@ -177,16 +217,37 @@ TestCase {
         const other = Object.assign({}, job, {index: 8, id: "org.example.Other", name: "Other"})
         backend.jobs = [other, job]
         compare(rows.count, 2)
-        compare(rows.itemAt(1), original)
-        const otherCard = rows.itemAt(0)
+        compare(rows.itemAtIndex(1), original)
+        const otherCard = rows.itemAtIndex(0)
         backend.jobs = [job, other]
-        compare(rows.itemAt(0), original)
-        compare(rows.itemAt(1), otherCard)
+        compare(rows.itemAtIndex(0), original)
+        compare(rows.itemAtIndex(1), otherCard)
         backend.jobs = [other]
         compare(rows.count, 1)
-        compare(rows.itemAt(0), otherCard)
+        compare(rows.itemAtIndex(0), otherCard)
         mouseClick(findChild(otherCard, "cancelDownloadButton"))
         compare(backend.cancelledIndex, 8, "Removing history must not change a surviving job's cancellation ID")
+    }
+    function test_bulk_population_clear_and_repopulate() {
+        const rows = findChild(stack().currentItem, "downloadJobs")
+        backend.jobs = []
+        compare(rows.count, 0)
+        const jobs = Array.from({length: 200}, (_, index) => Object.assign({}, job,
+            {index: index + 1000, id: "org.example.App" + index, name: "App " + index}))
+        backend.jobs = jobs
+        compare(rows.count, 200)
+        for (let i = 0; i < rows.count; ++i) compare(rows.model.get(i).jobIndex, i + 1000)
+        const originalCard = rows.itemAtIndex(0)
+        verify(originalCard)
+        backend.jobs = jobs.map((item, i) => i === 0 ? Object.assign({}, item, {progress: 0.5}) : item)
+        compare(rows.itemAtIndex(0), originalCard)
+        backend.jobs = []
+        compare(rows.count, 0)
+        backend.jobs = [Object.assign({}, job, {index: 2001})]
+        compare(rows.count, 1)
+        compare(rows.model.get(0).jobIndex, 2001)
+        mouseClick(findChild(rows.itemAtIndex(0), "cancelDownloadButton"))
+        compare(backend.cancelledIndex, 2001)
     }
     function test_simple_progress_data() {
         return [{tag: "wide", width: 1180}, {tag: "narrow", width: 720}]
@@ -243,6 +304,34 @@ TestCase {
         verify(findChild(card(), "downloadJobError").visible)
         compare(findChild(card(), "downloadJobError").text, "Network unavailable")
         compare(findChild(card(), "downloadJobStatus").text, "Failed")
+    }
+    function test_clear_one_failure_preserves_other_rows_data() {
+        return [{tag:"install", action:"install"}, {tag:"update", action:"update"}]
+    }
+    function test_clear_one_failure_preserves_other_rows(data) {
+        backend.jobs = [Object.assign({}, job, {active:false, failed:true, action:data.action}),
+            Object.assign({}, job, {index:8, active:false, failed:true}),
+            Object.assign({}, job, {index:12}),
+            Object.assign({}, job, {index:15, active:false})]
+        const rows = findChild(stack().currentItem, "downloadJobs")
+        const survivor = rows.itemAtIndex(1)
+        const clear = findChild(card(), "clearFailedDownloadButton")
+        verify(clear.visible)
+        compare(clear.text, "Clear")
+        compare(clear.icon.name, findChild(stack().currentItem, "clearDownloadHistoryButton").icon.name)
+        verify(!findChild(rows.itemAtIndex(2), "clearFailedDownloadButton").visible)
+        verify(!findChild(rows.itemAtIndex(3), "clearFailedDownloadButton").visible)
+        waitForPolish(stack().currentItem)
+        waitForRendering(clear)
+        mouseClick(clear)
+        compare(backend.clearedIndex, 3)
+        compare(backend.jobs.map(job => job.index).join(","), "8,12,15")
+        compare(rows.itemAtIndex(0), survivor)
+        waitForPolish(stack().currentItem)
+        waitForRendering(survivor)
+        mouseClick(findChild(survivor, "clearFailedDownloadButton"))
+        compare(backend.clearedIndex, 8)
+        compare(backend.jobs.map(job => job.index).join(","), "12,15")
     }
     function test_repo_success_has_no_complete_or_open() {
         backend.jobs = [{index: 3, action: "source", id: "", name: "Repository", active: false, status: "Complete", operations: []}]

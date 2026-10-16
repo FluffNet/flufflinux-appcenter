@@ -52,6 +52,59 @@ TestCase {
         backend.repositories = backend.initialRepositories
         main.requestActivate(); wait(50)
     }
+    function cleanup() {
+        const about = findChild(main, "aboutDialog")
+        about.close()
+        tryCompare(about, "visible", false)
+    }
+    function test_settings_long_back_label_data() {
+        return [{tag:"finnish", text:"Takaisin"}, {tag:"greek", text:"Επιστροφή"},
+                {tag:"romanian", text:"Înapoi"}, {tag:"german", text:"Zurück"}]
+    }
+    function test_settings_long_back_label(data) {
+        main.width = 720
+        main.showSettings(); tryCompare(stack(), "busy", false)
+        const button = findChild(page(), "settingsBackButton")
+        button.text = data.text
+        const label = findChild(button, "fluffButtonLabel")
+        tryCompare(label, "lineCount", 1)
+        verify(label.contentWidth <= label.width + 1)
+        const title = findChild(page(), "settingsTitle")
+        verify(button.x + button.width <= title.x)
+    }
+    function test_source_dialog_long_labels_data() {
+        return [{tag:"dark", bg:"#202326", fg:"#ffffff"}, {tag:"light", bg:"#eff0f1", fg:"#232629"}]
+    }
+    function test_source_dialog_long_labels(data) {
+        const oldWindow = main.palette.window, oldText = main.palette.windowText
+        try {
+            main.width = 720
+            main.palette.window = data.bg; main.palette.windowText = data.fg
+            backend.repositories = []
+            main.showSettings(); tryCompare(stack(), "busy", false)
+            const dialog = findChild(page(), "addSourceDialog")
+            dialog.title = "Zusätzliche vertrauenswürdige Flatpak-Anwendungsquellen hinzufügen"
+            dialog.open(); tryCompare(dialog, "opened", true)
+            compare(dialog.background.color, main.raisedSurfaceColor)
+            const input = findChild(dialog, "sourceInput")
+            compare(input.background.color, main.surfaceColor)
+            compare(input.color, main.textColor)
+            const title = findChild(dialog, "fluffDialogTitle")
+            compare(title.color, main.textColor)
+            for (const name of ["addDefaultSourcesButton", "cancelAddSourceButton", "confirmAddSourceButton"]) {
+                const button = findChild(dialog, name)
+                button.text = "Ausgewählte Anwendungsquellen hinzufügen"
+                const label = findChild(button, "fluffButtonLabel")
+                tryVerify(function() {
+                    const pos = label.mapToItem(button, label.width, label.height)
+                    return label.contentWidth <= label.width + 1 && pos.y <= button.height + 1
+                        && pos.x <= button.width + 1
+                })
+            }
+            tryVerify(function() { return title.contentWidth <= title.width + 1 })
+            dialog.close()
+        } finally { main.palette.window = oldWindow; main.palette.windowText = oldText }
+    }
     function test_menu_layout_data() { return [{tag:"wide", width:1180}, {tag:"narrow", width:720}] }
     function test_menu_layout(data) {
         main.width = data.width
@@ -69,13 +122,16 @@ TestCase {
         tryCompare(menu, "opened", true)
         fuzzyCompare(menu.x + menu.width, button.width, 0.5)
         verify(button.x + menu.x >= 0, "Right-aligned menu stays inside the page")
-        compare(menu.count, 2)
+        compare(menu.count, 3)
+        compare(menu.itemAt(2).objectName, "recoveryMenuItem")
+        verify(!menu.itemAt(2).visible)
+        compare(menu.itemAt(2).height, 0)
         compare(menu.itemAt(0).text, "Settings"); verify(menu.itemAt(0).icon.name.length > 0)
         compare(menu.itemAt(1).text, "About"); verify(menu.itemAt(1).icon.name.length > 0)
         menu.itemAt(1).triggered(); menu.close()
         const about = findChild(main, "aboutDialog")
         tryCompare(about, "opened", true)
-        compare(findChild(about, "aboutVersion").text, "Version 2026.09 (Beta)")
+        compare(findChild(about, "aboutVersion").text, "Version 2026.10")
         const copyright = findChild(about, "aboutCopyright")
         compare(copyright.text, "Copyright © 2026 FluffNet LLC - MIT License")
         compare(copyright.lineCount, 1)

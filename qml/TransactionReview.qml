@@ -7,6 +7,16 @@ Dialog {
     objectName: "transactionReview"
     property var backend: null
     property var plan: ({})
+    function planText(key, fallback) {
+        let value = qsTranslate("AppCenter", key || fallback || "")
+        const args = plan.textArguments || []
+        // Replace only template placeholders, never placeholders inside app names.
+        return value.replace(/%([1-9][0-9]*)/g, function(match, number) {
+            const argument = args[Number(number) - 1]
+            return argument === undefined ? match
+                : (Qt.application.layoutDirection === Qt.RightToLeft ? "\u2068" + argument + "\u2069" : argument)
+        })
+    }
     anchors.centerIn: parent
     width: Math.min(window.width - 48, plan.removing ? 480 : 740)
     height: Math.min(window.height - 64, body.implicitHeight + 48 + header.implicitHeight + footer.implicitHeight)
@@ -17,7 +27,7 @@ Dialog {
         color: window.raisedSurfaceColor
         border.color: window.borderColor
     }
-    title: plan.title || qsTr("Confirm action")
+    title: planText(plan.titleKey, plan.title) || qsTr("Confirm action")
     standardButtons: Dialog.NoButton
     closePolicy: Popup.CloseOnEscape
     onAccepted: if (backend) backend.answerReview(plan.token, true)
@@ -37,10 +47,12 @@ Dialog {
         RowLayout {
             id: reviewButtons
             anchors.right: parent.right; anchors.rightMargin: 16
+            anchors.left: parent.left; anchors.leftMargin: 16
             anchors.top: parent.top; anchors.topMargin: 8
             spacing: 8
             FluffButton {
                 objectName: "confirmReviewButton"
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 Layout.minimumHeight: 40
                 text: dialog.plan.removing ? qsTr("Yes") : dialog.plan.kind === "remote" ? qsTr("Trust and add source") : qsTr("Continue")
                 icon.name: dialog.plan.removing ? "" : "dialog-ok-apply"
@@ -51,6 +63,7 @@ Dialog {
             FluffButton {
                 id: rejectButton
                 objectName: "rejectReviewButton"
+                Layout.fillWidth: true; Layout.minimumWidth: 0
                 Layout.minimumHeight: 40
                 text: dialog.plan.removing ? qsTr("No") : qsTr("Cancel")
                 icon.name: "dialog-cancel"
@@ -76,7 +89,7 @@ Dialog {
             id: body
             width: parent.width
             spacing: 14
-            Label { objectName: "reviewMessage"; Layout.fillWidth: true; text: dialog.plan.message || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.textColor }
+            Label { objectName: "reviewMessage"; Layout.fillWidth: true; text: dialog.planText(dialog.plan.messageKey, dialog.plan.message); textFormat: Text.PlainText; wrapMode: Text.Wrap; color: window.textColor }
             Repeater {
                 objectName: "reviewOperations"
                 model: dialog.plan.removing ? [] : dialog.plan.operations || []

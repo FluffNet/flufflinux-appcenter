@@ -44,6 +44,7 @@ static void script(const QString &path, const QByteArray &body) {
     assert(file.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner));
 }
 int main(int argc, char **argv) {
+    if (argc == 2 && QByteArray(argv[1]) == "--catalog") { std::cout << "[]"; return 0; }
     if (argc == 3 && QByteArray(argv[1]) == "--transaction-worker") {
         QCoreApplication child(argc, argv);
         QTimer::singleShot(15000, &child, [] { std::_Exit(9); }); // Do not orphan a fake worker if a parent assertion fails.
@@ -92,6 +93,7 @@ int main(int argc, char **argv) {
         }
         return child.exec();
     }
+    if (argc > 1) return 2; // Unknown worker modes must not rerun the test.
     QTemporaryDir temporary; assert(temporary.isValid());
     qputenv("XDG_DATA_HOME", (temporary.path() + "/data").toUtf8());
     qputenv("XDG_CONFIG_HOME", (temporary.path() + "/config").toUtf8());

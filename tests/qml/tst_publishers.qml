@@ -121,6 +121,18 @@ TestCase {
         }
         main.palette.link = original
     }
+    function test_publisher_index_handles_ref_identity_duplicates_and_refresh() {
+        const original = app("First")
+        const other = Object.assign(app("Second"), {id:"different.appstream.id", remote:"other"})
+        main.catalog = [original, other]
+        compare(main.publisherFor({id:original.id, remote:"other"}), "Second")
+        backend.installedApps = [installed("Installed")]
+        compare(main.publisherFor({id:original.id}), "Installed")
+        backend.installedApps = []
+        compare(main.publisherFor({id:original.id}), "First")
+        main.catalog = [app("")]
+        compare(main.publisherFor({id:original.id}), "")
+    }
     function test_recommended_layout_data() {
         return [{tag:"narrow", width:720, height:520}, {tag:"short", width:1180, height:520},
             {tag:"wide", width:1400, height:1000}, {tag:"desktop", width:1920, height:1080},

@@ -107,6 +107,7 @@ Page {
         const available = {}
         for (const app of window.catalog) {
             const id = catalogId(app)
+            if (recommendedIds.indexOf(id) < 0 || available[id]) continue
             const match = [app].concat(app.sources || []).find(source => stableFlathub(source))
             if (match && !available[id]) available[id] = match
         }
@@ -120,14 +121,47 @@ Page {
             ? app.releaseTimestamp * 1000 : Date.parse(app.releaseDate || "")
     }
     function compareCatalog(a, b, index, counts) {
-        const tie = a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
-        if (index < 2) return index === 1 ? -tie : tie
+        if (index < 2) {
+            const tie = a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+            return index === 1 ? -tie : tie
+        }
         const left = catalogValue(a, index, counts), right = catalogValue(b, index, counts)
         const leftKnown = typeof left === "number" && isFinite(left) && left >= 0
         const rightKnown = typeof right === "number" && isFinite(right) && right >= 0
         if (leftKnown !== rightKnown) return leftKnown ? -1 : 1
-        if (!leftKnown) return tie
-        return ((index === 3 || index === 5) ? left - right : right - left) || tie
+        const difference = leftKnown ? ((index === 3 || index === 5) ? left - right : right - left) : 0
+        return difference || a.name.localeCompare(b.name) || a.id.localeCompare(b.id)
+    }
+    // Cache only the six possible index orders, not copies of app metadata.
+    // The bound cache is replaced when data/popularity changes. Navigation,
+    // installed state and queue progress do not invalidate a catalog order.
+    readonly property var catalogOrders: ({apps: window.catalog, counts: popularityCounts, orders: {}})
+    // Retain only the last non-search selection across Queue/Updates visits.
+    // These are references to the same catalog objects, not metadata copies.
+    // Replacing either input drops the selection, including its old catalog.
+    readonly property var catalogSelection: ({catalog: catalogOrders, recommendations: recommendedApps,
+                                              key: "", apps: null})
+    function orderedCatalog(index) {
+        const cache = catalogOrders
+        if (!cache.orders[index]) {
+            const decorated = cache.apps.map((app, position) => ({position: position,
+                value: index >= 2 ? catalogValue(app, index, cache.counts) : undefined}))
+            decorated.sort(function(a, b) {
+                if (index >= 2) {
+                    const leftKnown = typeof a.value === "number" && isFinite(a.value) && a.value >= 0
+                    const rightKnown = typeof b.value === "number" && isFinite(b.value) && b.value >= 0
+                    if (leftKnown !== rightKnown) return leftKnown ? -1 : 1
+                    const difference = leftKnown ? ((index === 3 || index === 5)
+                        ? a.value - b.value : b.value - a.value) : 0
+                    if (difference) return difference
+                }
+                const left = cache.apps[a.position], right = cache.apps[b.position]
+                const tie = left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
+                return index === 1 ? -tie : tie
+            })
+            cache.orders[index] = decorated.map(entry => entry.position)
+        }
+        return cache.orders[index].map(position => cache.apps[position])
     }
     onUpdatesViewChanged: {
         if (updatesView) {
@@ -142,6 +176,7 @@ Page {
         qsTr("Size: Largest first"), qsTr("Size: Smallest first")
     ]
     readonly property var installedMatches: {
+        if (!visible || !installedView) return []
         const query = window.searchText.trim().toLowerCase()
         const sortIndex = installedSortIndex
         return (window.installedApps || []).filter(function(app) {
@@ -167,7 +202,7 @@ Page {
     onInstalledSortIndexChanged: installedList.positionViewAtBeginning()
     readonly property var categories: [
         { name: "All Apps", label: qsTr("Home"), icon: "go-home" },
-        { name: "Audio & Video", label: qsTr("Audio & Video"), icon: "applications-multimedia" },
+        { name: "Multimedia", label: qsTr("Multimedia"), icon: "applications-multimedia" },
         { name: "Development", label: qsTr("Development"), icon: "applications-development" },
         { name: "Education", label: qsTr("Education"), icon: "applications-education" },
         { name: "Games", label: qsTr("Games"), icon: "applications-games" },
@@ -180,21 +215,33 @@ Page {
         { name: "Other", label: qsTr("Other"), icon: "applications-other" }
     ]
     readonly property real categorySidebarWidth: Math.min(page.width * 0.46,
-                                                           categoryWidthForLabels([qsTr("Installed"), qsTr("App Updates")].concat(categories.map(
+                                                           categoryWidthForLabels([qsTranslate("InstalledNavigation", "Installed"), qsTr("App Updates")].concat(categories.map(
                                                                function(category) {
                                                                    return category.label
                                                                }))))
     readonly property var visibleApps: {
-        const sortIndex = activeCatalogSortIndex, counts = popularityCounts
+        // Updates/Installed have their own lists. Do not sort or filter the
+        // entire catalog when their navigation changes Home's sort binding.
+        if (window.selectedCategory === "Installed" || window.selectedCategory === "Updates") return []
+        // Use the inputs directly: derived Home/sort bindings can still hold
+        // the previous page's value during synchronous navigation signals.
+        const showingHome = window.selectedCategory === "All Apps" && !window.searchText && !cliMimeType && !cliCategory
+        const sortIndex = showingHome ? catalogSortIndex : categorySortIndex
         // Only omit apps that are actually shown above, and only in Home's
         // popularity orders. Search, categories and other orders stay complete.
-        const recommendedToOmit = homeView && (sortIndex === 2 || sortIndex === 3)
+        const recommendedToOmit = showingHome && (sortIndex === 2 || sortIndex === 3)
             ? recommendedApps.map(app => page.catalogId(app)) : []
         const query = window.searchText.trim().toLowerCase()
         const compactQuery = page.compactSearchText(query)
         const activeCategory = query ? window.searchCategoryFilter : window.selectedCategory
-        const matches = window.catalog.filter(function(app) {
-            const categoryMatches = activeCategory === "All Apps" || app.category === activeCategory
+        const cache = catalogSelection
+        const selectionKey = JSON.stringify([activeCategory, sortIndex, cliCategory, cliMimeType, showingHome])
+        if (!query && cache.apps !== null && cache.key === selectionKey) return cache.apps
+        const candidates = query ? window.catalog : orderedCatalog(sortIndex)
+        const matches = candidates.filter(function(app) {
+            // Keep still-fresh catalogs from before the display-name change usable.
+            const appCategory = app.category === "Audio & Video" ? "Multimedia" : app.category
+            const categoryMatches = activeCategory === "All Apps" || appCategory === activeCategory
             const compactNameMatches = compactQuery.length > 0
                     && page.compactSearchText(app.searchName).indexOf(compactQuery) >= 0
             const compactDescriptionMatches = compactQuery.length > 0
@@ -203,12 +250,15 @@ Page {
             return categoryMatches
                     && (!page.cliCategory || (app.categories || []).some(value => String(value).toLowerCase() === page.cliCategory.toLowerCase()))
                     && (!page.cliMimeType || (app.mimeTypes || []).some(value => String(value).toLowerCase() === page.cliMimeType))
-                    && recommendedToOmit.indexOf(page.catalogId(app)) < 0
+                    && (!recommendedToOmit.length || recommendedToOmit.indexOf(page.catalogId(app)) < 0)
                     && (!query || app.searchHaystack.indexOf(query) >= 0
                         || compactNameMatches || compactDescriptionMatches)
         })
-        if (!query)
-            return matches.sort((a, b) => page.compareCatalog(a, b, sortIndex, counts))
+        if (!query) {
+            cache.key = selectionKey
+            cache.apps = matches
+            return matches
+        }
         const scoredMatches = matches.map(function(app) {
             return { app: app, score: page.searchScore(app, query) }
         })
@@ -244,7 +294,8 @@ Page {
         } else if (kind === "mime") {
             cliMimeType = value.toLowerCase()
         } else if (kind === "category") {
-            const aliases = { "audiovideo": "Audio & Video", "game": "Games", "network": "Internet", "utility": "Utilities" }
+            const aliases = { "audiovideo": "Multimedia", "audio & video": "Multimedia", "audio/video": "Multimedia",
+                "game": "Games", "network": "Internet", "utility": "Utilities" }
             const name = aliases[value.toLowerCase()] || value
             const category = categories.find(item => item.name.toLowerCase() === name.toLowerCase()
                                                    || item.label.toLowerCase() === name.toLowerCase())
@@ -344,6 +395,7 @@ Page {
         }
         contentItem: Item {
             Item {
+                anchors.left: parent.left
                 width: page.categorySidebarWidth
                 height: parent.height
 
@@ -359,7 +411,7 @@ Page {
                         objectName: "headerAppIcon"
                         Layout.preferredWidth: 44
                         Layout.preferredHeight: 44
-                        source: window.appIconUrl
+                        source: visible ? window.appIconUrl : ""
                         sourceSize: Qt.size(88, 88)
                         fillMode: Image.PreserveAspectFit
                         smooth: true
@@ -370,7 +422,8 @@ Page {
 
             DownloadsButton {
                 id: downloadsControl
-                x: page.categorySidebarWidth + 12
+                x: headerControl.mirrored ? parent.width - page.categorySidebarWidth - 12 - width
+                                         : page.categorySidebarWidth + 12
                 anchors.verticalCenter: parent.verticalCenter
             }
 
@@ -384,7 +437,8 @@ Page {
                 anchors.right: applicationMenuButton.left
                 anchors.rightMargin: 10
                 anchors.verticalCenter: parent.verticalCenter
-                placeholderText: "Search applications…"
+                placeholderText: qsTr("Search applications…")
+                horizontalAlignment: Text.AlignLeft
                 color: window.textColor; placeholderTextColor: window.mutedTextColor
                 leftPadding: 46; rightPadding: 48; implicitHeight: 44
                 activeFocusOnPress: true
@@ -495,7 +549,7 @@ Page {
                     property bool restoreKeyboardFocus: false
                     modal: false
                     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutsideParent
-                    x: applicationMenuButton.width - width
+                    x: applicationMenuButton.mirrored ? 0 : applicationMenuButton.width - width
                     y: applicationMenuButton.height + 6
                     width: 210
                     Overlay.onPressed: restoreKeyboardFocus = false
@@ -525,6 +579,14 @@ Page {
                         objectName: "aboutMenuItem"
                         text: qsTr("About"); icon.name: "dialog-information"
                         onTriggered: window.showAbout()
+                    }
+                    MenuItem {
+                        objectName: "recoveryMenuItem"
+                        text: qsTr("Interrupted work..."); icon.name: "view-history"
+                        visible: !!(window.backend && window.backend.recovery
+                            && ((window.backend.recovery.items || []).length || window.backend.recovery.error))
+                        height: visible ? implicitHeight : 0
+                        onTriggered: window.showRecovery()
                     }
                 }
             }
@@ -572,7 +634,7 @@ Page {
                         objectName: "installedButton"
                         width: parent.width
                         height: sidebar.navigationRowHeight
-                        text: qsTr("Installed")
+                        text: qsTranslate("InstalledNavigation", "Installed")
                         icon.name: "view-list-details"
                         icon.width: sidebar.navigationIconSize; icon.height: sidebar.navigationIconSize
                         icon.color: window.textColor
@@ -616,6 +678,9 @@ Page {
                                 font: installedButton.font
                                 color: window.textColor
                                 fontSizeMode: Text.Fit; minimumPixelSize: 1
+                                Layout.minimumWidth: 0
+                                Layout.maximumHeight: sidebar.navigationRowHeight
+                                wrapMode: Text.Wrap
                             }
                         }
                         onClicked: page.openCategory("Installed")
@@ -630,7 +695,7 @@ Page {
                     FluffToolButton {
                         id: updatesButton
                         objectName: "updatesButton"
-                        enabled: !window.networkOffline
+                        enabled: !window.networkOffline && !window.catalogLoading
                         width: parent.width; height: sidebar.navigationRowHeight
                         text: qsTr("App Updates"); icon.name: "system-upgrade"
                         icon.width: sidebar.navigationIconSize; icon.height: sidebar.navigationIconSize
@@ -650,7 +715,14 @@ Page {
                                 isMask: true; color: window.textColor
                                 Accessible.ignored: true
                             }
-                            Label { text: updatesButton.text; color: window.textColor; font: updatesButton.font; Layout.fillWidth: true; fontSizeMode: Text.Fit; minimumPixelSize: 1 }
+                            Label {
+                                objectName: "updatesNavigationLabel"
+                                text: updatesButton.text; color: window.textColor; font: updatesButton.font
+                                Layout.fillWidth: true; Layout.minimumWidth: 0
+                                Layout.maximumHeight: sidebar.navigationRowHeight
+                                wrapMode: Text.Wrap
+                                fontSizeMode: Text.Fit; minimumPixelSize: 1
+                            }
                         }
                         background: Rectangle {
                             radius: window.cornerRadius
@@ -670,10 +742,10 @@ Page {
                 objectName: "categoryList"
                 anchors.fill: parent; anchors.topMargin: installedNavigation.height + sidebar.sectionGap
                 spacing: sidebar.navigationGap; clip: true; model: page.categories
-                interactive: false
+                interactive: true
                 boundsBehavior: Flickable.StopAtBounds
                 onHeightChanged: contentY = 0
-                NaturalWheelScroll {
+                PageWheelScroll {
                     objectName: "categoryNaturalScroll"
                     scrollTarget: categoryList
                 }
@@ -722,7 +794,7 @@ Page {
                             Layout.preferredWidth: sidebar.navigationIconSize
                             Layout.preferredHeight: sidebar.navigationIconSize
                             sourceSize: Qt.size(sidebar.navigationIconSize * 2, sidebar.navigationIconSize * 2)
-                            source: window.iconSource(modelData.icon)
+                            source: visible ? window.iconSource(modelData.icon) : ""
                             fillMode: Image.PreserveAspectFit
                         }
                         Label {
@@ -731,6 +803,9 @@ Page {
                             text: categoryButton.text; font: categoryButton.font
                             color: categoryButton.categorySelected && !window.darkMode ? "#000000" : window.textColor
                             fontSizeMode: Text.Fit; minimumPixelSize: 1
+                            Layout.minimumWidth: 0
+                            Layout.maximumHeight: sidebar.navigationRowHeight
+                            wrapMode: Text.Wrap
                         }
                     }
                     background: Rectangle {
@@ -838,6 +913,7 @@ Page {
                                         Layout.fillWidth: true; Layout.preferredWidth: 1
                                         Layout.preferredHeight: catalogGrid.height < 500 ? 80 : 96
                                         app: modelData
+                                        installed: !!window.findInstalled(app)
                                         onClicked: window.openApp(app)
                                     }
                                 }
@@ -864,7 +940,7 @@ Page {
                         visible: catalogGrid.visible && size < 1
                         onPressedChanged: { if (pressed) catalogGrid.releaseTopAnchor() }
                     }
-                    NaturalWheelScroll {
+                    PageWheelScroll {
                         objectName: "catalogNaturalScroll"
                         scrollTarget: catalogGrid
                         onScrollStarted: catalogGrid.releaseTopAnchor()
@@ -875,6 +951,7 @@ Page {
                         height: GridView.view.cellHeight - 16
                         x: 8
                         app: modelData
+                        installed: !!window.findInstalled(app)
                         onClicked: window.openApp(app)
                     }
                 }
@@ -887,6 +964,22 @@ Page {
                     Layout.leftMargin: 28; Layout.rightMargin: 28; Layout.bottomMargin: 20
                     clip: true; spacing: 12
                     model: page.installedMatches
+                    property real savedScrollY: 0
+                    property bool restoringScroll: true
+                    onContentYChanged: if (visible && !restoringScroll) savedScrollY = contentY
+                    onVisibleChanged: {
+                        if (!visible) restoringScroll = true
+                        else Qt.callLater(function() {
+                            if (!installedList.visible) return
+                            installedList.forceLayout()
+                            installedList.contentY = Math.max(installedList.originY,
+                                Math.min(installedList.savedScrollY, installedList.originY
+                                    + Math.max(0, installedList.contentHeight - installedList.height)))
+                            installedList.restoringScroll = false
+                        })
+                    }
+                    reuseItems: true
+                    cacheBuffer: 200
                     boundsBehavior: Flickable.StopAtBounds
                     ScrollBar.vertical: PageScrollBar {
                         objectName: "installedPageScrollBar"
@@ -894,7 +987,7 @@ Page {
                         anchors.top: parent.top; anchors.bottom: parent.bottom; anchors.right: parent.right
                         visible: installedList.visible && size < 1
                     }
-                    NaturalWheelScroll { scrollTarget: installedList }
+                    PageWheelScroll { scrollTarget: installedList }
                     delegate: InstalledRow {
                         required property var modelData
                         width: ListView.view.width
@@ -920,9 +1013,10 @@ Page {
             }
             PageStatusLabel {
                 objectName: "catalogEmptyMessage"
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 width: parent.width - 48
-                wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter
                 visible: !page.catalogBlocked && (page.installedView ? !window.installedLoading && (window.installedError || page.installedMatches.length === 0)
                                             : page.visibleApps.length === 0)
                 text: page.installedView && window.installedError ? window.installedError

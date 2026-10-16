@@ -16,9 +16,10 @@ with tempfile.TemporaryDirectory(prefix="appcenter-catalog-load-") as directory:
     env = dict(os.environ, FLATPAK_USER_DIR=str(root / "user"),
                FLATPAK_SYSTEM_DIR=str(root / "system"), FLATPAK_CONFIG_DIR=str(root / "config"),
                XDG_DATA_HOME=str(root / "data"), XDG_CACHE_HOME=str(root / "cache"),
-               APPCENTER_TEST_CONFIG=str(root / "appcenter.conf"))
+               XDG_CONFIG_HOME=str(root / "settings"))
     (root / "config").mkdir()
-    (root / "appcenter.conf").write_text("[Sources]\ninitialized=true\n")
+    (root / "settings").mkdir()
+    (root / "settings/flufflinux-appcenter.conf").write_text("[Sources]\ninitialized=true\n")
 
     def command(*args):
         result = subprocess.run(args, env=env, capture_output=True, text=True)
@@ -26,7 +27,7 @@ with tempfile.TemporaryDirectory(prefix="appcenter-catalog-load-") as directory:
         return result.stdout
 
     def check(available, failed, operation="initialize", refreshed=0):
-        child = subprocess.Popen([worker, json.dumps({"action": "repositories", "operation": operation})],
+        child = subprocess.Popen([worker, "--transaction-worker", json.dumps({"action": "repositories", "operation": operation})],
                                  env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, bufsize=0)
         events = []
         try:

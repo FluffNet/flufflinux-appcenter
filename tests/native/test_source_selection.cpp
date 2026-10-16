@@ -6,6 +6,7 @@
 #include <cstdio>
 int main(int argc, char **argv) {
     if (argc > 1 && QByteArray(argv[1]) == "--transaction-worker") return 0;
+    if (argc > 1) return 2;
     QCoreApplication application(argc, argv);
     const QVariantMap stable{{"id", "org.example.SourceTest"}, {"name", "Source Test"},
         {"remote", "stable"}, {"sourceUrl", "https://example.org/stable"}, {"flatpakRef", "app/org.example.SourceTest/x86_64/stable"}};

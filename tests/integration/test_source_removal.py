@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Offline app/runtime fixtures in fresh /tmp installations, never real apps.
 
-Usage: test_source_removal.py target/test-source-worker target/test-source-removal
+Usage: test_source_removal.py target/debug/flufflinux-appcenter target/debug/examples/backend-fixture
 Add --system when running as root to cover default/named/merged system sources.
 Only the test driver honors temporary system paths; the production helper does not.
 """
@@ -44,7 +44,7 @@ for removal in (["user", "default", "extra", "merged"] if SYSTEM else ["worker",
         env = dict(os.environ, FLATPAK_USER_DIR=str(root / "user"),
                    FLATPAK_SYSTEM_DIR=str(root / "system"), FLATPAK_CONFIG_DIR=str(root / "config"),
                    XDG_DATA_HOME=str(root / "data"), XDG_CACHE_HOME=str(root / "cache"),
-                   APPCENTER_TEST_CONFIG=str(root / "appcenter.conf"), APPCENTER_REMOVAL_FIXTURE=str(root))
+                   XDG_CONFIG_HOME=str(root / "app-config"), APPCENTER_REMOVAL_FIXTURE=str(root))
         (root / "config/installations.d").mkdir(parents=True)
         (root / "config/installations.d/extra.conf").write_text(
             f'[Installation "extra"]\nPath={root / "extra"}\nDisplayName=Temporary test installation\n')
@@ -76,7 +76,7 @@ for removal in (["user", "default", "extra", "merged"] if SYSTEM else ["worker",
                 # EOF on the review/control pipe means cancellation to a real
                 # worker. Keep it open until the terminal result arrives.
                 events = []
-                with subprocess.Popen([WORKER, json.dumps(dict(action="repositories", operation=operation, **fields))],
+                with subprocess.Popen([WORKER, "--transaction-worker", json.dumps(dict(action="repositories", operation=operation, **fields))],
                                       env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                       stderr=subprocess.PIPE, text=True) as child:
                     while True:
@@ -93,7 +93,7 @@ for removal in (["user", "default", "extra", "merged"] if SYSTEM else ["worker",
             member = next(member for row in rows for member in row["members"] if member["scope"] == "user")
             worker("remove", members=[member])
         else:
-            command(env, DRIVER, removal)
+            command(env, DRIVER, "remove", removal)
         removed = set(scopes) if removal == "merged" else {"user" if removal == "worker" else removal}
         for scope, (option, installation) in scopes.items():
             remotes = command(env, "/usr/bin/flatpak", "remotes", option, "--columns=name").splitlines()

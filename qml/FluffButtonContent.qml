@@ -8,13 +8,14 @@ import org.kde.kirigami as Kirigami
 Item {
     id: content
     property var control: parent
-    property bool monochromeIcon: false
+    property bool monochromeIcon: control.icon.name.length > 0 && control.icon.source.toString().length === 0
     implicitWidth: row.implicitWidth
     implicitHeight: row.implicitHeight
     opacity: control.enabled ? 1 : 0.45
     RowLayout {
         id: row
         anchors.centerIn: parent
+        width: Math.min(implicitWidth, parent.width)
         spacing: 8
         Image {
             objectName: "fluffButtonIcon"
@@ -42,6 +43,10 @@ Item {
             textFormat: Text.PlainText
             font: content.control.font
             color: content.control.palette.buttonText
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            wrapMode: Text.Wrap
+            horizontalAlignment: Text.AlignHCenter
         }
     }
 }

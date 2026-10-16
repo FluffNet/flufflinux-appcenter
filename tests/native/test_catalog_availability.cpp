@@ -1,6 +1,5 @@
 // Production manager + isolated worker protocol; no real sources/apps changed.
-#include "../../src/catalog_inputs.h"
-#include "../../src/catalog_cache.h"
+#include "rust_cache_fixture.h"
 #include "../../src/flatpak_manager.h"
 #include <QGuiApplication>
 #include <QJsonArray>
@@ -77,6 +76,9 @@ int main(int argc, char **argv) {
     qputenv("PATH", temporary.path().toUtf8() + ':' + qgetenv("PATH"));
     QGuiApplication app(argc, argv);
     FlatpakManager manager({});
+    int catalogSnapshots = 0;
+    QObject::connect(&manager, &FlatpakManager::catalogDataChanged, &app,
+        [&] { ++catalogSnapshots; });
     until([&] { return !manager.installedLoading(); });
     qputenv("APPCENTER_TEST_CACHED", "1");
     qputenv("APPCENTER_TEST_CATALOG_DELAY", "200");
@@ -92,16 +94,22 @@ int main(int argc, char **argv) {
     assert(opened.isEmpty() && error.isEmpty());
     until([&] { return !manager.catalogLoading() && !opened.isEmpty(); });
     assert(opened == "org.example.Cached" && error.isEmpty());
+    assert(catalogSnapshots == 1);
+    manager.loadCatalog();
+    until([&] { return !manager.catalogLoading(); });
+    assert(catalogSnapshots == 1); // Identical data does not rebuild QML models.
     qputenv("APPCENTER_TEST_CATALOG_FAIL", "1");
     manager.loadCatalog();
     until([&] { return !manager.catalogLoading(); });
     assert(!manager.catalog().isEmpty()); // A failed refresh retains usable data.
+    assert(catalogSnapshots == 1); // Loading/failure notifications are status only.
     qunsetenv("APPCENTER_TEST_CATALOG_FAIL");
     qunsetenv("APPCENTER_TEST_CATALOG_DELAY");
     qunsetenv("APPCENTER_TEST_CACHED");
     manager.loadCatalog();
     until([&] { return !manager.catalogLoading() && !manager.installedLoading(); });
     assert(!manager.catalogSourcesUnavailable());
+    assert(catalogSnapshots == 2); // An actual catalog change still reaches QML.
     const auto refresh = [&](int available, int failed) {
         qputenv("APPCENTER_TEST_AVAILABLE", QByteArray::number(available));
         qputenv("APPCENTER_TEST_FAILED", QByteArray::number(failed));

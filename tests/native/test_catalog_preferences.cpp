@@ -3,6 +3,7 @@
 #include <QTemporaryDir>
 #include <QFileInfo>
 #include <QFile>
+#include <QSettings>
 #include <QQmlApplicationEngine>
 #include <QQmlContext>
 #include <cassert>
@@ -25,7 +26,7 @@ int main(int argc, char **argv) {
     stored.setValue("Window/width", 1180);
     stored.setValue("Window/maximized", true);
     stored.setValue("Other/retain", "yes"); stored.sync();
-    for (const auto &key : CatalogPreferences::sortKeys()) {
+    for (const auto &key : {"name-asc", "name-desc", "popularity-desc", "popularity-asc", "release-desc", "release-asc"}) {
         CatalogPreferences current(path);
         current.setHomeSort(key);
         CatalogPreferences restarted(path);

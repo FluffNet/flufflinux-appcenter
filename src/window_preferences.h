@@ -5,7 +5,8 @@
 #include <QGuiApplication>
 #include <QPointer>
 #include <QScreen>
-#include <QSettings>
+#include "rust_backend.h"
+#include <QStandardPaths>
 #include <QTimer>
 #include <QWindow>
 
@@ -21,7 +22,7 @@ public:
     };
 
     explicit WindowPreferences(const QString &path = defaultPath())
-        : m_settings(path, QSettings::IniFormat) {
+        : m_path(path) {
         m_capture.setSingleShot(true);
         m_capture.setInterval(0);
         m_save.setSingleShot(true);
@@ -31,16 +32,14 @@ public:
     }
 
     static QString defaultPath() {
-        return QDir::homePath() + "/.config/flufflinux-appcenter.conf";
+        return QStandardPaths::writableLocation(QStandardPaths::ConfigLocation) + "/flufflinux-appcenter.conf";
     }
 
     Launch launchFor(const QSize &available) const {
-        const QSize normal(dimension("Window/width", 1180, 720),
-                           dimension("Window/height", 760, 520));
-        const bool tooLarge = normal.width() > available.width() || normal.height() > available.height();
-        const QString state = m_settings.value("Window/maximized", true).toString().toLower();
-        return {normal, normal.boundedTo(available).expandedTo(QSize(1, 1)),
-                state != "false" || tooLarge};
+        const auto value = rustUtility({{"operation", "window-read"}, {"path", m_path},
+            {"width", available.width()}, {"height", available.height()}});
+        return {QSize(value["normalWidth"].toInt(), value["normalHeight"].toInt()),
+            QSize(value["width"].toInt(), value["height"].toInt()), value["maximized"].toBool()};
     }
 
     void restore(QWindow *window) {
@@ -112,12 +111,6 @@ protected:
     }
 
 private:
-    int dimension(const char *key, int fallback, int minimum) const {
-        bool valid = false;
-        const int value = m_settings.value(key, fallback).toInt(&valid);
-        return valid && value >= minimum ? value : fallback;
-    }
-
     void queueCapture() {
         // Read both dimensions after Qt has applied the complete configure
         // event and its state change, rather than saving intermediate sizes.
@@ -134,20 +127,13 @@ private:
 
     void save() {
         if (!m_normalSize.isValid()) return;
-        if (!QDir().mkpath(QFileInfo(m_settings.fileName()).absolutePath())) {
-            qWarning("Cannot create the App Center settings directory.");
-            return;
-        }
-        m_settings.setValue("Window/width", m_normalSize.width());
-        m_settings.setValue("Window/height", m_normalSize.height());
-        m_settings.setValue("Window/maximized", m_maximized);
-        // QSettings uses an atomic replacement and preserves unrelated keys.
-        m_settings.sync();
-        if (m_settings.status() != QSettings::NoError)
+        const auto result = rustUtility({{"operation", "window-save"}, {"path", m_path},
+            {"width", m_normalSize.width()}, {"height", m_normalSize.height()}, {"maximized", m_maximized}});
+        if (!result["saved"].toBool())
             qWarning("Cannot save App Center window preferences.");
     }
 
-    QSettings m_settings;
+    QString m_path;
     QPointer<QWindow> m_window;
     QTimer m_capture, m_save;
     QSize m_normalSize;

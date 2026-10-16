@@ -1,11 +1,33 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import "Bidi.js" as Bidi
 
 Page {
     focusPolicy: Qt.ClickFocus
     id: page
     required property var app
+    property int screenshotRequest: 0
+    property string requestedScreenshots: ""
+    readonly property var screenshotFiles: window.backend && window.backend.screenshotFiles || ({})
+    function refreshScreenshots() {
+        if (!window.backend || typeof window.backend.requestScreenshots !== "function") return
+        const urls = visible && app ? app.screenshots || [] : []
+        const signature = JSON.stringify(urls)
+        if (signature === requestedScreenshots) return
+        requestedScreenshots = signature
+        if (screenshotRequest) window.backend.cancelScreenshots(screenshotRequest)
+        screenshotRequest = urls.length ? window.backend.requestScreenshots(urls) : 0
+    }
+    function screenshotSource(url) {
+        if (!/^https?:/.test(String(url)) || !window.backend || typeof window.backend.requestScreenshots !== "function") return url
+        return screenshotFiles[url] && screenshotFiles[url].source || ""
+    }
+    function screenshotLoading(url) { return !!screenshotFiles[url] && screenshotFiles[url].state === "loading" }
+    onAppChanged: Qt.callLater(refreshScreenshots)
+    onVisibleChanged: Qt.callLater(refreshScreenshots)
+    Component.onCompleted: refreshScreenshots()
+    Component.onDestruction: if (screenshotRequest && window.backend) window.backend.cancelScreenshots(screenshotRequest)
     property string previewScreenshot: ""
     property int previewScreenshotIndex: -1
     property real previewZoom: 1
@@ -127,7 +149,9 @@ Page {
 
     function previewPointIsInsideImage(x, y) {
         if (!previewImageFrame || !previewImage
-                || previewImage.status !== Image.Ready)
+                || previewImage.status !== Image.Ready
+                || x < 0 || y < 0
+                || x >= previewImageFrame.width || y >= previewImageFrame.height)
             return false
 
         const centerX = previewImageFrame.width / 2 + previewPanX
@@ -222,9 +246,14 @@ Page {
         previewPinching = false
     }
 
+    function backSwipeDistance(horizontalTravel) {
+        return mirrored ? -horizontalTravel : horizontalTravel
+    }
+
     function finishPageSwipe(horizontalTravel, verticalTravel) {
-        const shouldGoBack = horizontalTravel >= Math.min(180, page.width * 0.18)
-                                 && horizontalTravel > verticalTravel * 1.5
+        const backTravel = backSwipeDistance(horizontalTravel)
+        const shouldGoBack = backTravel >= Math.min(180, page.width * 0.18)
+                                 && backTravel > verticalTravel * 1.5
         if (shouldGoBack)
             window.showCatalog()
         return shouldGoBack
@@ -267,8 +296,10 @@ Page {
         contentItem: RowLayout {
             FluffToolButton {
                 objectName: "backButton"
-                text: "←  Back"
-                implicitWidth: 106
+                text: qsTr("Back")
+                icon.name: mirrored ? "go-next" : "go-previous"
+                contentItem: FluffButtonContent { monochromeIcon: true }
+                implicitWidth: Math.max(106, implicitContentWidth + leftPadding + rightPadding)
                 leftPadding: 12
                 rightPadding: 14
                 font.pixelSize: 16
@@ -293,7 +324,7 @@ Page {
         // the image DragHandler's grab after the drag threshold is crossed.
         interactive: !screenshotPreview.visible
         ScrollBar.vertical: ScrollBar {}
-        NaturalWheelScroll {
+        PageWheelScroll {
             id: detailsWheelScroll
             objectName: "detailsNaturalScroll"
             scrollTarget: detailsFlickable
@@ -383,6 +414,10 @@ Page {
             }
             ListView {
                 id: screenshotList
+                // Preserve the source's screenshot order in every UI language.
+                layoutDirection: Qt.LeftToRight
+                LayoutMirroring.enabled: false
+                LayoutMirroring.childrenInherit: true
                 objectName: "screenshotList"
                 Layout.fillWidth: true
                 readonly property bool singleImage: count === 1
@@ -457,7 +492,7 @@ Page {
                             ? screenshotList.height
                             : 276
                     hoverEnabled: true
-                    Accessible.name: "Preview screenshot"
+                    Accessible.name: qsTr("Preview screenshot")
                     onClicked: page.openScreenshot(index)
                     background: Rectangle {
                         radius: window.cornerRadius
@@ -473,14 +508,14 @@ Page {
                             id: screenshotThumbnail
                             anchors.fill: parent
                             anchors.margins: 1
-                            source: screenshotButton.modelData
+                            source: page.screenshotSource(screenshotButton.modelData)
                             asynchronous: true
                             fillMode: Image.PreserveAspectFit
                         }
                         LoadingSpinner {
                             objectName: "screenshotLoadingSpinner"
                             anchors.centerIn: parent
-                            running: screenshotThumbnail.status === Image.Loading
+                            running: screenshotThumbnail.status === Image.Loading || page.screenshotLoading(screenshotButton.modelData)
                             color: window.textColor
                         }
                     }
@@ -488,13 +523,40 @@ Page {
                 }
             }
             Rectangle {
+                objectName: "localSourceNote"
+                Layout.fillWidth: true
+                visible: !!(app && app.localSource) && !heroActions.installed
+                implicitHeight: sourceNoteText.implicitHeight + 32
+                radius: window.cornerRadius
+                color: window.surfaceColor; border.color: window.accentColor; border.width: 1
+                Label {
+                    id: sourceNoteText
+                    objectName: "localSourceNoteText"
+                    anchors.fill: parent; anchors.margins: 16
+                    text: app && app.sourceUrl
+                        ? Bidi.format(qsTr("This app comes from %1\nInstalling this app will add this source so the app can receive updates."), [app.sourceUrl], page.mirrored)
+                        : qsTr("This app comes from a local Flatpak file. Only install it if you trust where it came from.")
+                    textFormat: Text.PlainText
+                    color: window.textColor; wrapMode: Text.Wrap; font.pixelSize: 16
+                }
+            }
+            Rectangle {
+                objectName: "appAboutCard"
                 Layout.fillWidth: true
                 implicitHeight: aboutLayout.implicitHeight + 44; radius: window.cornerRadius
                 color: window.surfaceColor; border.color: window.borderColor; border.width: 1
                 ColumnLayout {
                     id: aboutLayout
                     anchors.fill: parent; anchors.margins: 22; spacing: 10
-                    Label { text: "About this app"; color: window.textColor; font.pixelSize: 23; font.weight: Font.DemiBold }
+                    Label { text: qsTr("About this app"); color: window.textColor; font.pixelSize: 23; font.weight: Font.DemiBold }
+                    Label {
+                        objectName: "appDetailsWarning"
+                        Layout.fillWidth: true
+                        visible: text.length > 0
+                        text: app && app.detailsWarning || ""
+                        textFormat: Text.PlainText
+                        color: window.textColor; font.bold: true; wrapMode: Text.WordWrap
+                    }
                     Label {
                         Layout.fillWidth: true
                         text: app && app.description ? app.description : (app ? app.summary : "")
@@ -526,13 +588,13 @@ Page {
                     text: app && app.installedDate || ""; color: window.textColor
                     visible: text.length > 0; Layout.fillWidth: true; wrapMode: Text.Wrap
                 }
-                Label { text: "Category"; color: window.mutedTextColor }
-                Label { objectName: "appCategoryValue"; text: app ? app.category : ""; color: window.textColor; Layout.fillWidth: true }
-                Label { text: "AppStream ID"; color: window.mutedTextColor }
+                Label { text: qsTr("Category"); color: window.mutedTextColor }
+                Label { objectName: "appCategoryValue"; text: app ? qsTranslate("AppCenter", app.category) : ""; color: window.textColor; Layout.fillWidth: true }
+                Label { text: qsTr("AppStream ID"); color: window.mutedTextColor }
                 Label { text: app ? app.id : ""; color: window.textColor; Layout.fillWidth: true; elide: Text.ElideRight }
-                Label { text: "License"; color: window.mutedTextColor; visible: app && app.license }
+                Label { text: qsTr("License"); color: window.mutedTextColor; visible: app && app.license }
                 Label { text: app ? app.license : ""; color: window.textColor; Layout.fillWidth: true; visible: text.length > 0 }
-                Label { objectName: "appWebsiteCaption"; text: "Website"; color: window.mutedTextColor; visible: app && app.homepage }
+                Label { objectName: "appWebsiteCaption"; text: qsTr("Website"); color: window.mutedTextColor; visible: app && app.homepage }
                 Item {
                     Layout.fillWidth: true
                     implicitWidth: websiteLink.implicitWidth
@@ -541,6 +603,7 @@ Page {
                     WebsiteLink {
                         id: websiteLink
                         objectName: "appWebsiteLink"
+                        anchors.left: parent.left
                         text: app ? app.homepage : ""
                         // Plain text starts at the same value-column edge as
                         // the other details. Long URLs stay inside the column.
@@ -617,7 +680,9 @@ Page {
             property bool startedInsideScreenshotStrip: false
             onPointChanged: {
                 if (active && !startedInsideScreenshotStrip) {
-                    travel = Math.max(travel, point.position.x - startPosition.x)
+                    const horizontalTravel = point.position.x - startPosition.x
+                    if (page.backSwipeDistance(horizontalTravel) > page.backSwipeDistance(travel))
+                        travel = horizontalTravel
                     verticalTravel = Math.max(verticalTravel,
                                               Math.abs(point.position.y - startPosition.y))
                 }
@@ -664,7 +729,7 @@ Page {
                     return
 
                 const fingerDistance = event.inverted ? rawX : -rawX
-                travel += fingerDistance
+                travel += page.backSwipeDistance(fingerDistance)
                 if (travel >= 80) {
                     travel = 0
                     window.showCatalog()
@@ -684,6 +749,30 @@ Page {
         anchors.fill: parent
         visible: screenshotPreview.visible
         z: screenshotPreview.z + 1
+
+        // This wheel-only layer sits above the modal so wheel navigation also
+        // works on the dimmed area. Qt's popup outside-close policy cannot see
+        // through an overlay sibling above it. Cover only the four outside
+        // margins, leaving every preview button and gesture surface untouched.
+        Repeater {
+            model: [
+                Qt.rect(0, 0, parent.width, screenshotPreview.y),
+                Qt.rect(0, screenshotPreview.y + screenshotPreview.height,
+                        parent.width, parent.height - screenshotPreview.y - screenshotPreview.height),
+                Qt.rect(0, screenshotPreview.y, screenshotPreview.x, screenshotPreview.height),
+                Qt.rect(screenshotPreview.x + screenshotPreview.width, screenshotPreview.y,
+                        parent.width - screenshotPreview.x - screenshotPreview.width, screenshotPreview.height)
+            ]
+            MouseArea {
+                required property var modelData
+                x: modelData.x
+                y: modelData.y
+                width: Math.max(0, modelData.width)
+                height: Math.max(0, modelData.height)
+                acceptedButtons: Qt.LeftButton | Qt.RightButton | Qt.MiddleButton
+                onPressed: screenshotPreview.close()
+            }
+        }
 
         WheelHandler {
             id: previewVerticalWheel
@@ -764,7 +853,6 @@ Page {
             // after its opening animation. Preserve both scroll positions.
             detailsFlickable.cancelFlick()
             screenshotList.cancelFlick()
-            detailsWheelScroll.stopSmoothScroll()
             detailsWheelScroll.middleMouseScroll.stop()
             screenshotMiddleScroll.stop()
             width = desiredWidth
@@ -792,6 +880,8 @@ Page {
         }
         contentItem: ColumnLayout {
             focus: true
+            LayoutMirroring.enabled: false
+            LayoutMirroring.childrenInherit: true
             spacing: 8
             Keys.onLeftPressed: function(event) {
                 page.movePreview(-1)
@@ -815,7 +905,7 @@ Page {
                     height: 40
                     text: "×"
                     font.pixelSize: 24
-                    Accessible.name: "Close screenshot preview"
+                    Accessible.name: qsTr("Close screenshot preview")
                     onClicked: screenshotPreview.close()
                     palette.buttonText: window.textColor
                     background: Rectangle {
@@ -844,7 +934,7 @@ Page {
                         text: "←"
                         font.pixelSize: 25
                         visible: page.previewScreenshotIndex > 0
-                        Accessible.name: "Previous screenshot"
+                        Accessible.name: qsTr("Previous screenshot")
                         onClicked: page.movePreview(-1)
                         palette.buttonText: window.textColor
                         background: Rectangle {
@@ -873,7 +963,7 @@ Page {
                         y: page.previewPanY
                         scale: page.previewZoom
                         transformOrigin: Item.Center
-                        source: page.previewScreenshot
+                        source: page.screenshotSource(page.previewScreenshot)
                         asynchronous: true
                         fillMode: Image.PreserveAspectFit
                         onPaintedWidthChanged: page.setPreviewPan(page.previewPanX,
@@ -884,7 +974,7 @@ Page {
                     LoadingSpinner {
                         objectName: "previewLoadingSpinner"
                         anchors.centerIn: parent
-                        running: previewImage.status === Image.Loading
+                        running: previewImage.status === Image.Loading || page.screenshotLoading(page.previewScreenshot)
                         color: window.textColor
                     }
                     Item {
@@ -1128,7 +1218,7 @@ Page {
                         text: "→"
                         font.pixelSize: 25
                         visible: app && page.previewScreenshotIndex < app.screenshots.length - 1
-                        Accessible.name: "Next screenshot"
+                        Accessible.name: qsTr("Next screenshot")
                         onClicked: page.movePreview(1)
                         palette.buttonText: window.textColor
                         background: Rectangle {
@@ -1157,7 +1247,7 @@ Page {
                         text: "-"
                         font.pixelSize: 24
                         enabled: page.previewZoom > 1.001
-                        Accessible.name: "Zoom out"
+                        Accessible.name: qsTr("Zoom out")
                         onClicked: page.zoomPreviewBy(1 / 1.25,
                                                       previewImageFrame.width / 2,
                                                       previewImageFrame.height / 2)
@@ -1176,7 +1266,7 @@ Page {
                         text: "+"
                         font.pixelSize: 22
                         enabled: page.previewZoom < page.maximumPreviewZoom - 0.001
-                        Accessible.name: "Zoom in"
+                        Accessible.name: qsTr("Zoom in")
                         onClicked: page.zoomPreviewBy(1.25,
                                                       previewImageFrame.width / 2,
                                                       previewImageFrame.height / 2)
