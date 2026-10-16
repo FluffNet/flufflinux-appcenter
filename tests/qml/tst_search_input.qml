@@ -105,6 +105,7 @@ TestCase {
         }]
 
         function openApp(app) { selectedApp = app }
+        function findInstalled(app) { return null } // This fixture has no installed apps.
 
         AppCenter.CatalogPage {
             id: catalogPage
@@ -113,6 +114,7 @@ TestCase {
     }
 
     function init() {
+        failOnWarning(/(ReferenceError|TypeError|Binding loop|Cannot assign)/)
         window.searchText = ""
         window.searchCategoryFilter = "All Apps"
         window.selectedCategory = "All Apps"
