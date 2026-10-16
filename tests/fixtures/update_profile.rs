@@ -10,6 +10,7 @@
 //! measure libflatpak transfer/deployment memory: those workers are simulated.
 //! APPCENTER_PROFILE_HEAP=1 samples allocator usage without collecting or trimming.
 use flufflinux_appcenter::backend;
+mod shutdown_images;
 use serde_json::{json, Value};
 use std::{
     env,
@@ -30,8 +31,26 @@ unsafe extern "C" {
     ) -> i32;
 }
 fn catalog() -> Vec<Value> {
-    serde_json::from_slice(&fs::read(env::var("APPCENTER_PROFILE_CATALOG").unwrap()).unwrap())
-        .unwrap()
+    let mut apps: Vec<Value> =
+        serde_json::from_slice(&fs::read(env::var("APPCENTER_PROFILE_CATALOG").unwrap()).unwrap())
+            .unwrap();
+    if let Ok(limit) = env::var("APPCENTER_PROFILE_CATALOG_LIMIT") {
+        apps.truncate(limit.parse::<usize>().unwrap().max(item_count()));
+    }
+    if let Ok(base) = env::var("APPCENTER_PROFILE_IMAGE_BASE") {
+        for (index, app) in apps.iter_mut().take(item_count()).enumerate() {
+            app["screenshots"] = json!([
+                format!("{base}/{index}/first.svg"),
+                format!("{base}/{index}/second.svg")
+            ]);
+            app["icon"] = format!(
+                "{}/tests/fixtures/shutdown-image.svg",
+                env!("CARGO_MANIFEST_DIR")
+            )
+            .into();
+        }
+    }
+    apps
 }
 fn item_count() -> usize {
     env::var("APPCENTER_PROFILE_ITEMS")
@@ -143,6 +162,8 @@ fn main() {
         .prefix("appcenter-profile-")
         .tempdir_in("/tmp")
         .unwrap();
+    let image_server =
+        env::var_os("APPCENTER_PROFILE_SHUTDOWN_IMAGES").map(|_| shutdown_images::Server::start());
     fs::write(root.path().join("fixture"), b"isolated update profiling").unwrap();
     env::set_var("APPCENTER_PROFILE_ROOT", root.path());
     // /proc/self/exe identifies Valgrind while instrumented. Keep simulated
@@ -231,6 +252,7 @@ fn main() {
     if let Some(sampler) = heap_sampler {
         sampler.join().unwrap();
     }
+    drop(image_server);
     drop(root);
     if code != 0 {
         std::process::exit(code);

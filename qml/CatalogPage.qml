@@ -107,6 +107,7 @@ Page {
         const available = {}
         for (const app of window.catalog) {
             const id = catalogId(app)
+            if (recommendedIds.indexOf(id) < 0 || available[id]) continue
             const match = [app].concat(app.sources || []).find(source => stableFlathub(source))
             if (match && !available[id]) available[id] = match
         }
@@ -135,6 +136,11 @@ Page {
     // The bound cache is replaced when data/popularity changes. Navigation,
     // installed state and queue progress do not invalidate a catalog order.
     readonly property var catalogOrders: ({apps: window.catalog, counts: popularityCounts, orders: {}})
+    // Retain only the last non-search selection across Queue/Updates visits.
+    // These are references to the same catalog objects, not metadata copies.
+    // Replacing either input drops the selection, including its old catalog.
+    readonly property var catalogSelection: ({catalog: catalogOrders, recommendations: recommendedApps,
+                                              key: "", apps: null})
     function orderedCatalog(index) {
         const cache = catalogOrders
         if (!cache.orders[index]) {
@@ -228,6 +234,9 @@ Page {
         const query = window.searchText.trim().toLowerCase()
         const compactQuery = page.compactSearchText(query)
         const activeCategory = query ? window.searchCategoryFilter : window.selectedCategory
+        const cache = catalogSelection
+        const selectionKey = JSON.stringify([activeCategory, sortIndex, cliCategory, cliMimeType, showingHome])
+        if (!query && cache.apps !== null && cache.key === selectionKey) return cache.apps
         const candidates = query ? window.catalog : orderedCatalog(sortIndex)
         const matches = candidates.filter(function(app) {
             // Keep still-fresh catalogs from before the display-name change usable.
@@ -241,11 +250,15 @@ Page {
             return categoryMatches
                     && (!page.cliCategory || (app.categories || []).some(value => String(value).toLowerCase() === page.cliCategory.toLowerCase()))
                     && (!page.cliMimeType || (app.mimeTypes || []).some(value => String(value).toLowerCase() === page.cliMimeType))
-                    && recommendedToOmit.indexOf(page.catalogId(app)) < 0
+                    && (!recommendedToOmit.length || recommendedToOmit.indexOf(page.catalogId(app)) < 0)
                     && (!query || app.searchHaystack.indexOf(query) >= 0
                         || compactNameMatches || compactDescriptionMatches)
         })
-        if (!query) return matches
+        if (!query) {
+            cache.key = selectionKey
+            cache.apps = matches
+            return matches
+        }
         const scoredMatches = matches.map(function(app) {
             return { app: app, score: page.searchScore(app, query) }
         })

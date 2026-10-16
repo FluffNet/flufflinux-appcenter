@@ -1,4 +1,53 @@
 use super::*;
+
+// Keep full requests/operation state in Rust. QML needs only plan identities
+// for matching updates and resolved transfer fields for shared download sizes.
+// Never copy permission trees and arbitrary worker metadata on every tick.
+fn display_job(job: &Value) -> Value {
+    let mut shown: Map<String, Value> = job
+        .as_object()
+        .into_iter()
+        .flatten()
+        .filter(|(key, _)| !matches!(key.as_str(), "permissions" | "plan" | "operations"))
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect();
+    for (key, fields) in [
+        ("plan", &["ref", "commit"][..]),
+        (
+            "operations",
+            &[
+                "ref",
+                "commit",
+                "downloadBytes",
+                "receivedBytes",
+                "downloadProgress",
+            ][..],
+        ),
+    ] {
+        if let Some(operations) = job.get(key).and_then(Value::as_array) {
+            shown.insert(
+                key.into(),
+                operations
+                    .iter()
+                    .map(|operation| {
+                        Value::Object(
+                            fields
+                                .iter()
+                                .filter_map(|field| {
+                                    operation
+                                        .get(*field)
+                                        .map(|value| ((*field).into(), value.clone()))
+                                })
+                                .collect(),
+                        )
+                    })
+                    .collect(),
+            );
+        }
+    }
+    shown.into()
+}
+
 impl Manager {
     pub(super) fn publish_jobs(&mut self) {
         let mut totals = HashMap::new();
@@ -13,15 +62,15 @@ impl Manager {
             if item.is_null() || flag(item, "cancelled") || flag(item, "prepareOnly") {
                 continue;
             }
-            let mut job = item.clone();
-            let batch = number(&job, "queueBatch");
+            let batch = number(item, "queueBatch");
             let position = positions.entry(batch).or_insert(0u64);
             *position += 1;
-            job["queuePosition"] = (*position).into();
-            job["queueTotal"] = totals[&batch].into();
-            if flag(&job, "hidden") {
+            if flag(item, "hidden") {
                 continue;
             }
+            let mut job = display_job(item);
+            job["queuePosition"] = (*position).into();
+            job["queueTotal"] = totals[&batch].into();
             if !flag(&job, "addon") {
                 job["icon"] = self
                     .catalog_app(text(&job, "id"))
@@ -73,7 +122,7 @@ impl Manager {
             {
                 // Preserve presentation-only fields; only this row changed.
                 // Cloning every other job here dominated allocation profiles.
-                let mut shown = job.clone();
+                let mut shown = display_job(job);
                 for key in ["queuePosition", "queueTotal"] {
                     shown[key] = self.properties["jobs"][row][key].clone();
                 }
@@ -630,6 +679,11 @@ impl Manager {
         }
         self.clear_reviews(index);
         self.requests[index] = Value::Null;
+        // Once the worker has exited, history needs only its display state.
+        // Active requests/recovery records keep the full operation metadata.
+        if !flag(&self.jobs[index], "active") {
+            self.jobs[index] = display_job(&self.jobs[index]);
+        }
         self.release_finished_jobs();
         if !preparation && !self.stopping {
             self.catalog_after_queue = true;
@@ -695,6 +749,47 @@ mod tests {
     use crate::backend::permissions;
     fn request(id: &str) -> Value {
         json!({"id":id,"action":"install","name":id,"installation":"user"})
+    }
+    #[test]
+    fn queue_display_keeps_transfer_identity_without_private_plan_metadata() {
+        let mut manager = Manager::new(vec![]);
+        let plan = json!([{"ref":"app/a.b.App/x86_64/stable","commit":"abc","downloadBytes":1000,
+            "metadata":"large worker-only metadata"}]);
+        let mut input = request("a.b.App");
+        input["plan"] = plan.clone();
+        input["permissions"] = json!({"groups":[{"description":"private permission comparison"}]});
+        manager.enqueue(input.clone());
+        assert_eq!(manager.requests[0]["plan"], plan);
+        assert_eq!(manager.jobs[0]["permissions"], input["permissions"]);
+        let shown = &manager.properties["jobs"][0];
+        assert!(shown.get("permissions").is_none());
+        assert_eq!(
+            shown["plan"],
+            json!([{"ref":"app/a.b.App/x86_64/stable","commit":"abc"}])
+        );
+        manager.initial();
+        let operations = json!([{"ref":"runtime/a.b.Runtime/x86_64/stable","commit":"def",
+            "downloadBytes":1000,"receivedBytes":500,"downloadProgress":0.5,
+            "progress":0.2,"action":"update","metadata":"not for QML"}]);
+        manager.patch_job(0, json!({"operations":operations,"progress":0.2}));
+        let reply = manager.finish_envelope(Value::Null);
+        let shown = &reply["rows"]["jobs"]["0"];
+        assert!(shown.get("permissions").is_none());
+        assert_eq!(shown["progress"], 0.2);
+        assert_eq!(
+            shown["operations"],
+            json!([{"ref":"runtime/a.b.Runtime/x86_64/stable","commit":"def",
+            "downloadBytes":1000,"receivedBytes":500,"downloadProgress":0.5}])
+        );
+        assert_eq!(manager.jobs[0]["operations"], operations);
+        assert_eq!(manager.requests[0]["plan"], plan);
+        manager.patch_job(0, json!({"active":false,"queued":false,"progress":1}));
+        manager.tasks.remove("install");
+        manager.job_finished("install", json!({"index":0,"result":true}), &json!({}));
+        assert!(manager.requests[0].is_null());
+        assert!(manager.jobs[0].get("permissions").is_none());
+        assert!(manager.jobs[0]["operations"][0].get("metadata").is_none());
+        assert_eq!(manager.jobs[0]["operations"][0]["receivedBytes"], 500);
     }
     #[test]
     fn update_completion_does_not_duplicate_installed_scan() {

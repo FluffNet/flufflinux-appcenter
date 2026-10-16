@@ -43,6 +43,7 @@ TestCase {
     }
     function init() {
         failOnWarning(/(ReferenceError|TypeError|Binding loop|Cannot assign)/)
+        updateCountSpy.target = null
         main.showCatalog(); tryCompare(stack(), "busy", false)
         root().openCategory("Installed")
         backend.updates = {state:"idle", items:[]}; backend.checks = 0; backend.submitted = []; backend.busy = false
@@ -102,6 +103,54 @@ TestCase {
         waitForPolish(list)
         verify(list.itemAtIndex(0) === survivor, "Completing another update must not recreate this card")
         compare(survivor.modelData.name, "Beta")
+    }
+    function test_two_hundred_updates_repopulate_with_reduced_job_payload() {
+        open()
+        const items = Array.from({length:200}, (_, index) => row("App " + index, "user"))
+        backend.updates = {state:"ready", items:items}
+        const list = findChild(page(), "updatesList")
+        tryCompare(list, "count", 200)
+        // The production queue publishes identities and resolved transfer
+        // fields only. Permissions remain on the update row, not the job.
+        backend.jobs = [{index:0, action:"update", key:items[0].key, active:true,
+            plan:items[0].plan.map(op => ({ref:op.ref, commit:op.commit})),
+            operations:[{ref:"App 0", commit:"a", downloadBytes:100,
+                receivedBytes:60, downloadProgress:1}]}]
+        compare(page().jobFor(items[0], false).index, 0)
+        compare(page().selectedBytes, 20160)
+        const otherRelease = Object.assign({}, items[0], {plan:[{ref:"App 0", commit:"different"}]})
+        compare(page().jobFor(otherRelease, false), null)
+        main.showDownloads(); tryCompare(stack(), "busy", false)
+        compare(list.count, 0)
+        main.showCatalog(); tryCompare(stack(), "busy", false)
+        tryCompare(list, "count", 200)
+        compare(page().selected.length, 200)
+        compare(page().selectedBytes, 20160)
+        backend.updates = {state:"ready", items:[]}
+        tryCompare(list, "count", 0)
+    }
+    SignalSpy { id: updateCountSpy; signalName: "countChanged" }
+    function test_explicit_navigation_does_not_rebuild_hidden_updates_data() {
+        return [{tag:"home", action:null},
+            {tag:"search", action:{type:"search", value:"firefox"}},
+            {tag:"category", action:{type:"category", value:"Games"}},
+            {tag:"mime", action:{type:"mime", value:"image/png"}},
+            {tag:"installed", action:{type:"mode", value:"Installed"}}]
+    }
+    function test_explicit_navigation_does_not_rebuild_hidden_updates(data) {
+        open()
+        backend.updates = {state:"ready", items:Array.from({length:200}, (_, i) => row("App " + i, "user"))}
+        const list = findChild(page(), "updatesList")
+        tryCompare(list, "count", 200)
+        main.showDownloads(); tryCompare(stack(), "busy", false)
+        compare(list.count, 0)
+        updateCountSpy.target = list
+        updateCountSpy.clear()
+        if (data.action) main.handleCliAction(data.action)
+        else main.showHome()
+        tryCompare(stack(), "busy", false)
+        compare(updateCountSpy.count, 0, "Do not reveal/rebuild the old Updates page before switching destination")
+        updateCountSpy.target = null
     }
     function test_update_icons_follow_theme_data() {
         return [{tag:"dark", background:"#202326", foreground:"#ffffff"},

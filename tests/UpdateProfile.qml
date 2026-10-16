@@ -86,7 +86,9 @@ App.Main {
                 main.phase = 2; main.phaseStart = Date.now()
                 main.scrollView = probe.findChild(stack().currentItem, "updatesList")
             } else if (main.phase === 2 && now - main.phaseStart > 5000) {
+                const start = Date.now()
                 main.showDownloads(); main.phase = 3
+                console.log("PROFILE_OPEN_QUEUE_MS", Date.now() - start)
                 main.scrollView = probe.findChild(stack().currentItem, "downloadJobs")
                 console.log("PROFILE_QUEUE_SCROLL")
             } else if (main.phase === 3 && !main.backend.busy) {
@@ -95,9 +97,13 @@ App.Main {
                 main.phase = 4; main.phaseStart = now
             } else if (main.phase === 4 && now - main.phaseStart > main.historyMs) {
                 console.log("PROFILE_IDLE_HISTORY_RETAINED")
+                const clearStart = Date.now()
                 main.backend.clearDownloadHistory()
+                console.log("PROFILE_CLEAR_HISTORY_MS", Date.now() - clearStart)
                 main.scrollView = null
+                const homeStart = Date.now()
                 main.showHome(); main.phase = 5; main.phaseStart = now
+                console.log("PROFILE_HOME_MS", Date.now() - homeStart)
             } else if (main.phase === 5 && now - main.phaseStart > main.idleMs) {
                 const cycle = {}
                 for (const key of Object.keys(main.cycleDelays)) cycle[key] = main.timingSummary(main.cycleDelays[key])

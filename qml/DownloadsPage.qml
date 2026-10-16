@@ -113,7 +113,16 @@ Page {
         cacheBuffer: 200
         reuseItems: true
         boundsBehavior: Flickable.StopAtBounds
-        ScrollBar.vertical: ScrollBar {}
+        ScrollBar.vertical: PageScrollBar {
+            objectName: "downloadsPageScrollBar"
+            // Keep the rail in the page gutter, outside the cards. The
+            // trailing anchor mirrors to the left in RTL layouts.
+            parent: page.contentItem
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.right: parent.right
+            visible: page.visible && size < 1
+        }
         PageWheelScroll { scrollTarget: scroll }
         model: jobRows
         delegate: Pane {

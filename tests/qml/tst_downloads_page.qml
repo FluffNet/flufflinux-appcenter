@@ -59,12 +59,45 @@ TestCase {
         waitForRendering(stack().currentItem)
     }
     function cleanup() {
+        main.contentItem.LayoutMirroring.enabled = main.rtl
         main.showCatalog()
         tryCompare(stack(), "busy", false)
         backend.jobs = []; backend.installedApps = []; backend.review = ({})
         backend.launched = null; backend.cancelledIndex = -1
         backend.clearCount = 0; main.catalog = []
         backend.clearedIndex = -1
+    }
+    function test_scrollbar_has_separate_gutter_data() {
+        const cases = []
+        for (const rtl of [false, true]) for (const width of [720, 1180])
+            cases.push({tag: (rtl ? "rtl-" : "ltr-") + width, rtl: rtl, width: width})
+        return cases
+    }
+    function test_scrollbar_has_separate_gutter(data) {
+        main.width = data.width
+        main.contentItem.LayoutMirroring.enabled = data.rtl
+        backend.jobs = Array.from({length: 200}, (_, index) => Object.assign({}, job,
+            {index: index, id: "org.example.App" + index}))
+        const page = stack().currentItem
+        const rows = findChild(page, "downloadJobs")
+        const bar = findChild(page, "downloadsPageScrollBar")
+        waitForPolish(page)
+        tryCompare(bar, "visible", true)
+        compare(bar.parent, page.contentItem)
+        compare(bar.height, page.contentItem.height)
+        const rail = bar.mapToItem(page.contentItem, 0, 0)
+        const viewport = rows.mapToItem(page.contentItem, 0, 0)
+        verify(data.rtl ? rail.x + bar.width + 8 <= viewport.x
+                        : viewport.x + rows.width + 8 <= rail.x,
+               "The entire scrollbar must stay outside the card viewport with an 8px gap")
+        compare(data.rtl ? rail.x : rail.x + bar.width, data.rtl ? 0 : page.contentItem.width)
+        const thumb = bar.contentItem
+        mousePress(thumb, thumb.width / 2, thumb.height / 2)
+        mouseMove(thumb, thumb.width / 2, thumb.height / 2 + 100, 30)
+        mouseRelease(thumb, thumb.width / 2, thumb.height / 2 + 100)
+        verify(rows.contentY > 0, "Dragging the external rail still scrolls the queue")
+        backend.jobs = []
+        tryCompare(bar, "visible", false)
     }
     function test_open_details_from_icon_and_title_data() {
         return [{tag: "icon", object: "downloadAppIcon"}, {tag: "title", object: "downloadAppName"}]

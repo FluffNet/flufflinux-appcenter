@@ -122,6 +122,34 @@ TestCase {
         verify(page().catalogOrders === cache)
         verify(cache.orders[0] === undefined, "Returning Home must not build the previous category's sort")
     }
+    function test_selection_reused_without_stale_search_or_metadata() {
+        page().catalogSortIndex = 2
+        const home = page().visibleApps
+        selectCategory("Updates")
+        compare(page().visibleApps.length, 0)
+        selectCategory("Installed")
+        selectCategory("All Apps")
+        verify(page().visibleApps === home, "Do not filter the unchanged catalog on returning Home")
+        main.searchText = "alpha"
+        compare(names(), "Alpha")
+        main.searchText = ""
+        verify(page().visibleApps === home)
+        const cache = page().catalogSelection
+        stats.counts = {"org.example.Alpha":100, "org.example.Beta":1}
+        verify(page().catalogSelection !== cache)
+        compare(names(), "Alpha,Beta,Outside,Unknown,Zero")
+        main.catalog = [app("org.example.New", "New", "Utilities", "2026-10-01")]
+        compare(names(), "New")
+        verify(!page().catalogSelection.apps.some(item => item.id === "org.example.Alpha"))
+        selectCategory("Games")
+        compare(names(), "")
+        selectCategory("Utilities")
+        compare(names(), "New")
+        page().openCliFilter("mime", "image/png")
+        compare(names(), "")
+        page().openCliFilter("search", "")
+        compare(names(), "New")
+    }
     function test_multimedia_aliases_and_cached_categories_data() {
         return ["Multimedia", "AudioVideo", "Audio & Video", "Audio/Video"].map(name => ({tag:name, name:name}))
     }

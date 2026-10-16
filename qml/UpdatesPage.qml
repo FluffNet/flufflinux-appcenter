@@ -19,6 +19,14 @@ Page {
     ListModel { id: updateRows }
     function syncRows() {
         const keys = page.rows.map(row => row.key)
+        if (!keys.length) {
+            if (updateRows.count) updateRows.clear()
+            return
+        }
+        if (!updateRows.count) {
+            updateRows.append(keys.map(updateKey => ({updateKey})))
+            return
+        }
         const present = new Set(keys)
         for (let row = updateRows.count - 1; row >= 0; --row)
             if (!present.has(updateRows.get(row).updateKey)) updateRows.remove(row)
