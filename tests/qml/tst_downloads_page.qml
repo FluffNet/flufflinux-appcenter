@@ -195,6 +195,27 @@ TestCase {
         mouseClick(findChild(otherCard, "cancelDownloadButton"))
         compare(backend.cancelledIndex, 8, "Removing history must not change a surviving job's cancellation ID")
     }
+    function test_bulk_population_clear_and_repopulate() {
+        const rows = findChild(stack().currentItem, "downloadJobs")
+        backend.jobs = []
+        compare(rows.count, 0)
+        const jobs = Array.from({length: 200}, (_, index) => Object.assign({}, job,
+            {index: index + 1000, id: "org.example.App" + index, name: "App " + index}))
+        backend.jobs = jobs
+        compare(rows.count, 200)
+        for (let i = 0; i < rows.count; ++i) compare(rows.model.get(i).jobIndex, i + 1000)
+        const originalCard = rows.itemAtIndex(0)
+        verify(originalCard)
+        backend.jobs = jobs.map((item, i) => i === 0 ? Object.assign({}, item, {progress: 0.5}) : item)
+        compare(rows.itemAtIndex(0), originalCard)
+        backend.jobs = []
+        compare(rows.count, 0)
+        backend.jobs = [Object.assign({}, job, {index: 2001})]
+        compare(rows.count, 1)
+        compare(rows.model.get(0).jobIndex, 2001)
+        mouseClick(findChild(rows.itemAtIndex(0), "cancelDownloadButton"))
+        compare(backend.cancelledIndex, 2001)
+    }
     function test_simple_progress_data() {
         return [{tag: "wide", width: 1180}, {tag: "narrow", width: 720}]
     }

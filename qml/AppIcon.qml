@@ -16,7 +16,9 @@ Image {
     asynchronous: !String(source).startsWith("image://icon/")
     fillMode: Image.PreserveAspectFit
     onRequestedSourceChanged: loadFailed = false
-    source: loadFailed ? resolveIcon("application-x-executable") : requestedSource
+    // Hidden pages must not decode/reload icons when an install changes the
+    // desktop icon cache. Resolve the latest revision when shown again.
+    source: !visible ? "" : loadFailed ? resolveIcon("application-x-executable") : requestedSource
     function useFallback() { if (status === Image.Error && !loadFailed) loadFailed = true }
     // A synchronous theme miss can emit Error while source is still being
     // evaluated. Defer the fallback so it cannot change that binding in flight.

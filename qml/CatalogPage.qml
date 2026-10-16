@@ -214,10 +214,16 @@ Page {
                                                                    return category.label
                                                                }))))
     readonly property var visibleApps: {
-        const sortIndex = activeCatalogSortIndex
+        // Updates/Installed have their own lists. Do not sort or filter the
+        // entire catalog when their navigation changes Home's sort binding.
+        if (window.selectedCategory === "Installed" || window.selectedCategory === "Updates") return []
+        // Use the inputs directly: derived Home/sort bindings can still hold
+        // the previous page's value during synchronous navigation signals.
+        const showingHome = window.selectedCategory === "All Apps" && !window.searchText && !cliMimeType && !cliCategory
+        const sortIndex = showingHome ? catalogSortIndex : categorySortIndex
         // Only omit apps that are actually shown above, and only in Home's
         // popularity orders. Search, categories and other orders stay complete.
-        const recommendedToOmit = homeView && (sortIndex === 2 || sortIndex === 3)
+        const recommendedToOmit = showingHome && (sortIndex === 2 || sortIndex === 3)
             ? recommendedApps.map(app => page.catalogId(app)) : []
         const query = window.searchText.trim().toLowerCase()
         const compactQuery = page.compactSearchText(query)
@@ -392,7 +398,7 @@ Page {
                         objectName: "headerAppIcon"
                         Layout.preferredWidth: 44
                         Layout.preferredHeight: 44
-                        source: window.appIconUrl
+                        source: visible ? window.appIconUrl : ""
                         sourceSize: Qt.size(88, 88)
                         fillMode: Image.PreserveAspectFit
                         smooth: true
@@ -775,7 +781,7 @@ Page {
                             Layout.preferredWidth: sidebar.navigationIconSize
                             Layout.preferredHeight: sidebar.navigationIconSize
                             sourceSize: Qt.size(sidebar.navigationIconSize * 2, sidebar.navigationIconSize * 2)
-                            source: window.iconSource(modelData.icon)
+                            source: visible ? window.iconSource(modelData.icon) : ""
                             fillMode: Image.PreserveAspectFit
                         }
                         Label {

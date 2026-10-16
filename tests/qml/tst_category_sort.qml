@@ -107,6 +107,21 @@ TestCase {
         for (let index = 0; index < 6; ++index) page().orderedCatalog(index)
         compare(Object.keys(page().catalogOrders.orders).length, 6)
     }
+    function test_non_catalog_navigation_does_not_build_unused_sort() {
+        page().catalogSortIndex = 2
+        const cache = page().catalogOrders
+        delete cache.orders[0]
+        selectCategory("Updates")
+        compare(page().visibleApps.length, 0)
+        verify(cache.orders[0] === undefined)
+        selectCategory("Installed")
+        compare(page().visibleApps.length, 0)
+        verify(cache.orders[0] === undefined)
+        selectCategory("All Apps")
+        verify(page().visibleApps.length > 0)
+        verify(page().catalogOrders === cache)
+        verify(cache.orders[0] === undefined, "Returning Home must not build the previous category's sort")
+    }
     function test_multimedia_aliases_and_cached_categories_data() {
         return ["Multimedia", "AudioVideo", "Audio & Video", "Audio/Video"].map(name => ({tag:name, name:name}))
     }

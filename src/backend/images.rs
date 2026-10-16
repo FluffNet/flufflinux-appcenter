@@ -166,7 +166,12 @@ mod tests {
                 .set_read_timeout(Some(Duration::from_secs(2)))
                 .unwrap();
             let mut request = [0; 4096];
-            connection.read(&mut request).unwrap();
+            let mut received = 0;
+            while !request[..received].windows(4).any(|part| part == b"\r\n\r\n") {
+                let count = connection.read(&mut request[received..]).unwrap();
+                assert!(count > 0, "fixture request closed or exceeded its header limit");
+                received += count;
+            }
             write!(
                 connection,
                 "HTTP/1.1 200 OK\r\nContent-Length: {declared}\r\nConnection: close\r\n\r\n"

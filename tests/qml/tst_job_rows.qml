@@ -86,6 +86,19 @@ TestCase {
         compare(main.backendJobs.length, 0)
     }
     SignalSpy { id: rowsSpy; target: main; signalName: "backendJobsChanged" }
+    QtObject { id: desktop; property int revision: 0 }
+    function test_desktop_icon_signal_has_one_invalidation_source() {
+        main.desktopTheme = desktop
+        try {
+            const theme = main.iconSource("applications-internet")
+            const file = main.iconSource("/tmp/catalog-icon.png")
+            ++backend.iconRevision
+            compare(main.iconSource("applications-internet"), theme)
+            ++desktop.revision
+            verify(main.iconSource("applications-internet") !== theme)
+            compare(main.iconSource("/tmp/catalog-icon.png"), file)
+        } finally { main.desktopTheme = null }
+    }
     function test_bursts_are_bounded_and_terminal_states_are_immediate() {
         backend.jobs = [{index: 0, id: "a.b.One", active: true, progress: 0}]
         backend.jobsSnapshotChanged()

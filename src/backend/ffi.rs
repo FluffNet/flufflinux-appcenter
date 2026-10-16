@@ -142,6 +142,46 @@ pub unsafe extern "C" fn fluff_backend_utility(request: *const c_char) -> *mut c
     })
 }
 
+// Not present in normal builds. Native tests use real Rust persistence rather
+// than retaining the replaced C++ implementation as a second source of truth.
+#[cfg(feature = "native-tests")]
+#[no_mangle]
+/// # Safety
+/// `request` is null or a live NUL-terminated fixture JSON string.
+pub unsafe extern "C" fn fluff_backend_fixture(request: *const c_char) -> *mut c_char {
+    use super::{catalog, storage, text};
+    use chrono::{DateTime, Utc};
+    use std::path::Path;
+    let request = unsafe { input(request) };
+    let path = Path::new(text(&request, "path"));
+    let date = DateTime::parse_from_rfc3339(text(&request, "date"))
+        .map(|d| d.with_timezone(&Utc))
+        .unwrap_or_else(|_| Utc::now());
+    output(match text(&request, "operation") {
+        "fingerprint" => json!({"value":catalog::fingerprint().unwrap_or_default()}),
+        "snapshot" => {
+            catalog::snapshot(&request["request"], super::rows(&request["apps"]).to_vec())
+        }
+        "write" => {
+            json!({"ok":storage::write_cache(path,text(&request,"fingerprint"),super::rows(&request["apps"]),date).is_ok()})
+        }
+        "read" => match storage::read_cache(path, text(&request, "fingerprint"), date) {
+            Some(cache) => {
+                json!({"valid":true,"apps":cache.apps,"savedAt":cache.saved_at.to_rfc3339()})
+            }
+            None => json!({"valid":false}),
+        },
+        "fresh" => json!({"value":storage::fresh(date,Utc::now())}),
+        "stages" => {
+            super::progress::stages(super::rows(&request["operations"]), text(&request, "phase"))
+        }
+        "format" => {
+            json!({"size":super::bytes(super::number(&request,"bytes")),"speed":super::progress::DownloadRate::display(super::number(&request,"speed") as f64),"date":super::locale::date(text(&request,"date"))})
+        }
+        _ => Value::Null,
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,44 +243,4 @@ mod tests {
             assert_eq!(actual, wrapped.dispatch("event", &json!([event])));
         }
     }
-}
-
-// Not present in normal builds. Native tests use real Rust persistence rather
-// than retaining the replaced C++ implementation as a second source of truth.
-#[cfg(feature = "native-tests")]
-#[no_mangle]
-/// # Safety
-/// `request` is null or a live NUL-terminated fixture JSON string.
-pub unsafe extern "C" fn fluff_backend_fixture(request: *const c_char) -> *mut c_char {
-    use super::{catalog, storage, text};
-    use chrono::{DateTime, Utc};
-    use std::path::Path;
-    let request = unsafe { input(request) };
-    let path = Path::new(text(&request, "path"));
-    let date = DateTime::parse_from_rfc3339(text(&request, "date"))
-        .map(|d| d.with_timezone(&Utc))
-        .unwrap_or_else(|_| Utc::now());
-    output(match text(&request, "operation") {
-        "fingerprint" => json!({"value":catalog::fingerprint().unwrap_or_default()}),
-        "snapshot" => {
-            catalog::snapshot(&request["request"], super::rows(&request["apps"]).to_vec())
-        }
-        "write" => {
-            json!({"ok":storage::write_cache(path,text(&request,"fingerprint"),super::rows(&request["apps"]),date).is_ok()})
-        }
-        "read" => match storage::read_cache(path, text(&request, "fingerprint"), date) {
-            Some(cache) => {
-                json!({"valid":true,"apps":cache.apps,"savedAt":cache.saved_at.to_rfc3339()})
-            }
-            None => json!({"valid":false}),
-        },
-        "fresh" => json!({"value":storage::fresh(date,Utc::now())}),
-        "stages" => {
-            super::progress::stages(super::rows(&request["operations"]), text(&request, "phase"))
-        }
-        "format" => {
-            json!({"size":super::bytes(super::number(&request,"bytes")),"speed":super::progress::DownloadRate::display(super::number(&request,"speed") as f64),"date":super::locale::date(text(&request,"date"))})
-        }
-        _ => Value::Null,
-    })
 }

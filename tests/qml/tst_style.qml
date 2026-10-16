@@ -23,6 +23,30 @@ TestCase {
         tryCompare(findChild(main, "navigationStack"), "busy", false)
     }
     Component { id: iconFixture; AppCenter.AppIcon { property var window: main; width: 32; height: 32 } }
+    Component { id: iconParent; Item { width: 32; height: 32 } }
+    QtObject { id: testTheme; property int revision: 0 }
+    function test_hidden_icons_defer_theme_refresh_until_revealed() {
+        failOnWarning(/Binding loop|TypeError|ReferenceError/)
+        main.desktopTheme = testTheme
+        const holder = createTemporaryObject(iconParent, main.contentItem, {visible: false})
+        const icon = createTemporaryObject(iconFixture, holder, {icon: "missing-theme-icon"})
+        compare(icon.visible, false)
+        compare(icon.source.toString(), "")
+        compare(icon.status, Image.Null)
+        testTheme.revision++
+        compare(icon.source.toString(), "")
+        holder.visible = true
+        tryCompare(icon, "loadFailed", true)
+        compare(icon.source, main.iconSource("application-x-executable"))
+        holder.visible = false
+        compare(icon.source.toString(), "")
+        testTheme.revision++
+        compare(icon.loadFailed, false)
+        holder.visible = true
+        tryCompare(icon, "loadFailed", true)
+        compare(icon.source, main.iconSource("application-x-executable"))
+        main.desktopTheme = null
+    }
     function test_theme_icon_fallback_stays_on_gui_thread_without_binding_loop() {
         failOnWarning(/Binding loop|TypeError|ReferenceError/)
         const icon = createTemporaryObject(iconFixture, main.contentItem, {icon: "missing-theme-icon"})
@@ -119,7 +143,13 @@ TestCase {
     function test_brand_icons_use_shared_theme_url() {
         verify(main.appIconUrl.toString().startsWith("image://icon/flufflinux-appcenter?"))
         compare(findChild(main, "headerAppIcon").source, main.appIconUrl)
+        const dialog = findChild(main, "aboutDialog")
+        compare(findChild(main, "aboutAppIcon").source.toString(), "")
+        dialog.open()
+        tryCompare(dialog, "opened", true)
         compare(findChild(main, "aboutAppIcon").source, main.appIconUrl)
+        dialog.close()
+        tryCompare(dialog, "visible", false)
     }
     function test_navigation_hover_uses_shared_color() {
         main.requestActivate()

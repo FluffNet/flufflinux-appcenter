@@ -7,7 +7,6 @@
 #include <QJsonDocument>
 #include <QPointer>
 #include <QProcess>
-#include <QPixmapCache>
 #include <QSet>
 #include <cstring>
 
@@ -162,6 +161,11 @@ void FlatpakManager::readOutput(const std::shared_ptr<Process> &state, bool diag
 void FlatpakManager::finish(const std::shared_ptr<Process> &state, int code, bool crashed) {
     if (state->terminal) return;
     readOutput(state, false); readOutput(state, true);
+#if APPCENTER_NATIVE_TESTS
+    if (qEnvironmentVariableIsSet("APPCENTER_TEST_TRACE_WORKERS"))
+        qInfo().noquote() << "PROFILE_WORKER" << state->role << code << crashed << state->timedOut
+                        << state->output.size() << state->error << QString::fromUtf8(state->diagnostics);
+#endif
     state->terminal = true;
     if (state->timeout) { state->timeout->stop(); state->timeout->setObjectName({}); }
     m_processes.remove(state->serial);
@@ -218,9 +222,21 @@ void FlatpakManager::execute(const QJsonObject &command) {
         for (const auto &arg : command["args"].toArray()) args.append(arg.toString());
         auto program = command["program"].toString();
         if (program == "@self") program = QCoreApplication::applicationFilePath();
+#if APPCENTER_NATIVE_TESTS
+        // Under Valgrind /proc/self/exe names the instrumenter, not the
+        // fixture. This override is absent from installed builds.
+        if (command["program"] == "@self" && qEnvironmentVariableIsSet("APPCENTER_TEST_WORKER_PROGRAM"))
+            program = qEnvironmentVariable("APPCENTER_TEST_WORKER_PROGRAM");
+#endif
         process->start(program, args);
         if (!command["interactive"].toBool()) process->closeWriteChannel();
-        const int timeout = command["timeout"].toInt();
+        int timeout = command["timeout"].toInt();
+#if APPCENTER_NATIVE_TESTS
+        // Whole-library instrumentation can delay the first event-loop pass
+        // past a worker deadline. Preserve production deadlines in all normal
+        // tests, but permit bounded extra time for explicit instrumented runs.
+        timeout *= qBound(1, qEnvironmentVariableIntValue("APPCENTER_TEST_TIMEOUT_FACTOR"), 20);
+#endif
         if (timeout > 0) timer->start(timeout);
     } else if (kind == "launch") {
         QStringList args;
@@ -245,7 +261,6 @@ void FlatpakManager::execute(const QJsonObject &command) {
 void FlatpakManager::refreshThemeIcons(int) {
     QTimer::singleShot(0, this, [this] {
         if (m_stopping) return;
-        QPixmapCache::clear();
         dispatch("iconsChanged");
     });
 }

@@ -66,6 +66,29 @@ fn substitute(template: &str, arguments: &[&str], rtl: bool) -> String {
     result
 }
 
+#[no_mangle]
+/// # Safety
+/// `languages` is a live UTF-8 JSON array, terminated by NUL, for this call.
+pub unsafe extern "C" fn fluff_i18n_initialize(languages: *const c_char) -> bool {
+    let choices = if languages.is_null() { Vec::new() } else {
+        serde_json::from_slice(unsafe { CStr::from_ptr(languages) }.to_bytes()).unwrap_or_default()
+    };
+    TRANSLATIONS.get_or_init(|| load(choices)).rtl
+}
+
+#[no_mangle]
+/// # Safety
+/// `context` and `source` are null or live NUL-terminated UTF-8 strings. Free the result with
+/// `fluff_backend_string_free`. Missing translations return null to Qt.
+pub unsafe extern "C" fn fluff_i18n_translate(context: *const c_char, source: *const c_char) -> *mut c_char {
+    if source.is_null() { return std::ptr::null_mut(); }
+    let source = unsafe { CStr::from_ptr(source) }.to_string_lossy();
+    let context = if context.is_null() { Default::default() } else { unsafe { CStr::from_ptr(context) }.to_string_lossy() };
+    TRANSLATIONS.get().and_then(|data| data.text.get(&format!("{context}\u{4}{source}")).or_else(|| data.text.get(source.as_ref())))
+        .and_then(|value| CString::new(value.as_str()).ok())
+        .map_or(std::ptr::null_mut(), CString::into_raw)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,27 +134,4 @@ mod tests {
             }
         }
     }
-}
-
-#[no_mangle]
-/// # Safety
-/// `languages` is a live UTF-8 JSON array, terminated by NUL, for this call.
-pub unsafe extern "C" fn fluff_i18n_initialize(languages: *const c_char) -> bool {
-    let choices = if languages.is_null() { Vec::new() } else {
-        serde_json::from_slice(unsafe { CStr::from_ptr(languages) }.to_bytes()).unwrap_or_default()
-    };
-    TRANSLATIONS.get_or_init(|| load(choices)).rtl
-}
-
-#[no_mangle]
-/// # Safety
-/// `context` and `source` are null or live NUL-terminated UTF-8 strings. Free the result with
-/// `fluff_backend_string_free`. Missing translations return null to Qt.
-pub unsafe extern "C" fn fluff_i18n_translate(context: *const c_char, source: *const c_char) -> *mut c_char {
-    if source.is_null() { return std::ptr::null_mut(); }
-    let source = unsafe { CStr::from_ptr(source) }.to_string_lossy();
-    let context = if context.is_null() { Default::default() } else { unsafe { CStr::from_ptr(context) }.to_string_lossy() };
-    TRANSLATIONS.get().and_then(|data| data.text.get(&format!("{context}\u{4}{source}")).or_else(|| data.text.get(source.as_ref())))
-        .and_then(|value| CString::new(value.as_str()).ok())
-        .map_or(std::ptr::null_mut(), CString::into_raw)
 }

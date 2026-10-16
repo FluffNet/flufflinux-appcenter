@@ -136,7 +136,7 @@ fn main() {
                     (ticks.saturating_sub(previous), tid, name, core)
                 })
                 .collect();
-            busy.sort_by(|a, b| b.0.cmp(&a.0));
+            busy.sort_by_key(|entry| std::cmp::Reverse(entry.0));
             for (ticks, tid, name, core) in busy.into_iter().take(5) {
                 println!("QUEUE_CPU elapsedMs={} intervalMs={} tid={tid} ticks={ticks} core={core} name={name}", started.elapsed().as_millis(), reported.elapsed().as_millis());
             }

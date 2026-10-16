@@ -75,6 +75,20 @@ TestCase {
         start(); view.visible = false
         verify(!wheel.middleMouseScroll.scrolling)
     }
+    function test_middle_scroll_takes_over_running_wheel_animation() {
+        mouseMove(view, 300, 150)
+        wheel.scrollDown(1200)
+        tryVerify(() => view.contentY > 0)
+        start()
+        const stoppedAt = view.contentY
+        wait(300)
+        compare(view.contentY, stoppedAt, "Kirigami animation must stop inside the middle-scroll dead zone")
+        keyClick(Qt.Key_Escape)
+        wheel.enabled = false
+        compare(wheel.target, null, "Taking over must preserve the enabled binding")
+        wheel.enabled = true
+        compare(wheel.target, view)
+    }
     function test_popup_and_empty_content_stop() {
         start(); popup.open(); tryCompare(popup, "opened", true)
         tryCompare(wheel.middleMouseScroll, "scrolling", false)

@@ -11,6 +11,20 @@ Page {
     ListModel { id: jobRows }
     function syncJobRows() {
         const keys = window.downloadQueue.jobs.map(job => job.index)
+        // Populate/clear in one model notification. Hundreds of individual
+        // insertions/removals otherwise block navigation before the first frame.
+        if (!keys.length) {
+            if (jobRows.count) {
+                jobRows.clear()
+                scroll.forceLayout()
+            }
+            return
+        }
+        if (!jobRows.count) {
+            jobRows.append(keys.map(jobIndex => ({jobIndex: jobIndex})))
+            scroll.forceLayout()
+            return
+        }
         const present = new Set(keys)
         let changed = false
         for (let row = jobRows.count - 1; row >= 0; --row) {

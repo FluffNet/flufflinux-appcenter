@@ -13,11 +13,20 @@ Kirigami.WheelHandler {
     blockTargetWheel: true
     scrollFlickableTarget: true
     filterMouseEvents: false
+    function stopWheelAnimation() {
+        // cancelFlick() does not stop Kirigami's separate wheel animation.
+        // Detach during the handoff, then restore the conditional binding.
+        target = null
+        target = Qt.binding(function() { return wheelScroll.enabled ? wheelScroll.scrollTarget : null })
+    }
     property MiddleMouseScroll middleMouseScroll: MiddleMouseScroll {
         scrollTarget: wheelScroll.scrollTarget
         enabled: wheelScroll.enabled && !!scrollTarget && scrollTarget.enabled
         idleZ: wheelScroll.middleScrollIdleZ
-        onStarted: wheelScroll.scrollStarted()
+        onStarted: {
+            wheelScroll.stopWheelAnimation()
+            wheelScroll.scrollStarted()
+        }
     }
     onWheel: {
         middleMouseScroll.stop()

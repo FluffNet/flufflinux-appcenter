@@ -8,6 +8,7 @@
 //! QML heartbeat gaps are responsiveness diagnostics, not rendered frame times
 //! or a substitute for physical mouse/touchpad testing. This fixture does not
 //! measure libflatpak transfer/deployment memory: those workers are simulated.
+//! APPCENTER_PROFILE_HEAP=1 samples allocator usage without collecting or trimming.
 use flufflinux_appcenter::backend;
 use serde_json::{json, Value};
 use std::{
@@ -144,6 +145,10 @@ fn main() {
         .unwrap();
     fs::write(root.path().join("fixture"), b"isolated update profiling").unwrap();
     env::set_var("APPCENTER_PROFILE_ROOT", root.path());
+    // /proc/self/exe identifies Valgrind while instrumented. Keep simulated
+    // child workers on this fixture binary, never on the instrumenter/app.
+    let executable = fs::canonicalize(&args[0]).unwrap();
+    env::set_var("APPCENTER_TEST_WORKER_PROGRAM", &executable);
     for (key, dir) in [
         ("FLATPAK_USER_DIR", "user"),
         ("FLATPAK_SYSTEM_DIR", "system"),
@@ -166,7 +171,7 @@ fn main() {
     let bin = root.path().join("bin");
     fs::create_dir(&bin).unwrap();
     for name in ["flatpak", "kbuildsycoca6", "gtk-update-icon-cache"] {
-        symlink(env::current_exe().unwrap(), bin.join(name)).unwrap();
+        symlink(&executable, bin.join(name)).unwrap();
     }
     env::set_var(
         "PATH",
@@ -198,6 +203,21 @@ fn main() {
     )
     .unwrap();
     let desktop = CString::new("appcenter-isolated-profile").unwrap();
+    let (heap_stop, heap_signal) = std::sync::mpsc::channel::<()>();
+    let heap_sampler = env::var_os("APPCENTER_PROFILE_HEAP").map(|_| {
+        std::thread::spawn(move || {
+            while matches!(
+                heap_signal.recv_timeout(Duration::from_secs(5)),
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+            ) {
+                let heap = unsafe { libc::mallinfo2() };
+                eprintln!(
+                    "PROFILE_HEAP arena={} used={} free={} mapped={}",
+                    heap.arena, heap.uordblks, heap.fordblks, heap.hblkhd
+                );
+            }
+        })
+    });
     let code = unsafe {
         fluff_run_qml(
             qml.as_ptr(),
@@ -207,6 +227,10 @@ fn main() {
             desktop.as_ptr(),
         )
     };
+    drop(heap_stop);
+    if let Some(sampler) = heap_sampler {
+        sampler.join().unwrap();
+    }
     drop(root);
     if code != 0 {
         std::process::exit(code);

@@ -40,8 +40,11 @@ ApplicationWindow {
     // background tint only; hovering must not look like keyboard focus.
     readonly property color hoverColor: Qt.tint(surfaceColor, Qt.rgba(textColor.r, textColor.g, textColor.b, 0.085))
     readonly property int cornerRadius: 8
-    readonly property int iconThemeRevision: typeof fluffDesktopTheme !== "undefined"
-        ? fluffDesktopTheme.revision : 0
+    property var desktopTheme: typeof fluffDesktopTheme !== "undefined" ? fluffDesktopTheme : null
+    // KDE notifies both the theme adapter and Flatpak's desktop integration.
+    // Use one revision source, otherwise every icon is decoded twice for the
+    // same change. The backend revision remains the non-KDE/test fallback.
+    readonly property int iconThemeRevision: desktopTheme ? desktopTheme.revision : iconRevision
     readonly property url appIconUrl: iconSource("flufflinux-appcenter")
 
     property var catalog: backend ? Array.from(backend.catalog || []) : []
@@ -177,7 +180,7 @@ ApplicationWindow {
         if (source.indexOf("://") < 0)
             source = source.indexOf("/") >= 0 ? "file://" + source : "image://icon/" + source
         if (source.startsWith("image://icon/"))
-            return source + "?revision=" + iconRevision + "&theme=" + iconThemeRevision
+            return source + "?theme=" + iconThemeRevision
         // Desktop icon invalidation does not change AppStream files. Reload
         // those only with the catalog, not after every item in a large queue.
         return source.startsWith("file://") ? source + "?revision=" + catalogIconRevision : source
@@ -392,7 +395,7 @@ ApplicationWindow {
                 objectName: "aboutAppIcon"
                 Layout.alignment: Qt.AlignHCenter
                 Layout.preferredWidth: 72; Layout.preferredHeight: 72
-                source: window.appIconUrl; fillMode: Image.PreserveAspectFit
+                source: visible ? window.appIconUrl : ""; fillMode: Image.PreserveAspectFit
             }
             Label { text: qsTr("App Center"); font.pixelSize: 26; font.bold: true; Layout.alignment: Qt.AlignHCenter }
             Label { objectName: "aboutVersion"; text: qsTr("Version %1").arg(Qt.application.version || "2026.10"); Layout.alignment: Qt.AlignHCenter }
