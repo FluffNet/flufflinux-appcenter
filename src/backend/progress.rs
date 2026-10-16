@@ -12,13 +12,13 @@ pub fn stages(operations: &[Value], phase: &str) -> Value {
     let (mut complete, mut total) = (0, 0);
     let (mut pending, mut estimating, mut has_app, mut bundle) = (false, false, false, false);
     for op in operations {
-        if text(op, "action") == "uninstall" {
-            continue;
-        }
         total += 1;
         let done = text(op, "phase") == "complete";
         if done {
             complete += 1;
+        }
+        if text(op, "action") == "uninstall" {
+            continue;
         }
         if text(op, "action") == "install-bundle" {
             bundle = true;
@@ -121,12 +121,24 @@ pub fn valid_commit(commit: &str) -> bool {
 }
 pub fn matches_plan(expected: &[Value], actual: &[Value]) -> bool {
     actual.iter().all(|op| {
-        valid_commit(text(op, "commit"))
-            && expected.iter().any(|row| {
-                ["ref", "commit", "remote", "action"]
-                    .iter()
-                    .all(|key| row[key] == op[key])
-            })
+        (if text(op, "action") == "uninstall" {
+            valid_commit(text(op, "installedCommit"))
+        } else {
+            matches!(text(op, "action"), "install" | "update") && valid_commit(text(op, "commit"))
+        }) && expected.iter().any(|row| {
+            [
+                "ref",
+                "commit",
+                "remote",
+                "action",
+                "installedCommit",
+                "installedOrigin",
+                "sourceUrl",
+                "sourceKey",
+            ]
+            .iter()
+            .all(|key| row[key] == op[key])
+        })
     })
 }
 pub fn total_size(items: &[Value]) -> u64 {
@@ -169,6 +181,21 @@ mod tests {
         rate.sample(3000, 1000, true);
         assert_eq!(rate.sample(4000, 1000, true), 0.0);
         assert_eq!(rate.sample(5000, 1, true), 0.0);
+    }
+    #[test]
+    fn cleanup_counts_as_work_but_never_as_download_bytes() {
+        let mut ops = vec![
+            json!({"action":"update","ref":"app/a.b.App/x86_64/stable",
+            "downloadBytes":100,"receivedBytes":100,"downloadProgress":1,"phase":"complete"}),
+            json!({"action":"uninstall","ref":"runtime/a.b.Old/x86_64/stable",
+                "downloadBytes":999,"phase":"waiting"}),
+        ];
+        let stages_before = stages(&ops, "uninstall");
+        assert_eq!(stages_before["installTotal"], 2);
+        assert_eq!(stages_before["installCompleted"], 1);
+        assert_eq!(stages_before["downloadTotalBytes"], 100);
+        ops[1]["phase"] = "complete".into();
+        assert_eq!(stages(&ops, "complete")["installCompleted"], 2);
     }
     #[test]
     fn changed_commit_or_source_requires_new_review() {

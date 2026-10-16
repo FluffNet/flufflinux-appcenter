@@ -119,6 +119,11 @@ pub fn outcome(record: &Value, installed: &HashMap<String, String>) -> &'static 
     let ops = rows(&record["operations"]);
     if !ops.is_empty()
         && ops.iter().all(|op| {
+            if record["action"] == "update" && op["action"] == "uninstall" {
+                // Solver cleanup/replacements preserve user data. Unlike an
+                // explicit Remove job, absence fully completes this operation.
+                return !text(op, "ref").is_empty() && !installed.contains_key(text(op, "ref"));
+            }
             !text(op, "commit").is_empty()
                 && installed
                     .get(text(op, "ref"))
@@ -232,6 +237,21 @@ mod tests {
         let mut removal = item;
         removal["action"] = "uninstall".into();
         assert_eq!(outcome(&removal, &HashMap::new()), "interrupted");
+    }
+    #[test]
+    fn update_recovery_requires_both_replacement_and_cleanup_to_finish() {
+        let item = json!({"action":"update","operations":[
+            {"ref":"app/org.example.Old/x86_64/stable","action":"uninstall","commit":""},
+            {"ref":"app/org.example.New/x86_64/stable","action":"install","commit":"new"}]});
+        let mut installed = HashMap::from([
+            ("app/org.example.Old/x86_64/stable".into(), "old".into()),
+            ("app/org.example.New/x86_64/stable".into(), "new".into()),
+        ]);
+        assert_eq!(outcome(&item, &installed), "interrupted");
+        installed.remove("app/org.example.Old/x86_64/stable");
+        assert_eq!(outcome(&item, &installed), "completed");
+        installed.clear();
+        assert_eq!(outcome(&item, &installed), "interrupted");
     }
     #[test]
     fn corruption_is_rejected_without_overwriting() {

@@ -81,6 +81,8 @@ session is Wayland; macOS and Windows builds are not supported.
 
 ### Requirements
 
+Flatpak 1.15.4 or newer is required for safely ordered app replacements.
+
 Install the build and desktop runtime requirements:
 
 ```sh

@@ -23,7 +23,7 @@ depend = qt6-base
 depend = qt6-declarative
 depend = qt6-svg
 depend = qt6-wayland
-depend = flatpak
+depend = flatpak>=1.15.4
 depend = ostree
 depend = polkit
 depend = gzip

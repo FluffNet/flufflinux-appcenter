@@ -192,18 +192,29 @@ fn download_status(raw: &str) -> bool {
     false
 }
 fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
+    let policy = state.borrow().updating.then(|| updates::configure(tx));
     let s = state.clone();
     tx.connect_ready_pre_auth(move|tx|{
         let mut w=s.borrow_mut();let mut operations=Vec::new();let(mut total,mut app_size)=(0,0);
+        if let Some(policy) = &policy {
+            if let Err(error) = policy.check() { w.problem=error; return false; }
+        }
+        let installation = tx.installation().expect("transaction installation");
         for op in tx.operations(){
             if op.is_skipped(){continue;}let reference=op.get_ref().unwrap_or_default();let id=reference.split('/').nth(1).unwrap_or("");
             if reference.starts_with("app/"){
-                if !w.id.is_empty()&&w.id!=id{w.problem="The Flatpak source changed to a different application. Open it again to review the app.".into();return false;}
+                if !w.updating&&!w.id.is_empty()&&w.id!=id{w.problem="The Flatpak source changed to a different application. Open it again to review the app.".into();return false;}
                 if w.id.is_empty(){w.id=id.into();}app_size+=op.download_size();
             }
-            total+=op.download_size();operations.push(updates::operation_info(&op));
+            let row = if w.updating {
+                match updates::checked_operation(&installation, &op) {
+                    Ok(row) => row,
+                    Err(error) => { w.problem=error; return false; }
+                }
+            } else { updates::operation_info(&op) };
+            total+=number(&row,"downloadBytes");operations.push(row);
         }
-        if w.updating&&!progress::matches_plan(rows(&w.request["plan"]),&operations){w.problem="The update or its dependencies changed. Check for updates again before continuing.".into();return false;}
+        if w.updating&&!updates::matches_resolved_plan(&installation,rows(&w.request["plan"]),&operations){w.problem="The update or its dependencies changed. Check for updates again before continuing.".into();return false;}
         send(json!({"type":"identity","appId":w.id}));
         let plan=json!({"type":"plan","appId":w.id,"operations":operations,"appBytes":app_size,"totalBytes":total,"appSize":bytes(app_size),"totalSize":bytes(total),"state":"ready"});w.plan_ready=true;
         if flag(&w.request,"prepareOnly"){w.preview_plan=Some(plan);return false;}
@@ -236,12 +247,13 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
     tx.connect_new_operation(move |_, op, progress| {
         let reference = op.get_ref().unwrap_or_default().to_string();
         let bundle = op.operation_type() == OpType::InstallBundle;
+        let removing = op.operation_type() == OpType::Uninstall;
         {
             let mut w = s.borrow_mut();
             w.progress.insert(reference.clone(), progress.clone());
             w.operation(
                 &reference,
-                if w.removing {
+                if removing {
                     "Uninstalling…"
                 } else if bundle {
                     "Installing…"
@@ -249,7 +261,7 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
                     "Preparing…"
                 },
                 0.0,
-                if w.removing {
+                if removing {
                     "uninstall"
                 } else if bundle {
                     "install"
@@ -271,7 +283,7 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
             let raw = progress.status().unwrap_or_default();
             let percent = (progress.progress() as f64 / 100.0).clamp(0.0, 1.0);
             let downloading = download_status(&raw);
-            let phase = if w.removing {
+            let phase = if removing {
                 "uninstall"
             } else if bundle {
                 "install"
@@ -285,7 +297,7 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
             let received = progress.bytes_transferred();
             let status = if phase == "preparing" {
                 "Preparing…".into()
-            } else if w.removing {
+            } else if removing {
                 "Uninstalling…".into()
             } else if downloading && received > 0 {
                 format!("Downloading… {} received", bytes(received))
@@ -332,16 +344,23 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
         // The generated binding calls FLATPAK_TRANSACTION_RESULT_NO_CHANGE CHANGE.
         if w.updating
             && reference.starts_with("app/")
-            && op.operation_type() == OpType::Update
             && !result.contains(libflatpak::TransactionResult::CHANGE)
         {
-            let saved = storage::history_save(
-                &storage::data_dir().join("update-dates.json"),
-                &w.scope,
-                &reference,
-                Some(&chrono::Utc::now().to_rfc3339()),
-            )
-            .is_ok();
+            let now = chrono::Utc::now().to_rfc3339();
+            let removing = op.operation_type() == OpType::Uninstall;
+            let mut saved = true;
+            for file in ["update-dates.json", "installation-dates.json"] {
+                if file == "installation-dates.json" && op.operation_type() == OpType::Update {
+                    continue;
+                }
+                saved &= storage::history_save(
+                    &storage::data_dir().join(file),
+                    &w.scope,
+                    &reference,
+                    if removing { None } else { Some(&now) },
+                )
+                .is_ok();
+            }
             send(json!({"type":"updated","ref":reference.as_str(),"historySaved":saved}));
         }
         let received = w
@@ -513,6 +532,14 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
         {
             return Err("Invalid update selection. Check for updates again.".into());
         }
+        // A preceding queued transaction may already have performed this whole
+        // plan, including replacing/removing the original app.
+        if rows(&request["plan"])
+            .iter()
+            .all(|op| updates::operation_satisfied(&installation, op))
+        {
+            return Ok(());
+        }
         let current = installation
             .installed_ref(
                 parsed.kind(),
@@ -525,13 +552,15 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
         if current.origin().as_deref() != Some(remote) {
             return Err("The installed source changed. Check for updates again.".into());
         }
-        if current.commit().as_deref() == Some(commit) {
-            return Ok(());
-        }
-        if current.commit().as_deref() != Some(text(&request, "oldCommit")) {
+        if current.commit().as_deref() != Some(commit)
+            && current.commit().as_deref() != Some(text(&request, "oldCommit"))
+        {
             return Err("The installed version changed. Check for updates again.".into());
         }
         for op in rows(&request["plan"]) {
+            if text(op, "action") == "uninstall" {
+                continue;
+            }
             let remote = installation
                 .remote_by_name(text(op, "remote"), Some(&cancel))
                 .map_err(|_| {

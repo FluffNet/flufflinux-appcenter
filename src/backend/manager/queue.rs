@@ -557,7 +557,7 @@ impl Manager {
         if ok && flag(message, "sourcesChanged") {
             self.source_refresh_pending = true;
         }
-        if ok && !preparation {
+        if ok && !preparation && job["action"] != "update" {
             for op in rows(&job["operations"]) {
                 let reference = text(op, "ref");
                 if !reference.starts_with("app/") {
@@ -594,10 +594,46 @@ impl Manager {
         if ok && job["action"] == "update" {
             let items: Vec<_> = rows(&self.properties["updateItems"])
                 .iter()
-                .filter(|row| row["key"] != self.requests[index]["key"])
+                .filter(|row| {
+                    row["key"] != self.requests[index]["key"]
+                        && !(row["installation"] == job["installation"]
+                            && rows(&job["operations"]).iter().any(|op| {
+                                op["ref"] == row["flatpakRef"]
+                                    && (op["action"] == "uninstall"
+                                        || op["commit"] == row["commit"])
+                            }))
+                })
                 .cloned()
                 .collect();
             self.merge("updates", json!({"items":items}));
+            // Solver cleanup can supersede a later queued update. Do not
+            // start a worker or offer Open for a ref we just removed.
+            for pending in 0..self.jobs.len() {
+                let queued = &self.jobs[pending];
+                if pending != index
+                    && flag(queued, "queued")
+                    && queued["action"] == "update"
+                    && queued["installation"] == job["installation"]
+                    && rows(&job["operations"]).iter().any(|op| {
+                        op["action"] == "uninstall"
+                            && op["ref"] == self.requests[pending]["flatpakRef"]
+                    })
+                {
+                    self.requests[pending] = Value::Null;
+                    self.patch_job(
+                        pending,
+                        json!({"active":false,"queued":false,"hidden":true,
+                        "failed":false,"progress":1,"status":"Complete","error":""}),
+                    );
+                    self.jobs[pending] = display_job(&self.jobs[pending]);
+                }
+            }
+            let target = text(&self.requests[index], "targetRef").to_owned();
+            if !target.is_empty() && target != text(&job, "flatpakRef") {
+                if let Some(id) = target.split('/').nth(1) {
+                    self.patch_job(index, json!({"id":id,"flatpakRef":target}));
+                }
+            }
         }
         let removing = job["action"] == "uninstall";
         if ok && removing {
@@ -809,6 +845,46 @@ mod tests {
         manager.desktop_commands.clear();
         manager.next_desktop_cache();
         assert!(manager.tasks.contains_key("installed"));
+    }
+    #[test]
+    fn related_updates_reconcile_only_matching_installation_and_commit() {
+        let mut manager = Manager::new(vec![]);
+        let primary = "app/a.b.Old/x86_64/stable";
+        let target = "app/a.b.New/x86_64/stable";
+        let related = "app/a.b.Related/x86_64/stable";
+        manager.merge(
+            "updates",
+            json!({"state":"ready","items":[
+            {"key":"old","flatpakRef":primary,"installation":"user","commit":"old-target"},
+            {"key":"related","flatpakRef":related,"installation":"user","commit":"done"},
+            {"key":"newer","flatpakRef":related,"installation":"user","commit":"newer"},
+            {"key":"system","flatpakRef":related,"installation":"system","commit":"done"}]}),
+        );
+        manager.enqueue(
+            json!({"key":"old","id":"a.b.Old","name":"Old","action":"update",
+            "installation":"user","flatpakRef":primary,"targetRef":target}),
+        );
+        let obsolete = "runtime/a.b.Obsolete/x86_64/stable";
+        manager.enqueue(
+            json!({"key":"obsolete","id":"a.b.Obsolete","name":"Obsolete","action":"update",
+            "installation":"user","flatpakRef":obsolete}),
+        );
+        manager.jobs[0]["operations"] = json!([
+            {"ref":primary,"action":"uninstall"}, {"ref":target,"action":"install","commit":"new"},
+            {"ref":related,"action":"update","commit":"done"}, {"ref":obsolete,"action":"uninstall"}]);
+        manager.job_message("install", &json!({"type":"result","success":true}));
+        let remaining: Vec<_> = rows(&manager.properties["updateItems"])
+            .iter()
+            .map(|r| text(r, "key"))
+            .collect();
+        assert_eq!(remaining, ["newer", "system"]);
+        assert_eq!(manager.jobs[0]["id"], "a.b.New");
+        assert_eq!(manager.jobs[0]["flatpakRef"], target);
+        assert!(!flag(&manager.jobs[0], "failed"));
+        assert!(manager.requests[1].is_null());
+        assert!(flag(&manager.jobs[1], "hidden"));
+        assert!(!flag(&manager.jobs[1], "active"));
+        assert!(!flag(&manager.jobs[1], "failed"));
     }
     #[test]
     fn row_updates_preserve_addon_artwork_changes() {

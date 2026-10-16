@@ -1,5 +1,6 @@
 //! Explicit update scanning, pinned transaction plans and permission changes.
 use super::{bytes, flag, permissions, process, progress, sources, text};
+use glib::translate::*;
 use libflatpak::{prelude::*, Installation, RefKind, Transaction};
 use serde_json::{json, Value};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
@@ -17,29 +18,185 @@ struct Plan {
     permissions: Value,
     error: String,
     ready: bool,
+    target: String,
 }
-fn unsupported_operation(
-    expected: &str,
-    reference: &str,
-    action: libflatpak::TransactionOperationType,
-) -> Option<String> {
-    if action == libflatpak::TransactionOperationType::Uninstall {
-        let kind = if reference.starts_with("runtime/") {
-            "runtime"
+/// Use the same solver policy for the read-only scan and actual deployment.
+/// Flatpak decides which runtimes are unused (including its pin/use checks).
+pub struct Policy {
+    replacements: Rc<RefCell<BTreeMap<String, String>>>,
+    error: Rc<RefCell<String>>,
+}
+impl Policy {
+    pub fn check(&self) -> Result<(), String> {
+        let error = self.error.borrow();
+        if error.is_empty() {
+            Ok(())
         } else {
-            "app"
-        };
-        Some(format!("Flatpak requires removing {kind} {reference}. App Center does not yet support removals within an update plan. Use flatpak update to review and apply this update. Other app updates can continue."))
-    } else if reference.starts_with("app/") && reference != expected {
-        Some(format!("Flatpak also needs to {} another app: {reference}. App Center only updates the selected app and its runtime dependencies in this plan. Use flatpak update to review and apply these changes. Other app updates can continue.", action.to_str().unwrap_or_default()))
-    } else {
-        None
+            Err(error.clone())
+        }
     }
+    fn target(&self, reference: &str) -> Result<String, String> {
+        self.check()?;
+        let replacements = self.replacements.borrow();
+        let mut target = reference;
+        let mut seen = std::collections::HashSet::new();
+        while let Some(next) = replacements.get(target) {
+            if !seen.insert(target) {
+                return Err("The source contains a circular app replacement.".into());
+            }
+            target = next;
+        }
+        Ok(target.into())
+    }
+}
+pub fn configure(tx: &Transaction) -> Policy {
+    tx.set_include_unused_uninstall_ops(true);
+    let replacements = Rc::new(RefCell::new(BTreeMap::new()));
+    let recorded = replacements.clone();
+    let error = Rc::new(RefCell::new(String::new()));
+    let recorded_error = error.clone();
+    // The generated Rust binding omits this signal and the rebase API's string
+    // array argument. Keep the small FFI adapter here, not in the UI glue.
+    tx.connect_local("end-of-lifed-with-rebase", false, move |values| {
+        let result = (|| -> Result<bool, glib::Error> {
+            let tx = values[0].get::<Transaction>().expect("transaction signal");
+            let remote = values[1].get::<String>().expect("remote signal");
+            let old = values[2].get::<String>().expect("ref signal");
+            let Some(new) = values[4].get::<Option<String>>().expect("rebase signal") else {
+                return Ok(false);
+            };
+            let previous = values[5].get::<glib::StrV>().expect("previous IDs signal");
+            let previous: Vec<&str> = previous.iter().map(|s| s.as_str()).collect();
+            // The combined API orders removal AFTER a successful replacement.
+            // Independent install/uninstall operations cannot guarantee that.
+            unsafe {
+                let mut error = std::ptr::null_mut();
+                let ok = libflatpak::ffi::flatpak_transaction_add_rebase_and_uninstall(
+                    tx.to_glib_none().0,
+                    remote.to_glib_none().0,
+                    new.to_glib_none().0,
+                    old.to_glib_none().0,
+                    std::ptr::null_mut(),
+                    previous.to_glib_none().0,
+                    &mut error,
+                );
+                if ok == 0 {
+                    return Err(from_glib_full(error));
+                }
+            }
+            recorded.borrow_mut().insert(old, new);
+            Ok(true)
+        })();
+        let accepted = match result {
+            Ok(accepted) => accepted,
+            Err(error) => {
+                *recorded_error.borrow_mut() = error.to_string();
+                false
+            }
+        };
+        Some(accepted.to_value())
+    });
+    Policy {
+        replacements,
+        error,
+    }
+}
+
+fn installed(
+    installation: &Installation,
+    reference: &str,
+) -> Result<Option<libflatpak::InstalledRef>, String> {
+    let parsed = libflatpak::Ref::parse(reference).map_err(|e| e.to_string())?;
+    match installation.installed_ref(
+        parsed.kind(),
+        parsed.name().as_deref().ok_or("Invalid installed ref")?,
+        parsed.arch().as_deref(),
+        parsed.branch().as_deref(),
+        gio::Cancellable::NONE,
+    ) {
+        Ok(value) => Ok(Some(value)),
+        Err(error) if error.matches(libflatpak::Error::NotInstalled) => Ok(None),
+        Err(error) => Err(error.to_string()),
+    }
+}
+
+/// Removals have no remote target commit: pin the installed deployment instead.
+pub fn checked_operation(
+    installation: &Installation,
+    op: &libflatpak::TransactionOperation,
+) -> Result<Value, String> {
+    let mut row = operation_info(op);
+    if op.operation_type() == libflatpak::TransactionOperationType::Uninstall {
+        let current = installed(installation, text(&row, "ref"))?
+            .ok_or("A component scheduled for removal changed. Check for updates again.")?;
+        let commit = current.commit().unwrap_or_default();
+        if !progress::valid_commit(&commit) {
+            return Err("The installed component could not be verified.".into());
+        }
+        row["installedCommit"] = commit.as_str().into();
+        row["installedOrigin"] = current.origin().unwrap_or_default().as_str().into();
+        row["downloadBytes"] = 0.into();
+        row["downloadSize"] = bytes(0).into();
+        return Ok(row);
+    }
+    let remote = installation
+        .remote_by_name(text(&row, "remote"), gio::Cancellable::NONE)
+        .map_err(|_| "The update source is missing or could not be verified.")?;
+    if remote.is_disabled() || !progress::valid_commit(text(&row, "commit")) {
+        return Err("The update source is disabled or could not be verified.".into());
+    }
+    row["sourceUrl"] = sources::url(&remote).into();
+    row["sourceKey"] = sources::source_key(installation, &remote)?.into();
+    Ok(row)
+}
+
+pub fn operation_satisfied(installation: &Installation, row: &Value) -> bool {
+    let Ok(current) = installed(installation, text(row, "ref")) else {
+        return false;
+    };
+    if text(row, "action") == "uninstall" {
+        current.is_none()
+    } else {
+        current.is_some_and(|r| {
+            r.commit().as_deref() == Some(text(row, "commit"))
+                && r.origin().as_deref() == Some(text(row, "remote"))
+        })
+    }
+}
+
+pub fn matches_resolved_plan(
+    installation: &Installation,
+    expected: &[Value],
+    actual: &[Value],
+) -> bool {
+    // Earlier queued updates can release the final user of a runtime. Permit
+    // only *new* solver-selected runtime cleanup here, not changed snapshots,
+    // unreviewed downloads, or arbitrary app removals. These rows come from
+    // libflatpak's ready signal, never by replaying request uninstall entries.
+    let mut permitted = expected.to_vec();
+    permitted.extend(
+        actual
+            .iter()
+            .filter(|op| {
+                text(op, "action") == "uninstall"
+                    && text(op, "ref").starts_with("runtime/")
+                    && !expected.iter().any(|row| row["ref"] == op["ref"])
+            })
+            .cloned(),
+    );
+    progress::matches_plan(&permitted, actual)
+        && expected.iter().all(|row| {
+            actual
+                .iter()
+                .any(|op| op["ref"] == row["ref"] && op["action"] == row["action"])
+                || operation_satisfied(installation, row)
+        })
 }
 fn plan(installation: &Installation, reference: &str) -> Result<Plan, String> {
     let tx = Transaction::for_installation(installation, gio::Cancellable::NONE)
         .map_err(|e| e.to_string())?;
     tx.set_no_interaction(true);
+    let policy = configure(&tx);
     tx.add_default_dependency_sources();
     tx.connect_add_new_remote(|_, _, _, _, _| false);
     let result = Rc::new(RefCell::new(Plan::default()));
@@ -49,40 +206,41 @@ fn plan(installation: &Installation, reference: &str) -> Result<Plan, String> {
     let expected_ref = reference.clone();
     tx.connect_ready_pre_auth(move |tx| {
         let mut plan = state.borrow_mut();
+        plan.target = match policy.target(&expected_ref) {
+            Ok(target) => target,
+            Err(error) => {
+                plan.error = error;
+                return false;
+            }
+        };
         for op in tx.operations() {
             if op.is_skipped() {
                 continue;
             }
             let full_ref = op.get_ref().unwrap_or_default();
-            if let Some(error) =
-                unsupported_operation(&expected_ref, &full_ref, op.operation_type())
-            {
-                plan.error = error;
-                break;
-            }
-            let remote_name = op.remote().unwrap_or_default();
-            let commit = op.commit().unwrap_or_default();
-            let remote = installation
-                .remote_by_name(&remote_name, gio::Cancellable::NONE)
-                .ok();
-            if remote.as_ref().is_none_or(|r| r.is_disabled()) || !progress::valid_commit(&commit) {
-                plan.error =
-                    "The update source is missing, disabled, or could not be verified.".into();
-                break;
-            }
-            let remote = remote.unwrap();
-            let Ok(key) = sources::source_key(&installation, &remote) else {
-                plan.error = "The update source could not be verified.".into();
-                break;
+            let row = match checked_operation(&installation, &op) {
+                Ok(row) => row,
+                Err(error) => {
+                    plan.error = error;
+                    break;
+                }
             };
-            let mut row = operation_info(&op);
-            row["sourceUrl"] = sources::url(&remote).into();
-            row["sourceKey"] = key.into();
             plan.operations.push(row);
-            if full_ref == expected_ref && full_ref.starts_with("app/") {
-                let before = op.old_metadata().map(|k| k.to_data()).unwrap_or_default();
+            if full_ref == plan.target && full_ref.starts_with("app/") {
+                let before = if plan.target != expected_ref {
+                    installed(&installation, &expected_ref)
+                        .ok()
+                        .flatten()
+                        .and_then(|r| r.load_metadata(gio::Cancellable::NONE).ok())
+                        .map(|b| b.as_ref().to_vec())
+                        .unwrap_or_default()
+                } else {
+                    op.old_metadata()
+                        .map(|k| k.to_data().as_bytes().to_vec())
+                        .unwrap_or_default()
+                };
                 let after = op.metadata().map(|k| k.to_data()).unwrap_or_default();
-                plan.permissions = permissions::changes(before.as_bytes(), after.as_bytes());
+                plan.permissions = permissions::changes(&before, after.as_bytes());
             }
         }
         plan.ready = plan.error.is_empty();
@@ -165,6 +323,7 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
             }
         };
         let mut published: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+        let mut rebased = std::collections::HashSet::new();
         let mut refs = Vec::new();
         let mut skipped_source = |origin: &str, reason: &str| {
             let mut names: Vec<_> = installed
@@ -261,6 +420,9 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
                 ) {
                     Ok(items) => {
                         for item in items {
+                            if item.eol_rebase().is_some_and(|r| !r.is_empty()) {
+                                rebased.insert(item.format_ref().unwrap_or_default().to_string());
+                            }
                             available.insert(
                                 item.format_ref().unwrap_or_default().into(),
                                 item.commit().unwrap_or_default().into(),
@@ -275,12 +437,13 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
                 published.insert(origin.clone(), available);
             }
             let reference = installed_ref.format_ref().unwrap_or_default();
-            if published
-                .get(&origin)
-                .and_then(|m| m.get(reference.as_str()))
-                .is_some_and(|c| {
-                    !c.is_empty() && Some(c.as_str()) != installed_ref.commit().as_deref()
-                })
+            if rebased.contains(reference.as_str())
+                || published
+                    .get(&origin)
+                    .and_then(|m| m.get(reference.as_str()))
+                    .is_some_and(|c| {
+                        !c.is_empty() && Some(c.as_str()) != installed_ref.commit().as_deref()
+                    })
             {
                 refs.push(installed_ref);
             }
@@ -346,7 +509,7 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
             let commit = plan
                 .operations
                 .iter()
-                .find(|r| text(r, "ref") == reference)
+                .find(|r| text(r, "ref") == plan.target && text(r, "action") != "uninstall")
                 .map(|r| text(r, "commit"))
                 .unwrap_or("");
             if commit.is_empty() {
@@ -370,14 +533,14 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
                 });
             let new_version = versions
                 .get(&origin)
-                .and_then(|v| v.get(&reference))
+                .and_then(|v| v.get(&plan.target))
                 .filter(|v| !v.is_empty())
                 .cloned()
                 .unwrap_or_else(|| {
                     format!("Revision {}", commit.chars().take(12).collect::<String>())
                 });
             updates.push(json!({"key":format!("{scope}:{reference}"),"id":id.as_str(),"name":name.as_str(),"installation":scope,"flatpakRef":reference,
-                "remote":origin,"sourceUrl":sources::url(&remote),"oldCommit":old_commit.as_str(),"commit":commit,"oldVersion":old_version,"newVersion":new_version,
+                "remote":origin,"sourceUrl":sources::url(&remote),"oldCommit":old_commit.as_str(),"commit":commit,"targetRef":plan.target,"oldVersion":old_version,"newVersion":new_version,
                 "runtime":reference.starts_with("runtime/"),"selected":true,"downloadBytes":download,"downloadSize":bytes(download),"plan":plan.operations,"permissions":plan.permissions}));
         }
     }
@@ -388,24 +551,22 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
 mod tests {
     use super::*;
     #[test]
-    fn update_restrictions_identify_runtime_removal_and_other_app_changes() {
-        use libflatpak::TransactionOperationType::{Install, Uninstall, Update};
-        let app = "app/org.example.App/x86_64/stable";
-        let runtime = "runtime/org.kde.Platform/x86_64/6.9";
-        for action in [Install, Update] {
-            assert!(unsupported_operation(app, app, action).is_none());
-            assert!(unsupported_operation(app, runtime, action).is_none());
-        }
-        let error = unsupported_operation(app, runtime, Uninstall).unwrap();
-        assert!(error.contains("removing runtime runtime/org.kde.Platform/x86_64/6.9"));
-        assert!(!error.contains("another app"));
-        assert!(error.contains("Other app updates can continue"));
-        let error =
-            unsupported_operation(app, "app/org.example.Other/x86_64/stable", Update).unwrap();
-        assert!(error.contains("another app: app/org.example.Other/x86_64/stable"));
-        assert!(unsupported_operation(app, app, Uninstall)
-            .unwrap()
-            .contains("removing app"));
+    fn full_plan_accepts_related_apps_but_pins_removal_deployments() {
+        let removal = json!({"ref":"runtime/org.kde.Platform/x86_64/6.9","action":"uninstall",
+            "commit":"","remote":"","installedCommit":"a".repeat(64),"installedOrigin":"flathub"});
+        let related = json!({"ref":"app/org.example.Other/x86_64/stable","action":"install",
+            "commit":"b".repeat(64),"remote":"flathub","sourceKey":"verified"});
+        let expected = vec![removal.clone(), related];
+        assert!(progress::matches_plan(&expected, &expected));
+        let mut changed = removal.clone();
+        changed["installedCommit"] = "c".repeat(64).into();
+        assert!(!progress::matches_plan(&expected, &[changed]));
+        let mut unknown = removal.clone();
+        unknown["ref"] = "runtime/org.example.Unreviewed/x86_64/stable".into();
+        assert!(!progress::matches_plan(&expected, &[unknown]));
+        let mut invalid = removal;
+        invalid["installedCommit"] = "".into();
+        assert!(!progress::matches_plan(&expected, &[invalid]));
     }
     #[test]
     fn restoration_is_official_verified_enabled_matching_and_never_overwrites() {
