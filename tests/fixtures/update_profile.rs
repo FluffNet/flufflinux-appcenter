@@ -16,8 +16,12 @@ use std::{
     env,
     ffi::CString,
     fs,
-    io::{self, Write},
+    io::{self, BufRead, Write},
     path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
     time::Duration,
 };
 
@@ -59,6 +63,9 @@ fn item_count() -> usize {
         .unwrap_or(200)
         .clamp(1, 200)
 }
+fn interactive() -> bool {
+    env::var("APPCENTER_PROFILE_INTERACTIVE").as_deref() == Ok("1")
+}
 fn send(value: Value) {
     println!("{value}");
     io::stdout().flush().unwrap();
@@ -92,12 +99,17 @@ fn main() {
                 let rows: Vec<_> = catalog().into_iter().take(item_count()).enumerate().map(|(i, app)| {
                     let id = app["id"].as_str().unwrap();
                     let reference = format!("app/{id}/x86_64/stable");
-                    let plan: Vec<_> = (0..12).map(|part| json!({"ref":if part == 0 {reference.clone()} else {format!("runtime/org.example.Shared{part}/x86_64/stable")},
+                    let parts = if interactive() { 1 } else { 12 };
+                    let plan: Vec<_> = (0..parts).map(|part| json!({"ref":if part == 0 {reference.clone()} else {format!("runtime/org.example.Shared{part}/x86_64/stable")},
                         "commit":"a".repeat(64),"downloadBytes":100000000,"action":"update","name":format!("Operation {part}")})).collect();
+                    let permissions = if interactive() && i % 3 == 0 {
+                        json!({"state":"changed","groups":[{"id":"network","title":"Network Access","icon":"network-wireless",
+                            "description":"Internet connections","added":["Network connections"],"removed":[]}]})
+                    } else { json!({"state":"unchanged","groups":[]}) };
                     json!({"id":id,"name":app["name"],"developer":app["developer"],"icon":app["icon"],
                         "key":format!("user:{reference}"),"flatpakRef":reference,"installation":"user","remote":"fixture",
                         "commit":"a".repeat(64),"oldCommit":"b".repeat(64),"oldVersion":"1.0","newVersion":"2.0",
-                        "selected":true,"plan":plan,"downloadBytes":1200000000u64,"permissions":{"state":"unchanged","groups":[]},"fixtureIndex":i})
+                        "selected":true,"plan":plan,"downloadBytes":parts * 100000000u64,"permissions":permissions,"fixtureIndex":i})
                 }).collect();
                 send(
                     json!({"type":"updates","updates":rows,"errors":[],"skipped":[],"checkedAt":"2026-10-16T10:00:00Z"}),
@@ -109,14 +121,52 @@ fn main() {
                     request["action"], "update",
                     "fixture must never execute a real transaction"
                 );
+                let cancelled = Arc::new(AtomicBool::new(false));
+                if interactive() {
+                    let flag = cancelled.clone();
+                    std::thread::spawn(move || {
+                        for line in io::stdin().lock().lines().map_while(Result::ok) {
+                            if serde_json::from_str::<Value>(&line)
+                                .is_ok_and(|v| v["cancel"] == true)
+                            {
+                                flag.store(true, Ordering::Relaxed);
+                                send(json!({"type":"cancel-ack"}));
+                                break;
+                            }
+                        }
+                    });
+                }
                 send(json!({"type":"plan","operations":request["plan"]}));
                 for tick in 1..=12 {
+                    if cancelled.load(Ordering::Relaxed) {
+                        send(
+                            json!({"type":"result","success":false,"cancelled":true,"error":"Cancelled"}),
+                        );
+                        return;
+                    }
                     send(
                         json!({"type":"operation","ref":request["flatpakRef"],"phase":"download",
                         "progress":tick as f64/12.0,"downloadProgress":tick as f64/12.0,
                         "receivedBytes":tick * 8000000,"status":"Downloading"}),
                     );
-                    std::thread::sleep(Duration::from_millis(10));
+                    std::thread::sleep(Duration::from_millis(if interactive() { 400 } else { 10 }));
+                }
+                if interactive() {
+                    send(
+                        json!({"type":"operation","ref":request["flatpakRef"],"phase":"install",
+                        "progress":0.99,"downloadProgress":1,"receivedBytes":96000000,"status":"Installing…"}),
+                    );
+                    std::thread::sleep(Duration::from_millis(800));
+                    if cancelled.load(Ordering::Relaxed) {
+                        send(
+                            json!({"type":"result","success":false,"cancelled":true,"error":"Cancelled"}),
+                        );
+                        return;
+                    }
+                    send(
+                        json!({"type":"operation","ref":request["flatpakRef"],"phase":"complete",
+                        "progress":1,"downloadProgress":1,"receivedBytes":96000000,"status":"Complete"}),
+                    );
                 }
                 let saved = backend::storage::history_save(
                     &backend::storage::data_dir().join("update-dates.json"),
@@ -182,6 +232,15 @@ fn main() {
         let value = root.path().join(dir);
         fs::create_dir_all(&value).unwrap();
         env::set_var(key, value);
+    }
+    if interactive() {
+        if let Some(config) = env::var_os("APPCENTER_PROFILE_DESKTOP_CONFIG") {
+            fs::copy(
+                PathBuf::from(config).join("kdeglobals"),
+                root.path().join("config/kdeglobals"),
+            )
+            .unwrap();
+        }
     }
     use std::os::unix::fs::{symlink, PermissionsExt};
     fs::set_permissions(
