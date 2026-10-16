@@ -1013,9 +1013,10 @@ Page {
             }
             PageStatusLabel {
                 objectName: "catalogEmptyMessage"
+                textFormat: Text.PlainText
                 anchors.centerIn: parent
                 width: parent.width - 48
-                wrapMode: Text.WordWrap; horizontalAlignment: Text.AlignHCenter
+                wrapMode: Text.Wrap; horizontalAlignment: Text.AlignHCenter
                 visible: !page.catalogBlocked && (page.installedView ? !window.installedLoading && (window.installedError || page.installedMatches.length === 0)
                                             : page.visibleApps.length === 0)
                 text: page.installedView && window.installedError ? window.installedError

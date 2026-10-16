@@ -18,6 +18,24 @@ struct Plan {
     error: String,
     ready: bool,
 }
+fn unsupported_operation(
+    expected: &str,
+    reference: &str,
+    action: libflatpak::TransactionOperationType,
+) -> Option<String> {
+    if action == libflatpak::TransactionOperationType::Uninstall {
+        let kind = if reference.starts_with("runtime/") {
+            "runtime"
+        } else {
+            "app"
+        };
+        Some(format!("Flatpak requires removing {kind} {reference}. App Center does not yet support removals within an update plan. Use flatpak update to review and apply this update. Other app updates can continue."))
+    } else if reference.starts_with("app/") && reference != expected {
+        Some(format!("Flatpak also needs to {} another app: {reference}. App Center only updates the selected app and its runtime dependencies in this plan. Use flatpak update to review and apply these changes. Other app updates can continue.", action.to_str().unwrap_or_default()))
+    } else {
+        None
+    }
+}
 fn plan(installation: &Installation, reference: &str) -> Result<Plan, String> {
     let tx = Transaction::for_installation(installation, gio::Cancellable::NONE)
         .map_err(|e| e.to_string())?;
@@ -36,11 +54,10 @@ fn plan(installation: &Installation, reference: &str) -> Result<Plan, String> {
                 continue;
             }
             let full_ref = op.get_ref().unwrap_or_default();
-            if (full_ref.starts_with("app/") && full_ref != expected_ref)
-                || op.operation_type() == libflatpak::TransactionOperationType::Uninstall
+            if let Some(error) =
+                unsupported_operation(&expected_ref, &full_ref, op.operation_type())
             {
-                plan.error =
-                    "This update changes other apps. Manage this update with Flatpak.".into();
+                plan.error = error;
                 break;
             }
             let remote_name = op.remote().unwrap_or_default();
@@ -322,7 +339,7 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
             let plan = match plan(&installation, &reference) {
                 Ok(p) => p,
                 Err(e) => {
-                    errors.push(format!("{id}: {e}"));
+                    errors.push(format!("{id} ({scope}): {e}"));
                     continue;
                 }
             };
@@ -370,6 +387,26 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn update_restrictions_identify_runtime_removal_and_other_app_changes() {
+        use libflatpak::TransactionOperationType::{Install, Uninstall, Update};
+        let app = "app/org.example.App/x86_64/stable";
+        let runtime = "runtime/org.kde.Platform/x86_64/6.9";
+        for action in [Install, Update] {
+            assert!(unsupported_operation(app, app, action).is_none());
+            assert!(unsupported_operation(app, runtime, action).is_none());
+        }
+        let error = unsupported_operation(app, runtime, Uninstall).unwrap();
+        assert!(error.contains("removing runtime runtime/org.kde.Platform/x86_64/6.9"));
+        assert!(!error.contains("another app"));
+        assert!(error.contains("Other app updates can continue"));
+        let error =
+            unsupported_operation(app, "app/org.example.Other/x86_64/stable", Update).unwrap();
+        assert!(error.contains("another app: app/org.example.Other/x86_64/stable"));
+        assert!(unsupported_operation(app, app, Uninstall)
+            .unwrap()
+            .contains("removing app"));
+    }
     #[test]
     fn restoration_is_official_verified_enabled_matching_and_never_overwrites() {
         let user = json!({"scope":"user","name":"flathub","url":"https://dl.flathub.org/repo/","enabled":true,"verified":true,"sourceKey":"same-policy"});

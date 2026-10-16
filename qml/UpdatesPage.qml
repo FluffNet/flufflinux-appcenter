@@ -186,6 +186,9 @@ Page {
             objectName: "updatesError"; visible: !!page.updateData.error
             Layout.fillWidth: true; maximumLineCount: 3
             text: page.updateData.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap; elide: Text.ElideRight; color: window.accentTextColor
+            HoverHandler { id: errorHover }
+            ToolTip.visible: errorHover.hovered
+            ToolTip.text: text
         }
         Label {
             objectName: "updatesSkipped"

@@ -129,6 +129,17 @@ TestCase {
         backend.updates = {state:"ready", items:[]}
         tryCompare(list, "count", 0)
     }
+    function test_long_update_diagnostic_keeps_full_details() {
+        open(); ready()
+        const message = "org.example.App (system): Flatpak requires removing runtime runtime/org.kde.Platform/x86_64/6.9. App Center does not yet support removals within an update plan. Use flatpak update to review and apply this update. Other app updates can continue."
+        backend.updates = Object.assign({}, backend.updates, {error: message})
+        const label = findChild(page(), "updatesError")
+        verify(label.visible)
+        compare(label.textFormat, Text.PlainText)
+        compare(label.ToolTip.text, message)
+        verify(findChild(page(), "installUpdatesButton").enabled,
+               "One unsupported plan must not prevent other selected updates")
+    }
     SignalSpy { id: updateCountSpy; signalName: "countChanged" }
     function test_explicit_navigation_does_not_rebuild_hidden_updates_data() {
         return [{tag:"home", action:null},

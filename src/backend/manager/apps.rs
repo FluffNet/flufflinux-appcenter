@@ -1,6 +1,27 @@
 use super::*;
 use crate::backend::{addons, permissions, sizes, sources};
 use std::os::unix::fs::MetadataExt;
+
+fn installed_columns(line: &str, line_number: usize) -> Result<[&str; 9], String> {
+    let mut columns: Vec<_> = line.split('\t').map(str::trim).collect();
+    // Flatpak's table printer trims trailing whitespace, including separators
+    // for an absent version and summary. Neither optional field is required
+    // to identify an installed app. Do not pad missing identity fields.
+    if !(7..=9).contains(&columns.len()) {
+        let entry: String = columns[0]
+            .chars()
+            .filter(|c| !c.is_control())
+            .take(120)
+            .collect();
+        return Err(format!(
+            "App Center could not read the installed-app list: line {line_number} has {} fields; expected 7-9. Entry: {entry}\nThis is a list-reading error, not an update failure. No apps were removed by this check. Run flatpak list --app to inspect the installed apps.",
+            columns.len()
+        ));
+    }
+    columns.resize(9, "");
+    Ok(columns.try_into().unwrap())
+}
+
 impl Manager {
     pub(super) fn install_request(&self, app: &Value) -> Option<Value> {
         let id = normalized_id(text(app, "id"));
@@ -200,16 +221,16 @@ impl Manager {
         let mut installations = HashMap::new();
         for line in text(event, "stdout")
             .lines()
-            .filter(|line| !line.is_empty())
+            .enumerate()
+            .filter(|(_, line)| !line.trim().is_empty())
         {
-            let columns: Vec<_> = line.split('\t').map(str::trim).collect();
-            if columns.len() != 9 {
-                self.set(
-                    "installedError",
-                    "Flatpak returned an unexpected installed-app list.".into(),
-                );
-                return;
-            }
+            let columns = match installed_columns(line.1, line.0 + 1) {
+                Ok(columns) => columns,
+                Err(error) => {
+                    self.set("installedError", error.into());
+                    return;
+                }
+            };
             let mut app = self.metadata(columns[0]);
             if !self.metadata.contains_key(normalized_id(columns[0])) {
                 app["name"] = columns[1].into();
@@ -246,6 +267,7 @@ impl Manager {
             }
             apps.push(app);
         }
+        self.set("installedError", "".into());
         self.set_installed_rows(apps);
         self.update_date();
     }
@@ -496,6 +518,43 @@ fn scope_arg(scope: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn installed_list_accepts_missing_optional_trailing_metadata() {
+        let identity = "org.example.App\tExample\t12 MB\tflathub\tuser\tstable\tx86_64";
+        for (suffix, summary, version) in [
+            ("", "", ""),
+            ("\tSummary", "Summary", ""),
+            ("\t\t", "", ""),
+            ("\t\t1.0", "", "1.0"),
+            ("\tSummary\t1.0", "Summary", "1.0"),
+        ] {
+            let line = format!("{identity}{suffix}");
+            let columns = installed_columns(&line, 1).unwrap();
+            assert_eq!(columns[0], "org.example.App");
+            assert_eq!(columns[4], "user");
+            assert_eq!(columns[7], summary);
+            assert_eq!(columns[8], version);
+        }
+    }
+
+    #[test]
+    fn malformed_installed_list_explains_the_row_and_preserves_previous_apps() {
+        let mut manager = Manager::new(vec![]);
+        let previous = json!([{"id":"org.example.Kept", "installation":"user"}]);
+        manager.set("installedApps", previous.clone());
+        manager.installed_finished(
+            json!({"revision":manager.installed_revision}),
+            &json!({"code":0,"stdout":"\norg.example.Broken\ttoo few\n"}),
+        );
+        let error = text(&manager.properties, "installedError");
+        assert!(error.contains("line 2 has 2 fields"));
+        assert!(error.contains("org.example.Broken"));
+        assert!(error.contains("not an update failure"));
+        assert_eq!(manager.properties["installedApps"], previous);
+        assert!(installed_columns("a\tb\tc\td\te\tf", 1).is_err());
+        assert!(installed_columns("a\tb\tc\td\te\tf\tg\th\ti\tj", 1).is_err());
+    }
 
     #[test]
     fn installed_date_changes_transport_only_the_changed_app() {
