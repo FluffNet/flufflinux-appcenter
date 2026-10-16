@@ -43,6 +43,8 @@ Page {
     readonly property bool checking: updateData.state === "checking"
     readonly property var skipped: updateData.skipped || []
     readonly property bool busy: !!window.backend && window.backend.busy
+    readonly property bool updating: window.backendJobs.some(job => job.action === "update" && job.active && !job.cancelled)
+    onUpdatingChanged: if (updating) changesDialog.close()
     readonly property bool compact: width < 600
     property real savedScrollY: 0
     property bool restoringScroll: true
@@ -201,7 +203,8 @@ Page {
             ToolTip.text: text
         }
         GridLayout {
-            visible: page.rows.length > 0; Layout.fillWidth: true
+            objectName: "updateSelectionControls"
+            visible: page.rows.length > 0 && !page.updating; Layout.fillWidth: true
             Layout.minimumWidth: 0
             columns: page.compact ? 1 : 3
             UpdateCheckBox {
@@ -268,6 +271,7 @@ Page {
                         || ({key: updateKey, name: "", selected: false, remote: "", permissions: {state: "unchanged"}})
                     objectName: "updateRow-" + modelData.key
                     readonly property var job: page.jobFor(modelData)
+                    readonly property var permissionChanges: modelData.permissions || ({state:"unavailable", groups:[]})
                     width: list.width; implicitHeight: contents.implicitHeight + 32
                     color: window.surfaceColor; radius: window.cornerRadius; border.color: window.borderColor
                     RowLayout {
@@ -276,6 +280,7 @@ Page {
                         spacing: 16
                         UpdateCheckBox {
                             objectName: "selectUpdate-" + modelData.key
+                            visible: !page.updating
                             checked: modelData.selected; enabled: !page.busy && page.updateData.state === "ready"
                             Accessible.name: qsTr("Update %1").arg(modelData.name)
                             onClicked: window.backend.selectUpdate(modelData.key, checked)
@@ -295,18 +300,18 @@ Page {
                             Label { text: page.sourceLabel(modelData); textFormat: Text.PlainText; color: window.mutedTextColor; Layout.fillWidth: true; wrapMode: Text.Wrap }
                             Label {
                                 objectName: "updatePermissionsStatus"
-                                visible: !modelData.runtime && modelData.permissions.state !== "unchanged"
-                                text: modelData.permissions.state === "changed" ? qsTr("Permissions changed")
-                                    : modelData.permissions.state === "unchanged" ? "" : qsTr("Permission comparison unavailable")
+                                visible: !page.updating && !modelData.runtime && updateRow.permissionChanges.state !== "unchanged"
+                                text: updateRow.permissionChanges.state === "changed" ? qsTr("Permissions changed")
+                                    : updateRow.permissionChanges.state === "unchanged" ? "" : qsTr("Permission comparison unavailable")
                                 color: window.accentTextColor
                                 Layout.fillWidth: true; wrapMode: Text.Wrap
                             }
                             FluffButton {
                                 objectName: "viewUpdatePermissionChanges"
-                                visible: modelData.permissions.state === "changed"
+                                visible: !page.updating && !modelData.runtime && updateRow.permissionChanges.state === "changed"
                                 text: qsTr("View Permission Changes"); icon.name: "object-locked"
                                 contentItem: FluffButtonContent { monochromeIcon: true }
-                                onClicked: { changesDialog.app = modelData; changesDialog.changes = modelData.permissions; changesDialog.open() }
+                                onClicked: { changesDialog.app = modelData; changesDialog.changes = updateRow.permissionChanges; changesDialog.open() }
                             }
                             Label {
                                 objectName: "updateJobStatus"

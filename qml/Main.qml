@@ -73,7 +73,10 @@ ApplicationWindow {
     function syncUpdateItems() {
         const items = !backend ? [] : typeof backend.updateItems !== "undefined"
             ? backend.updateItems : backend.updates && backend.updates.items || []
-        updateItems = Array.from(items, item => Object.assign({}, item))
+        // Nested QVariant plans/permissions otherwise remain references into
+        // backend.updateItems by index. Removing a completed row would make
+        // every surviving card read the next row's nested data.
+        updateItems = JSON.parse(JSON.stringify(items))
     }
     function syncInstalledApps() {
         installedApps = backend ? Array.from(backend.installedApps || [], app => Object.assign({}, app)) : []
@@ -126,12 +129,13 @@ ApplicationWindow {
         else if (!jobProgressTimer.running) jobProgressTimer.start()
     }
     Timer { id: jobProgressTimer; interval: 33; onTriggered: window.flushJobRows() }
-    function patchedRows(current, rows) {
+    function patchedRows(current, rows, detachNested) {
         const values = current.slice()
         for (let i = (rows.removed || []).length - 1; i >= 0; --i) values.splice(rows.removed[i], 1)
         for (const key of Object.keys(rows)) {
             const index = Number(key)
-            if (Number.isInteger(index) && index >= 0 && index < values.length) values[index] = Object.assign({}, rows[key])
+            if (Number.isInteger(index) && index >= 0 && index < values.length)
+                values[index] = detachNested ? JSON.parse(JSON.stringify(rows[key])) : Object.assign({}, rows[key])
         }
         return values
     }
@@ -254,7 +258,7 @@ ApplicationWindow {
         }
         function onInstalledAppsSnapshotChanged() { window.syncInstalledApps() }
         function onUpdateItemsSnapshotChanged() { window.syncUpdateItems() }
-        function onUpdateItemRowsChanged(rows) { window.updateItems = window.patchedRows(window.updateItems, rows) }
+        function onUpdateItemRowsChanged(rows) { window.updateItems = window.patchedRows(window.updateItems, rows, true) }
         function onUpdatesChanged() {
             if (typeof window.backend.updateItemRowsChanged !== "function") window.syncUpdateItems()
         }

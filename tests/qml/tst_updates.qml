@@ -401,7 +401,8 @@ TestCase {
         return [{tag:"unchanged", state:"unchanged", runtime:false, visible:false, text:""},
             {tag:"changed", state:"changed", runtime:false, visible:true, text:"Permissions changed"},
             {tag:"unavailable", state:"unavailable", runtime:false, visible:true, text:"Permission comparison unavailable"},
-            {tag:"runtime", state:"unavailable", runtime:true, visible:false, text:"Permission comparison unavailable"}]
+            {tag:"runtime", state:"unavailable", runtime:true, visible:false, text:"Permission comparison unavailable"},
+            {tag:"runtimeChanged", state:"changed", runtime:true, visible:false, text:"Permissions changed"}]
     }
     function test_permission_status(data) {
         open()
@@ -412,12 +413,68 @@ TestCase {
         const label = findChild(list.itemAtIndex(0), "updatePermissionsStatus")
         compare(label.visible, data.visible); compare(label.text, data.text)
         const button = findChild(list.itemAtIndex(0), "viewUpdatePermissionChanges")
-        compare(button.visible, data.state === "changed")
+        compare(button.visible, !data.runtime && data.state === "changed")
         if (button.visible) {
             waitForPolish(page()); waitForRendering(button); mouseClick(button)
             const dialog = findChild(page(), "appPermissionsDialog")
             tryCompare(dialog, "opened", true)
             dialog.close(); tryCompare(dialog, "visible", false)
+        }
+    }
+    function test_running_updates_hide_selection_and_permissions_data() {
+        return [{tag:"ltr", rtl:false}, {tag:"rtl", rtl:true}]
+    }
+    function test_running_updates_hide_selection_and_permissions(data) {
+        main.width = 900; main.height = 720
+        main.contentItem.LayoutMirroring.enabled = data.rtl
+        try {
+            open()
+            const alpha = Object.assign(row("Alpha", "user"), {permissions:{state:"changed", groups:[]}})
+            const beta = Object.assign(row("Beta", "user"), {runtime:true, permissions:null})
+            backend.updates = {state:"ready", items:[alpha, beta]}
+            const list = findChild(page(), "updatesList")
+            tryVerify(() => list.itemAtIndex(0) && list.itemAtIndex(1))
+            const first = list.itemAtIndex(0), second = list.itemAtIndex(1)
+            const permissionButton = findChild(first, "viewUpdatePermissionChanges")
+            verify(permissionButton.visible)
+            verify(!findChild(second, "updatePermissionsStatus").visible)
+            verify(!findChild(second, "viewUpdatePermissionChanges").visible)
+            waitForPolish(page()); waitForRendering(permissionButton)
+            mouseClick(permissionButton)
+            const dialog = findChild(page(), "appPermissionsDialog")
+            tryCompare(dialog, "opened", true)
+            backend.busy = true
+            backend.jobs = [
+                {index:0, key:alpha.key, action:"update", active:true, queued:false, progress:0.4,
+                    status:"Downloading…", phase:"download", operations:[{ref:"Alpha", commit:"a"}]},
+                {index:1, key:beta.key, action:"update", active:true, queued:true, status:"Queued"}]
+            verify(page().updating)
+            tryCompare(dialog, "visible", false)
+            for (const control of ["selectAllUpdates", "updatesDownloadSummary", "installUpdatesButton"])
+                verify(!findChild(page(), control).visible, control + " hidden")
+            for (const card of [first, second]) {
+                verify(!findChild(card, "selectUpdate-" + card.modelData.key).visible)
+                verify(!findChild(card, "updatePermissionsStatus").visible)
+                verify(!findChild(card, "viewUpdatePermissionChanges").visible)
+            }
+            verify(findChild(first, "updateJobProgress").visible)
+            compare(findChild(second, "updateJobStatus").text, "Queued…")
+            verify(findChild(second, "updateJobStatus").visible)
+            backend.updates = Object.assign({}, backend.updates, {items:[beta]})
+            backend.jobs = [
+                Object.assign({}, backend.jobs[0], {active:false, status:"Complete"}),
+                Object.assign({}, backend.jobs[1], {queued:false, phase:"download", progress:0.6,
+                    operations:[{ref:"Beta", commit:"a"}]})]
+            tryCompare(list, "count", 1)
+            waitForPolish(list)
+            tryVerify(() => list.itemAtIndex(0) && findChild(list.itemAtIndex(0), "updateJobProgress").visible,
+                      2000, "Next job retains progress after removing the first card")
+            backend.jobs = []; backend.busy = false
+            verify(!page().updating)
+            verify(findChild(page(), "updatesDownloadSummary").visible)
+            verify(findChild(list.itemAtIndex(0), "selectUpdate-user:Beta").visible)
+        } finally {
+            main.contentItem.LayoutMirroring.enabled = Qt.binding(function() { return main.rtl })
         }
     }
     function test_queued_updates_have_status_only_data() {

@@ -158,7 +158,8 @@ AppCenter.Main {
                 main.check(probe.findChild(progress, "overallPercentageLabel").text === "22%", "Live percentage")
                 main.check(!probe.findChild(row, "updateJobStatus").visible, "No redundant transfer status")
                 main.check(probe.findChild(row, "updateDownloadSize").text === "Size: 512.00 MiB", "Resolved row size")
-                main.check(probe.findChild(updatesPage, "updatesDownloadSummary").text === "2 selected - Total size: 522.00 MiB", "Resolved selection size")
+                main.check(!probe.findChild(updatesPage, "updatesDownloadSummary").visible, "Selection size hidden during updates")
+                main.check(!probe.findChild(row, "selectUpdate-" + row.modelData.key).visible, "Checkbox hidden during updates")
                 main.capture(stack, main.stage === 17 ? "downloading" : "downloading-compact", main.stage + 1)
             } else if (main.stage === 18) {
                 fixture.jobs = [Object.assign({}, fixture.jobs[0], {phase:"install", progress:0.9, downloadComplete:true}), fixture.jobs[1]]
