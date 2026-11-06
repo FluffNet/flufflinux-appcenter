@@ -69,6 +69,12 @@ fn interactive() -> bool {
 fn progress_stress() -> bool {
     env::var("APPCENTER_PROFILE_PROGRESS_STRESS").as_deref() == Ok("1")
 }
+fn replan_stress() -> bool {
+    env::var("APPCENTER_PROFILE_REPLAN").as_deref() == Ok("1")
+}
+fn shared_ref() -> String {
+    format!("runtime/{}/x86_64/stable", catalog().last().unwrap()["id"].as_str().unwrap())
+}
 fn send(value: Value) {
     println!("{value}");
     io::stdout().flush().unwrap();
@@ -101,10 +107,12 @@ fn main() {
             Some("--updates-worker") => {
                 let rows: Vec<_> = catalog().into_iter().take(item_count()).enumerate().map(|(i, app)| {
                     let id = app["id"].as_str().unwrap();
-                    let reference = format!("app/{id}/x86_64/stable");
-                    let parts = if interactive() || progress_stress() { 1 } else { 12 };
+                    let runtime = replan_stress() && i + 2 >= item_count();
+                    let reference = format!("{}/{id}/x86_64/stable",if runtime {"runtime"}else{"app"});
+                    let parts = if replan_stress() {if runtime {1}else{2}}
+                        else if interactive() || progress_stress() { 1 } else { 12 };
                     let download = if progress_stress() && i.is_multiple_of(5) {0} else {100000000};
-                    let plan: Vec<_> = (0..parts).map(|part| json!({"ref":if part == 0 {reference.clone()} else {format!("runtime/org.example.Shared{part}/x86_64/stable")},
+                    let plan: Vec<_> = (0..parts).map(|part| json!({"ref":if part == 0 {reference.clone()} else if replan_stress(){shared_ref()}else{format!("runtime/org.example.Shared{part}/x86_64/stable")},
                         "commit":"a".repeat(64),"downloadBytes":download,"action":"update","name":format!("Operation {part}")})).collect();
                     let permissions = if interactive() && i % 3 == 0 {
                         json!({"state":"changed","groups":[{"id":"network","title":"Network Access","icon":"network-wireless",
@@ -113,7 +121,7 @@ fn main() {
                     json!({"id":id,"name":app["name"],"developer":app["developer"],"icon":app["icon"],
                         "key":format!("user:{reference}"),"flatpakRef":reference,"installation":"user","remote":"fixture",
                         "commit":"a".repeat(64),"oldCommit":"b".repeat(64),"oldVersion":"1.0","newVersion":"2.0",
-                        "selected":true,"plan":plan,"downloadBytes":parts * download,"permissions":permissions,"fixtureIndex":i})
+                        "selected":true,"plan":plan,"downloadBytes":parts * download,"permissions":permissions,"fixtureIndex":i,"runtime":runtime})
                 }).collect();
                 send(
                     json!({"type":"updates","updates":rows,"errors":[],"skipped":[],"checkedAt":"2026-10-16T10:00:00Z"}),
@@ -140,7 +148,12 @@ fn main() {
                         }
                     });
                 }
-                send(json!({"type":"plan","operations":request["plan"]}));
+                let mut resolved = request["plan"].as_array().unwrap().clone();
+                if replan_stress() && request["fixtureIndex"].as_u64().unwrap() > 0 {
+                    resolved.retain(|op| op["ref"] == request["flatpakRef"]);
+                    for op in &mut resolved { op["commit"] = "c".repeat(64).into(); }
+                }
+                send(json!({"type":"plan","operations":resolved}));
                 let cached = progress_stress()
                     && request["fixtureIndex"]
                         .as_u64()

@@ -118,8 +118,11 @@ Page {
             // Finished history must not supply sizes/status for a later scan
             // of another release (including dependency-only refreshes).
             if (row.commit && (job.commit !== row.commit || job.oldCommit !== row.oldCommit)) continue
-            if (!row.plan || !job.plan || (row.plan.length === job.plan.length
-                && row.plan.every(op => job.plan.some(other => op.ref === other.ref && op.commit === other.commit)))) return job
+            // Execution can resolve a different dependency graph. Match the
+            // scan that queued this job, while rendering its live operations.
+            const scanPlan = job.scanPlan || job.plan
+            if (!row.plan || !scanPlan || (row.plan.length === scanPlan.length
+                && row.plan.every(op => scanPlan.some(other => op.ref === other.ref && op.commit === other.commit)))) return job
         }
         return null
     }
@@ -360,6 +363,7 @@ Page {
                 anchors.centerIn: parent; width: parent.width; horizontalAlignment: Text.AlignHCenter
                 visible: page.rows.length === 0 && !page.checking && text.length > 0
                 text: window.networkOffline ? ""
+                    : page.updating ? qsTranslate("AppCenter", "Preparing…")
                     : page.updateData.state === "ready" && !page.updateData.error
                     ? (page.skipped.length ? qsTr("No app updates available from the sources that could be checked.") : qsTr("Your apps are up to date."))
                     : page.updateData.state === "cancelled" ? qsTr("App update check cancelled.")

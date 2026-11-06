@@ -103,6 +103,7 @@ impl Manager {
             "addon",
             "oldCommit",
             "commit",
+            "scanPlan",
             "installedArch",
             "installedBranch",
         ] {
@@ -250,6 +251,16 @@ impl Manager {
     // Batch callers publish once, after all selections have been validated.
     // Do not rebuild/copy the growing queue for every selected update.
     pub(super) fn enqueue_request(&mut self, mut request: Value) -> bool {
+        if request["action"] == "update" {
+            // The resolved plan can shrink after earlier jobs deploy shared
+            // runtimes. Keep the original scan identity separate so Updates
+            // can still attach the live job and distinguish later scans.
+            request["scanPlan"] = rows(request.get("scanPlan").unwrap_or(&request["plan"]))
+                .iter()
+                .map(|op| json!({"ref":op["ref"],"commit":op["commit"]}))
+                .collect::<Vec<_>>()
+                .into();
+        }
         let id = normalized_id(text(&request, "id")).to_owned();
         if request["action"] != "update" {
             request["id"] = id.clone().into();
@@ -699,6 +710,11 @@ impl Manager {
             self.error(text(message, "error"));
         }
         if ok && job["action"] == "update" {
+            let pending: std::collections::HashSet<_> = self.jobs.iter().enumerate()
+                .filter(|(other, job)| *other != index && job["action"] == "update"
+                    && flag(job, "active") && !flag(job, "cancelled"))
+                .map(|(_, job)| text(job, "key").to_owned())
+                .collect();
             let items: Vec<_> = rows(&self.properties["updateItems"])
                 .iter()
                 .filter(|row| {
@@ -707,7 +723,8 @@ impl Manager {
                             && rows(&job["operations"]).iter().any(|op| {
                                 op["ref"] == row["flatpakRef"]
                                     && (op["action"] == "uninstall"
-                                        || op["commit"] == row["commit"])
+                                        || (op["commit"] == row["commit"]
+                                            && !pending.contains(text(row, "key"))))
                             }))
                 })
                 .cloned()
@@ -910,6 +927,65 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn replanned_update_retains_scan_identity_through_progress_failure_and_retry() {
+        let mut manager = Manager::new(vec![]);
+        let reference = "app/a.b.App/x86_64/stable";
+        let original = json!([{"ref":reference,"commit":"scan","downloadBytes":200},
+            {"ref":"runtime/a.b.Shared/x86_64/stable","commit":"runtime","downloadBytes":500}]);
+        manager.enqueue(json!({"id":"a.b.App","action":"update","key":"user:app",
+            "installation":"user","flatpakRef":reference,"plan":original}));
+        let identity = json!([{"ref":reference,"commit":"scan"},
+            {"ref":"runtime/a.b.Shared/x86_64/stable","commit":"runtime"}]);
+        let resolved = json!([{"ref":reference,"commit":"current","downloadBytes":100,"action":"update"}]);
+        manager.job_message("install", &json!({"type":"plan","operations":resolved}));
+        manager.job_message("install", &json!({"type":"operation","ref":reference,
+            "phase":"download","receivedBytes":27,"progress":0.99,"downloadProgress":0.99}));
+        assert_eq!(manager.properties["jobs"][0]["scanPlan"], identity);
+        assert_eq!(manager.properties["jobs"][0]["plan"][0]["commit"], "current");
+        assert_eq!(manager.requests[0]["plan"], resolved);
+        assert_eq!(manager.properties["jobs"][0]["progressPercent"], 27);
+        assert_eq!(crate::backend::recovery::record(&manager.jobs[0])["operations"][0]["commit"], "current");
+        manager.job_message("install", &json!({"type":"result","success":false,"error":"fixture"}));
+        let context = manager.tasks.remove("install").unwrap().context;
+        manager.job_finished("install", context, &json!({"code":1}));
+        manager.tasks.clear();
+        manager.retry_job(0);
+        assert_eq!(manager.jobs[1]["scanPlan"], identity);
+        assert_eq!(manager.requests[1]["plan"], json!([]));
+    }
+    #[test]
+    fn completed_app_keeps_queued_runtime_rows_until_their_own_jobs_finish() {
+        let mut manager = Manager::new(vec![]);
+        let app = "app/a.b.App/x86_64/stable";
+        let runtime = "runtime/a.b.Platform/x86_64/stable";
+        let locale = "runtime/a.b.Platform.Locale/x86_64/stable";
+        let items = json!([
+            {"key":"app","id":"a.b.App","flatpakRef":app,"installation":"user","commit":"new"},
+            {"key":"platform","id":"a.b.Platform","flatpakRef":runtime,"installation":"user","commit":"new"},
+            {"key":"locale","id":"a.b.Platform.Locale","flatpakRef":locale,"installation":"user","commit":"new"}]);
+        manager.merge("updates",json!({"state":"ready","items":items}));
+        for item in rows(&items) {
+            let mut request = item.clone();
+            request["action"] = "update".into();
+            manager.enqueue(request);
+        }
+        manager.jobs[0]["operations"] = json!([
+            {"ref":app,"action":"update","commit":"new"},
+            {"ref":runtime,"action":"update","commit":"new"},
+            {"ref":locale,"action":"update","commit":"new"}]);
+        manager.job_message("install", &json!({"type":"result","success":true}));
+        assert_eq!(rows(&manager.properties["updateItems"]).len(), 2);
+        let context = manager.tasks.remove("install").unwrap().context;
+        manager.job_finished("install",context,&json!({"code":0}));
+        manager.start_next();
+        manager.jobs[1]["operations"] = json!([
+            {"ref":runtime,"action":"update","commit":"new"},
+            {"ref":locale,"action":"update","commit":"new"}]);
+        manager.job_message("install", &json!({"type":"result","success":true}));
+        assert_eq!(rows(&manager.properties["updateItems"]).len(), 1);
+        assert_eq!(manager.properties["updateItems"][0]["key"], "locale");
+    }
     #[test]
     fn failed_retry_retains_only_intent_requeues_without_a_scan_and_clear_releases_it() {
         let mut manager = Manager::new(vec![]);

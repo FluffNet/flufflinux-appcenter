@@ -16,8 +16,11 @@ App.Main {
     property int queuedSamples: 0
     property int afterRemovalSamples: 0
     property int plannedSamples: 0
+    property int renderedSamples: 0
     property bool captured: false
     property bool captureDone: false
+    property bool runtimeCaptured: false
+    property bool runtimeCaptureDone: false
     property var originalRows: []
     property var originalPlans: []
     property var captureArea: null
@@ -64,12 +67,24 @@ App.Main {
                 }
                 for (const row of main.updateItems) {
                     const job = page.jobFor(row)
+                    if (!job) console.error("UPDATE_ROW_MATCH_DIAGNOSTIC",JSON.stringify({key:row.key,
+                        commit:row.commit,oldCommit:row.oldCommit,plan:row.plan,
+                        candidates:main.backendJobs.filter(item=>item.key===row.key)}))
                     main.check(!!job, "Missing queued/progress job for " + row.key)
                     if (job.active && job.queued) ++main.queuedSamples
                     if (job.active && !job.queued) {
                         ++main.progressSamples
                         if (finished) ++main.afterRemovalSamples
                         if (job.operations && job.operations.length) ++main.plannedSamples
+                        const list=probe.findChild(page,"updatesList")
+                        const rowIndex=main.updateItems.findIndex(item=>item.key===row.key)
+                        list.positionViewAtIndex(rowIndex,ListView.Contain)
+                        const card=list.itemAtIndex(rowIndex)
+                        if (card) {
+                            main.check(probe.findChild(card,"updateJobProgress").visible,
+                                       "Active update bar visible on its actual card: "+row.key)
+                            ++main.renderedSamples
+                        }
                     }
                 }
                 const downloading = main.updateItems.some(row => {
@@ -84,14 +99,24 @@ App.Main {
                         main.captureDone = true
                     }), "Capture progress after first completion")
                 }
+                if (main.updateItems.length===1 && main.updateItems[0].runtime && downloading && !main.runtimeCaptured) {
+                    main.runtimeCaptured=true
+                    main.check(main.captureArea.grabToImage(function(result) {
+                        const filename=Qt.resolvedUrl("../target/update-progress-runtime-fixed-"+Qt.locale().name+".png").toString().replace("file://","")
+                        main.check(result.saveToFile(filename),"Save final active runtime")
+                        main.runtimeCaptureDone=true
+                    }),"Capture final runtime while Updates still has its progress")
+                }
                 if (!main.backend.busy) {
                     if (!main.captureDone) return
+                    if (main.originalRows.some(row=>row.runtime) && !main.runtimeCaptureDone) return
                     main.check(main.completed === main.originalRows.length, "Every queued app completed")
                     main.check(main.updateItems.length === 0, "Completed rows removed")
                     main.check(main.progressSamples > 0 && main.queuedSamples > 0, "Active and queued jobs observed")
                     main.check(main.plannedSamples > 0, "Resolved operations reach the page progress display")
                     main.check(main.afterRemovalSamples > 0, "Progress survives the first completion")
-                    console.info("UPDATE_ROWS_PASS", main.completed, main.progressSamples, main.queuedSamples, main.afterRemovalSamples, main.plannedSamples)
+                    main.check(main.renderedSamples > 0,"Live progress is rendered, not only present in the queue")
+                    console.info("UPDATE_ROWS_PASS", main.completed, main.progressSamples, main.queuedSamples, main.afterRemovalSamples, main.plannedSamples, main.renderedSamples)
                     main.phase = 3; Qt.quit()
                 }
             }

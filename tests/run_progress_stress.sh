@@ -17,7 +17,7 @@ PY
 for progress_locale in en_US.UTF-8 he_IL.UTF-8; do
     LANGUAGE="$progress_locale" LANG="$progress_locale" QT_FORCE_STDERR_LOGGING=1 \
         QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QUICK_CONTROLS_STYLE=org.kde.desktop \
-        APPCENTER_PROFILE_ITEMS=200 APPCENTER_PROFILE_PROGRESS_STRESS=1 \
+        APPCENTER_PROFILE_ITEMS=200 APPCENTER_PROFILE_PROGRESS_STRESS=1 APPCENTER_PROFILE_REPLAN=1 \
         APPCENTER_PROFILE_CATALOG="$PWD/target/progress-stress-catalog.json" \
         APPCENTER_PROFILE_QML="$PWD/tests/ProgressStress.qml" \
         dbus-run-session -- target/debug/examples/update-profile

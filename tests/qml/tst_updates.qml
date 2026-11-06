@@ -617,6 +617,47 @@ TestCase {
         compare(page().selectedBytes, 210)
         compare(findChild(card, "updateDownloadSize").text, "Size: 10 B")
     }
+    function test_replanned_live_job_keeps_progress_after_earlier_rows_finish_data() {
+        return [{tag:"app",runtime:false},{tag:"runtime",runtime:true}]
+    }
+    function test_replanned_live_job_keeps_progress_after_earlier_rows_finish(data) {
+        open()
+        const candidate=Object.assign(row("Remaining","system"),{oldCommit:"old",commit:"new",runtime:data.runtime})
+        backend.updates={state:"ready",items:[row("Finished","system"),candidate]}
+        const job={index:1,key:candidate.key,action:"update",active:true,queued:false,
+            commit:"new",oldCommit:"old",scanPlan:candidate.plan,
+            plan:[{ref:"Remaining",commit:"re-resolved"}],
+            operations:[{ref:"Remaining",commit:"re-resolved",downloadBytes:100}],
+            progress:0.27,progressPercent:27,phase:"download",hasDownload:true,
+            downloadedSize:"27 B",downloadTotalSize:"100 B",downloadSpeed:"10 B/s"}
+        backend.jobs=[job]
+        backend.updates={state:"ready",items:[candidate]}
+        const list=findChild(page(),"updatesList")
+        tryCompare(list,"count",1)
+        tryVerify(function(){return list.itemAtIndex(0)!==null})
+        const card=list.itemAtIndex(0)
+        const progress=findChild(card,"updateJobProgress")
+        compare(page().jobFor(candidate).index,1)
+        verify(progress.visible)
+        compare(findChild(card,"overallPercentageLabel").text,"27%")
+        backend.jobs=[Object.assign({},job,{phase:"install",progressIndeterminate:true})]
+        verify(progress.visible)
+        verify(findChild(card,"overallInstallProgress").indeterminate)
+        verify(!findChild(card,"overallPercentageLabel").visible)
+        backend.jobs=[Object.assign({},job,{active:false,failed:true,status:"Failed",error:"fixture"})]
+        verify(findChild(card,"updateJobStatus").visible)
+        verify(findChild(card,"updateJobStatus").text.indexOf("fixture")>=0)
+        const later=Object.assign({},candidate,{plan:[{ref:"Remaining",commit:"future"}]})
+        compare(page().jobFor(later),null,"A later scan must not inherit the earlier attempt")
+    }
+    function test_never_says_up_to_date_while_a_runtime_update_is_active() {
+        open()
+        backend.updates={state:"ready",items:[]}
+        backend.jobs=[{index:0,key:"system:runtime",action:"update",runtime:true,active:true,queued:false}]
+        verify(findChild(page(),"updatesEmpty").text!=="Your apps are up to date.")
+        backend.jobs=[]
+        compare(findChild(page(),"updatesEmpty").text,"Your apps are up to date.")
+    }
     function test_scopes_and_dates() {
         open(); ready()
         backend.updates = Object.assign({}, backend.updates, {items:[row("Alpha", "user"), row("Alpha", "system")]})

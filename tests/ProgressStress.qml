@@ -53,6 +53,17 @@ App.Main {
                 main.check(main.updateItems.length===200,"200 planned updates")
                 main.backend.installSelectedUpdates();main.phase=2
             } else if (main.phase===2) {
+                if (stack.depth===1) {
+                    const page=probe.findChild(stack.get(0),"updatesPage")
+                    for (const job of main.backendJobs) {
+                        if (job.action!=="update" || !job.active || job.cancelled) continue
+                        const row=main.updateItems.find(item=>item.key===job.key)
+                        main.check(!!row,"Every active/queued runtime and app keeps its Updates row")
+                        main.check(!!page.jobFor(row),"Updates remains attached after dependency re-resolution")
+                    }
+                    main.check(!probe.findChild(page,"updatesEmpty").visible || !page.updating,
+                        "No up-to-date message during active updates")
+                }
                 for (const job of main.backendJobs) {
                     if (!job.active || job.queued || !(job.operations || []).length) continue
                     if (job.phase==="download" && job.downloadTotalBytes>0) {
