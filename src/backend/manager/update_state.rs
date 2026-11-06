@@ -218,6 +218,7 @@ mod tests {
             assert!(!manager.jobs.iter().any(|job| flag(job, "active")));
             manager.dispatch("clearDownloadHistory", &json!([]));
             assert!(manager.jobs.is_empty() && manager.requests.is_empty());
+            assert!(manager.retry_requests.is_empty());
             assert!(rows(&manager.properties["jobs"]).is_empty());
             assert!(manager.reviews.is_empty());
             manager.tasks.clear();

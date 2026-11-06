@@ -66,6 +66,9 @@ fn item_count() -> usize {
 fn interactive() -> bool {
     env::var("APPCENTER_PROFILE_INTERACTIVE").as_deref() == Ok("1")
 }
+fn progress_stress() -> bool {
+    env::var("APPCENTER_PROFILE_PROGRESS_STRESS").as_deref() == Ok("1")
+}
 fn send(value: Value) {
     println!("{value}");
     io::stdout().flush().unwrap();
@@ -99,9 +102,10 @@ fn main() {
                 let rows: Vec<_> = catalog().into_iter().take(item_count()).enumerate().map(|(i, app)| {
                     let id = app["id"].as_str().unwrap();
                     let reference = format!("app/{id}/x86_64/stable");
-                    let parts = if interactive() { 1 } else { 12 };
+                    let parts = if interactive() || progress_stress() { 1 } else { 12 };
+                    let download = if progress_stress() && i.is_multiple_of(5) {0} else {100000000};
                     let plan: Vec<_> = (0..parts).map(|part| json!({"ref":if part == 0 {reference.clone()} else {format!("runtime/org.example.Shared{part}/x86_64/stable")},
-                        "commit":"a".repeat(64),"downloadBytes":100000000,"action":"update","name":format!("Operation {part}")})).collect();
+                        "commit":"a".repeat(64),"downloadBytes":download,"action":"update","name":format!("Operation {part}")})).collect();
                     let permissions = if interactive() && i % 3 == 0 {
                         json!({"state":"changed","groups":[{"id":"network","title":"Network Access","icon":"network-wireless",
                             "description":"Internet connections","added":["Network connections"],"removed":[]}]})
@@ -109,7 +113,7 @@ fn main() {
                     json!({"id":id,"name":app["name"],"developer":app["developer"],"icon":app["icon"],
                         "key":format!("user:{reference}"),"flatpakRef":reference,"installation":"user","remote":"fixture",
                         "commit":"a".repeat(64),"oldCommit":"b".repeat(64),"oldVersion":"1.0","newVersion":"2.0",
-                        "selected":true,"plan":plan,"downloadBytes":parts * 100000000u64,"permissions":permissions,"fixtureIndex":i})
+                        "selected":true,"plan":plan,"downloadBytes":parts * download,"permissions":permissions,"fixtureIndex":i})
                 }).collect();
                 send(
                     json!({"type":"updates","updates":rows,"errors":[],"skipped":[],"checkedAt":"2026-10-16T10:00:00Z"}),
@@ -137,7 +141,12 @@ fn main() {
                     });
                 }
                 send(json!({"type":"plan","operations":request["plan"]}));
-                for tick in 1..=12 {
+                let cached = progress_stress()
+                    && request["fixtureIndex"]
+                        .as_u64()
+                        .unwrap_or(1)
+                        .is_multiple_of(5);
+                for tick in 1..=if cached { 0 } else { 12 } {
                     if cancelled.load(Ordering::Relaxed) {
                         send(
                             json!({"type":"result","success":false,"cancelled":true,"error":"Cancelled"}),
@@ -146,17 +155,17 @@ fn main() {
                     }
                     send(
                         json!({"type":"operation","ref":request["flatpakRef"],"phase":"download",
-                        "progress":tick as f64/12.0,"downloadProgress":tick as f64/12.0,
+                        "progress":if progress_stress(){0.99}else{tick as f64/12.0},"downloadProgress":if progress_stress(){0.99}else{tick as f64/12.0},
                         "receivedBytes":tick * 8000000,"status":"Downloading"}),
                     );
                     std::thread::sleep(Duration::from_millis(if interactive() { 400 } else { 10 }));
                 }
-                if interactive() {
+                if interactive() || progress_stress() {
                     send(
                         json!({"type":"operation","ref":request["flatpakRef"],"phase":"install",
-                        "progress":0.99,"downloadProgress":1,"receivedBytes":96000000,"status":"Installing…"}),
+                        "progress":0.99,"downloadProgress":1,"receivedBytes":if cached{0}else{96000000},"status":"Installing…"}),
                     );
-                    std::thread::sleep(Duration::from_millis(800));
+                    std::thread::sleep(Duration::from_millis(if interactive() { 800 } else { 80 }));
                     if cancelled.load(Ordering::Relaxed) {
                         send(
                             json!({"type":"result","success":false,"cancelled":true,"error":"Cancelled"}),
@@ -165,7 +174,7 @@ fn main() {
                     }
                     send(
                         json!({"type":"operation","ref":request["flatpakRef"],"phase":"complete",
-                        "progress":1,"downloadProgress":1,"receivedBytes":96000000,"status":"Complete"}),
+                        "progress":1,"downloadProgress":1,"receivedBytes":if cached{0}else{96000000},"status":"Complete"}),
                     );
                 }
                 let saved = backend::storage::history_save(

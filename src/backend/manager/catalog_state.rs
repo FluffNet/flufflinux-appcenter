@@ -2,6 +2,48 @@ use super::*;
 use crate::backend::catalog;
 use std::{path::Path, time::Duration};
 impl Manager {
+    fn catalog_expiry_timer(&mut self, interval: u64) {
+        self.command(json!({"command":"timer","action":"catalogExpiry","interval":interval}));
+    }
+    fn schedule_catalog_expiry(&mut self, now: chrono::DateTime<chrono::Utc>) {
+        if self.catalog.path.is_empty() || self.stopping {
+            return;
+        }
+        let remaining = chrono::DateTime::parse_from_rfc3339(&self.catalog.saved)
+            .ok()
+            .map(|saved| {
+                saved.with_timezone(&chrono::Utc)
+                    + chrono::Duration::seconds(storage::CACHE_LIFETIME)
+                    - now
+            })
+            .map(|remaining| remaining.num_milliseconds())
+            .unwrap_or(0);
+        // A failed/partial refresh keeps its original age. Do not spin at an
+        // already expired timestamp or repeatedly retry while offline.
+        self.catalog_expiry_timer(if remaining > 0 {
+            (remaining as u64).min(storage::CACHE_LIFETIME as u64 * 1000)
+        } else {
+            15 * 60 * 1000
+        });
+    }
+    pub(super) fn catalog_expiry(&mut self, now: chrono::DateTime<chrono::Utc>) {
+        self.catalog_expiry_timer(0);
+        if self.catalog.path.is_empty() || self.stopping {
+            return;
+        }
+        let fresh = chrono::DateTime::parse_from_rfc3339(&self.catalog.saved)
+            .ok()
+            .is_some_and(|saved| storage::fresh(saved.with_timezone(&chrono::Utc), now));
+        if fresh {
+            self.schedule_catalog_expiry(now);
+            return;
+        }
+        if self.catalog.awaiting || self.catalog.background_refresh || self.catalog.reset_age {
+            return;
+        }
+        self.catalog.expiry_pending = true;
+        self.start_catalog_refresh();
+    }
     pub(super) fn set_catalog(&mut self, apps: Vec<Value>) {
         self.metadata = apps
             .iter()
@@ -33,14 +75,19 @@ impl Manager {
         }
         let fingerprint = catalog::fingerprint().unwrap_or_default();
         let now = chrono::Utc::now();
-        if let Some(cache) = storage::read_cache(Path::new(path), &fingerprint, now)
-            .filter(|c| storage::fresh(c.saved_at, now))
-        {
+        if let Some(cache) = storage::read_cache(Path::new(path), &fingerprint, now) {
             self.catalog.refreshed = true;
             self.catalog.saved = cache.saved_at.to_rfc3339();
             self.catalog.fingerprint = fingerprint;
             self.set_catalog(cache.apps);
             self.catalog_progress(100, false);
+            if storage::fresh(cache.saved_at, now) {
+                self.schedule_catalog_expiry(now);
+            } else {
+                self.catalog.pending = rows(&self.properties["catalog"]).is_empty();
+                self.catalog.expiry_pending = !self.catalog.pending;
+                self.start_catalog_refresh();
+            }
             return;
         }
         self.set_catalog(vec![]);
@@ -51,19 +98,26 @@ impl Manager {
         self.start_catalog_refresh();
     }
     pub(super) fn start_catalog_refresh(&mut self) {
-        if self.catalog.pending
+        if (self.catalog.pending || self.catalog.expiry_pending)
             && self.catalog.network_ready
             && !self.catalog.offline
             && !self.busy()
             && !self.stopping
+            && !self.tasks.contains_key("catalog")
+            && !self.jobs.iter().any(|job| flag(job, "active"))
+            && !self.catalog.background_refresh
         {
-            self.source_operation(json!({"operation":"refresh"}));
+            let background =
+                self.catalog.expiry_pending && !rows(&self.properties["catalog"]).is_empty();
+            self.catalog.expiry_pending = false;
+            self.source_operation(json!({"operation":"refresh","background":background}));
         }
     }
     pub(super) fn reload_catalog(&mut self, force: bool) {
         if self.stopping
             || self.catalog.awaiting
             || self.catalog.pending
+            || self.catalog.expiry_pending
             || (!self.catalog.path.is_empty() && !self.catalog.refreshed)
         {
             return;
@@ -109,6 +163,8 @@ impl Manager {
             self.catalog.again = false;
             self.catalog.force_again = false;
             self.catalog.deadline = None;
+            self.catalog.background_refresh = false;
+            self.schedule_catalog_expiry(chrono::Utc::now());
             self.catalog.failed = rows(&self.properties["catalog"]).is_empty();
             return;
         }
@@ -173,6 +229,8 @@ impl Manager {
             if ok {
                 self.catalog_progress(100, false);
             }
+            self.catalog.background_refresh = false;
+            self.schedule_catalog_expiry(chrono::Utc::now());
         }
     }
     pub(super) fn source_operation(&mut self, mut request: Value) {
@@ -188,20 +246,27 @@ impl Manager {
             return;
         }
         self.catalog.source_operation = operation.clone();
+        self.catalog.background_refresh = operation == "refresh"
+            && flag(&request, "background")
+            && !rows(&self.properties["catalog"]).is_empty();
         if matches!(operation.as_str(), "refresh" | "initialize" | "defaults") {
             self.catalog_progress(0, true);
         }
         if operation == "refresh" && !self.catalog.path.is_empty() {
             self.catalog.pending = false;
-            self.set_catalog(vec![]);
+            if !self.catalog.background_refresh {
+                self.set_catalog(vec![]);
+            }
             self.catalog.fingerprint.clear();
-            self.catalog.saved.clear();
+            if !self.catalog.background_refresh {
+                self.catalog.saved.clear();
+            }
             self.catalog.awaiting = true;
             self.catalog.reset_age = false;
             self.catalog.refreshed = false;
         }
         if operation != "list" {
-            if self.properties["updates"]["state"] == "ready" {
+            if !self.catalog.background_refresh && self.properties["updates"]["state"] == "ready" {
                 self.merge(
                     "updates",
                     json!({"state":"idle","items":[],"skipped":[],"error":""}),
@@ -252,7 +317,9 @@ impl Manager {
                     if self.catalog.source_operation != "list" || self.catalog.path.is_empty() {
                         self.catalog.failed = false;
                     }
-                    if self.properties["updates"]["state"] == "ready" {
+                    if !self.catalog.background_refresh
+                        && self.properties["updates"]["state"] == "ready"
+                    {
                         self.merge(
                             "updates",
                             json!({"state":"idle","items":[],"skipped":[],"error":""}),
@@ -302,7 +369,10 @@ impl Manager {
             if self.catalog.refreshed {
                 self.reload_catalog(true);
             } else {
-                self.catalog.failed = true;
+                self.catalog.failed = rows(&self.properties["catalog"]).is_empty();
+                self.catalog.refreshed = !self.catalog.failed;
+                self.catalog.background_refresh = false;
+                self.schedule_catalog_expiry(chrono::Utc::now());
             }
         } else {
             self.reload_catalog(self.catalog.source_operation == "refresh");
@@ -310,5 +380,126 @@ impl Manager {
         for input in std::mem::take(&mut self.pending_inputs) {
             self.open_source(&input);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn cached(now: chrono::DateTime<chrono::Utc>) -> Manager {
+        let mut manager = Manager::new(vec![json!({"id":"org.example.App","name":"Cached app"})]);
+        manager.catalog.path = "/tmp/appcenter-expiry-fixture.json".into();
+        manager.catalog.saved = (now - chrono::Duration::hours(13)).to_rfc3339();
+        manager.catalog.refreshed = true;
+        manager.merge(
+            "updates",
+            json!({"state":"ready","items":[{"key":"selected","selected":true}]}),
+        );
+        manager.initial();
+        manager
+    }
+    #[test]
+    fn expiry_waits_for_two_hundred_jobs_and_the_final_worker_exit() {
+        let now = chrono::Utc::now();
+        let mut manager = cached(now);
+        let catalog = manager.properties["catalog"].clone();
+        let updates = manager.properties["updateItems"].clone();
+        manager.jobs = (0..200).map(|i| json!({"index":i,"active":true})).collect();
+        manager.tasks.insert("install".into(), Task::default());
+        manager.catalog_expiry(now);
+        assert!(manager.catalog.expiry_pending);
+        assert!(!manager.tasks.contains_key("sources"));
+        assert!(!manager.tasks.contains_key("catalog"));
+        for job in &mut manager.jobs {
+            job["active"] = false.into();
+        }
+        manager.start_catalog_refresh();
+        assert!(!manager.tasks.contains_key("sources"));
+        manager.tasks.remove("install");
+        manager.start_catalog_refresh();
+        assert!(manager.catalog.background_refresh && manager.catalog.awaiting);
+        assert!(manager.tasks.contains_key("sources"));
+        assert_eq!(manager.properties["catalog"], catalog);
+        assert_eq!(manager.properties["updateItems"], updates);
+        let serial = manager.tasks["sources"].serial;
+        manager.start_catalog_refresh();
+        assert_eq!(manager.tasks["sources"].serial, serial);
+        manager.initial();
+        assert_eq!(manager.properties["catalogLoading"], false);
+    }
+    #[test]
+    fn failed_expiry_refresh_preserves_catalog_age_selection_and_backs_off() {
+        let now = chrono::Utc::now();
+        let mut manager = cached(now);
+        let age = manager.catalog.saved.clone();
+        manager.catalog_expiry(now);
+        manager.tasks.remove("sources");
+        manager
+            .source_message(&json!({"type":"catalog-load","available":0,"failed":1,"refreshed":0}));
+        manager.source_message(&json!({"type":"result","success":false,"error":"offline fixture"}));
+        manager.source_finished(&json!({"code":1}));
+        assert_eq!(manager.catalog.saved, age);
+        assert_eq!(manager.properties["catalog"][0]["name"], "Cached app");
+        assert_eq!(manager.properties["updateItems"][0]["selected"], true);
+        assert!(!manager.catalog.background_refresh);
+        assert!(!manager.tasks.contains_key("catalog"));
+        assert!(manager
+            .commands
+            .iter()
+            .any(|c| c["action"] == "catalogExpiry" && c["interval"] == 900000));
+        manager.catalog.offline = true;
+        manager.catalog_expiry(now + chrono::Duration::minutes(15));
+        assert!(manager.catalog.expiry_pending && !manager.tasks.contains_key("sources"));
+        manager.catalog.offline = false;
+        manager.start_catalog_refresh();
+        assert!(manager.tasks.contains_key("sources"));
+    }
+    #[test]
+    fn an_existing_refresh_is_not_duplicated_when_the_expiry_timer_fires() {
+        let now = chrono::Utc::now();
+        let mut manager = cached(now);
+        manager.source_operation(json!({"operation":"refresh","background":true}));
+        let serial = manager.tasks["sources"].serial;
+        manager.catalog_expiry(now);
+        assert!(!manager.catalog.expiry_pending);
+        assert_eq!(manager.tasks["sources"].serial, serial);
+        manager.catalog.awaiting = false;
+        manager.catalog.reset_age = true;
+        manager.catalog_expiry(now);
+        assert!(!manager.catalog.expiry_pending);
+    }
+    #[test]
+    fn fresh_cache_arms_expiry_without_fetching_and_expired_valid_cache_remains_browsable() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("catalog.json");
+        let fingerprint = catalog::fingerprint().unwrap();
+        let apps = [json!({"id":"org.example.App","name":"Cached app"})];
+        for age in [1, 13] {
+            storage::write_cache(
+                &path,
+                &fingerprint,
+                &apps,
+                chrono::Utc::now() - chrono::Duration::hours(age),
+            )
+            .unwrap();
+            let mut manager = Manager::new(vec![]);
+            manager.load_catalog(path.to_str().unwrap());
+            manager.initial();
+            assert_eq!(manager.properties["catalog"][0], apps[0]);
+            assert_eq!(manager.properties["catalogLoading"], false);
+            assert_eq!(manager.tasks.contains_key("sources"), age == 13);
+            assert_eq!(manager.catalog.background_refresh, age == 13);
+            assert!(storage::read_cache(&path, &fingerprint, chrono::Utc::now()).is_some());
+        }
+    }
+    #[test]
+    fn corrupt_cache_is_not_overwritten_by_starting_a_refresh() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("catalog.json");
+        std::fs::write(&path, b"interrupted fixture").unwrap();
+        let mut manager = Manager::new(vec![]);
+        manager.load_catalog(path.to_str().unwrap());
+        assert_eq!(std::fs::read(path).unwrap(), b"interrupted fixture");
+        assert!(manager.tasks.contains_key("sources"));
     }
 }

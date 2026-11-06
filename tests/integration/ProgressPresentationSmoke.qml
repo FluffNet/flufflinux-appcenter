@@ -16,7 +16,8 @@ AppCenter.Main {
         {page:"updates", bytes:2}, {page:"updates", bytes:54},
         {page:"updates", bytes:190}, {page:"updates", bytes:54, installing:true},
         {page:"queue", bytes:54}, {page:"queue", bytes:54, installing:true},
-        {page:"app", bytes:54}, {page:"app", bytes:54, installing:true}]
+        {page:"app", bytes:54}, {page:"app", bytes:54, installing:true},
+        {page:"queue", bytes:54, failed:true}]
     property var app: ({id:"org.example.Progress", key:"user:org.example.Progress",
         name:"Progress example", developer:"UI test fixture", icon:"application-x-executable",
         description:"Presentation fixture. No real app is updated.", summary:"Progress presentation test",
@@ -38,6 +39,8 @@ AppCenter.Main {
         property int iconRevision: 0
         property var updates: ({state:"ready", items:[main.app]})
         function requestInstallInfo(app) {}
+        function retryJob(index) {}
+        function clearFailedJob(index) {}
     }
     function check(value, message) {
         if (!value) { console.error("PROGRESS_PRESENTATION_FAIL", message); Qt.exit(2); throw new Error(message) }
@@ -53,7 +56,9 @@ AppCenter.Main {
         palette.highlight = dark ? "#e05562" : "#880000"
         palette.highlightedText = "#ffffff"; palette.link = palette.highlight
         const state = scenarios[step % scenarios.length]
-        fixture.jobs = [Object.assign({}, app, {index:0, action:"update", active:true, queued:false,
+        fixture.jobs = [Object.assign({}, app, {index:0, action:"update", active:!state.failed, queued:false,
+            failed:!!state.failed, canRetry:!!state.failed, errorKind:state.failed ? "network" : "",
+            error:state.failed ? "runtime/org.example.Runtime/x86_64/stable\n[28] Timeout was reached" : "",
             queueBatch:1, progress:state.bytes / 200, progressPercent:Math.floor(state.bytes / 2),
             phase:state.installing ? "install" : "download", progressIndeterminate:!!state.installing,
             status:state.installing ? "Installing…" : "Downloading…",
@@ -76,6 +81,14 @@ AppCenter.Main {
             const root = state.page === "updates" ? probe.findChild(stack.get(0), "updatesPage") : stack.currentItem
             const bar = probe.findChild(root, "overallInstallProgress")
             const percentage = probe.findChild(root, "overallPercentageLabel")
+            if (state.failed) {
+                main.check(!bar.visible, "Failed jobs have no live bar")
+                main.check(probe.findChild(root,"retryDownloadButton").visible, "Retry shown")
+                main.check(probe.findChild(root,"clearFailedDownloadButton").visible, "Clear preserved")
+                main.check(probe.findChild(root,"retryDownloadButton").width === probe.findChild(root,"clearFailedDownloadButton").width, "Equal action widths")
+                main.check(probe.findChild(root,"downloadJobError").effectiveHorizontalAlignment === (main.rtl ? Text.AlignRight : Text.AlignLeft), "Error alignment follows reading direction")
+                main.check(probe.findChild(root,"downloadJobError").text.indexOf(qsTr("Please check your internet connection and try again."))>=0, "Localized recovery guidance")
+            } else {
             main.check(bar && bar.visible, "Shared bar visible on " + state.page)
             main.check(bar.indeterminate === !!state.installing, "Correct progress mode")
             main.check(bar.mirrored === main.rtl, "Bar follows layout direction")
@@ -88,10 +101,11 @@ AppCenter.Main {
                 main.check(label.visible && label.text === qsTranslate("AppCenter", "Installing…"), "Translated installation status")
                 main.check(label.implicitWidth <= label.width, "Installation text fits")
             }
+            }
             main.check(probe.findChild(bar, "progressActivity") === null, "One fill only")
             const language = Qt.locale().name
             const name = "progress-202611-" + language + "-" + (main.darkMode ? "dark-" : "light-")
-                + state.page + "-" + (state.installing ? "installing" : Math.floor(state.bytes / 2)) + ".png"
+                + state.page + "-" + (state.failed ? "failed-retry" : state.installing ? "installing" : Math.floor(state.bytes / 2)) + ".png"
             // QuickTest's image save method returns void; inspect the output
             // files after the run rather than treating that return as failure.
             probe.grabImage(main.contentItem).save(Qt.resolvedUrl("../../target/" + name).toString().replace("file://", ""))

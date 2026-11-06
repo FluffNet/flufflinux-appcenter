@@ -198,8 +198,34 @@ impl Manager {
             return;
         }
         if item["action"] == "update" {
-            self.signal("updatesRequested", json!([]));
-            self.check_updates();
+            // The recovery dialog labels this explicit action Retry. Loading
+            // the journal still never resumes work. Resolve this installed app
+            // through its current configured origin, without scanning all apps
+            // or replaying the interrupted transaction's old operations.
+            let mut request = json!({"action":"update","plan":[]});
+            for key in [
+                "id",
+                "name",
+                "installation",
+                "flatpakRef",
+                "targetRef",
+                "remote",
+                "key",
+            ] {
+                if let Some(value) = item.get(key) {
+                    request[key] = value.clone();
+                }
+            }
+            if text(&request, "targetRef").is_empty() {
+                if let Some(target) = rows(&item["operations"]).iter().find(|op| {
+                    text(op, "ref").starts_with("app/")
+                        && op["action"] != "uninstall"
+                        && op["ref"] != item["flatpakRef"]
+                }) {
+                    request["targetRef"] = target["ref"].clone();
+                }
+            }
+            self.enqueue(request);
         } else if flag(&item, "addon") {
             self.open_source(&format!("appstream:{}", text(&item["parent"], "id")));
         } else if item["action"] == "uninstall" {
@@ -215,6 +241,33 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn explicit_interrupted_update_retry_resolves_one_app_without_a_global_scan() {
+        let mut manager = manager();
+        let record = json!({"action":"update","id":"org.example.App","name":"App","installation":"user",
+            "flatpakRef":"app/org.example.App/x86_64/stable","remote":"fixture","recoveryId":"interrupted",
+            "operations":[{"ref":"app/org.example.App/x86_64/stable","action":"update","commit":"a".repeat(64)}]});
+        let mut item = record.clone();
+        item["state"] = "interrupted".into();
+        finish(
+            &mut manager,
+            "recovery",
+            json!({"ok":true,"records":[record],"items":[item]}),
+        );
+        assert!(manager.jobs.is_empty());
+        manager.review_recovery(0);
+        assert_eq!(manager.jobs.len(), 1);
+        assert_eq!(manager.requests[0]["plan"], json!([]));
+        assert!(!manager.tasks.contains_key("updates"));
+        assert!(
+            !manager.tasks.contains_key("install"),
+            "The retry still waits for its journal write"
+        );
+        manager.initial();
+        finish(&mut manager, "journal", json!({"ok":true}));
+        manager.start_next();
+        assert!(manager.tasks.contains_key("install"));
+    }
     fn manager() -> Manager {
         let mut manager = Manager::new(vec![]);
         manager.enable_recovery("/tmp/appcenter-unit-test-journal.json");

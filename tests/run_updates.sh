@@ -4,10 +4,13 @@ set -eu
 . tests/native/build-adapter.sh
 build_adapter_test updates_manager
 QT_QPA_PLATFORM=offscreen target/adapter-tests/updates_manager
+build_adapter_test catalog_expiry
+QT_QPA_PLATFORM=offscreen dbus-run-session -- target/adapter-tests/catalog_expiry
 cargo test
 cargo build
 APPCENTER_TEST_BINARY="$PWD/target/debug/flufflinux-appcenter" python3 tests/integration/test_updates.py
 APPCENTER_TEST_BINARY="$PWD/target/debug/flufflinux-appcenter" python3 tests/integration/test_full_update_plan.py
+APPCENTER_TEST_BINARY="$PWD/target/debug/flufflinux-appcenter" python3 tests/integration/test_transaction_retries.py
 for scale in 1 1.5; do
     QT_SCALE_FACTOR="$scale" QT_QPA_PLATFORM=offscreen QT_QUICK_BACKEND=software QT_QUICK_CONTROLS_STYLE=org.kde.desktop /usr/lib/qt6/bin/qmltestrunner -input tests/qml/tst_updates.qml
 done

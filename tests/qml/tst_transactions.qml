@@ -28,6 +28,7 @@ TestCase {
         function launchApp(app) { requested = "open:" + app.id }
         function answerReview(token, accept) { acceptedToken = accept ? token : -token; review = ({}) }
         function cancelJob(index) { requested = "cancel:" + index }
+        function retryJob(index) { requested = "retry:" + index }
     }
     AppCenter.Main { id: main; backend: backend; visible: true }
     function initTestCase() {
@@ -38,6 +39,36 @@ TestCase {
     function init() {
         main.requestActivate()
         waitForRendering(main.contentItem)
+    }
+    function test_failed_queue_retry_and_clear_fit_narrow_layouts_data() {
+        return [{tag:"ltr",rtl:false},{tag:"rtl",rtl:true}]
+    }
+    function test_failed_queue_retry_and_clear_fit_narrow_layouts(data) {
+        const oldWidth=main.width
+        main.width=720
+        main.contentItem.LayoutMirroring.enabled=data.rtl
+        backend.jobs=[{index:9,id:"org.example.Failed",name:"Long application name for a failed update",
+            active:false,failed:true,canRetry:true,action:"update",error:"[28] Timeout was reached",errorKind:"network",operations:[]}]
+        main.showDownloads()
+        const stack=findChild(main,"navigationStack")
+        tryCompare(stack,"busy",false)
+        const retry=findChild(stack.currentItem,"retryDownloadButton")
+        const clear=findChild(stack.currentItem,"clearFailedDownloadButton")
+        verify(retry.visible && clear.visible)
+        compare(retry.width,176)
+        compare(clear.width,retry.width)
+        verify(clear.y>=retry.y+retry.height)
+        const point=retry.mapToItem(stack.currentItem,0,0)
+        verify(point.x>=0 && point.x+retry.width<=stack.currentItem.width)
+        verify(findChild(stack.currentItem,"downloadJobError").text.indexOf("Please check your internet connection")>=0)
+        compare(findChild(stack.currentItem,"downloadJobError").effectiveHorizontalAlignment,
+            data.rtl ? Text.AlignRight : Text.AlignLeft)
+        mouseClick(retry)
+        compare(backend.requested,"retry:9")
+        main.showCatalog();tryCompare(stack,"busy",false)
+        backend.jobs=[]
+        main.width=oldWidth
+        main.contentItem.LayoutMirroring.enabled=Qt.binding(function(){return main.rtl})
     }
     function captureTouchLayout(page, name) {
         let captured = false

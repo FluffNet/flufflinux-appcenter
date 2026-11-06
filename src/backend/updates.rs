@@ -1,4 +1,4 @@
-//! Explicit update scanning, pinned transaction plans and permission changes.
+//! Explicit update scanning, current transaction plans and permission changes.
 use super::{bytes, flag, permissions, process, progress, sources, text};
 use glib::translate::*;
 use libflatpak::{prelude::*, Installation, RefKind, Transaction};
@@ -47,6 +47,70 @@ impl Policy {
             target = next;
         }
         Ok(target.into())
+    }
+    /// An Update request authorizes the current release of this installed ref,
+    /// not a frozen dependency graph from an earlier scan. Flatpak supplies the
+    /// new graph before authentication or deployment. Never replay removals
+    /// from the old request, change an app's origin, or add a remote here.
+    pub fn validate_current_plan(
+        &self,
+        request: &Value,
+        operations: &[Value],
+    ) -> Result<String, String> {
+        let reference = text(request, "flatpakRef");
+        let target = self.target(reference)?;
+        let replacements = self.replacements.borrow();
+        for op in operations {
+            let op_ref = text(op, "ref");
+            if !matches!(text(op, "action"), "install" | "update" | "uninstall") {
+                return Err(format!("Unsupported update operation for {op_ref}."));
+            }
+            if op_ref.starts_with("app/") {
+                let related = op_ref == reference
+                    || op_ref == target
+                    || replacements.contains_key(op_ref)
+                    || replacements.values().any(|r| r == op_ref);
+                if !related {
+                    return Err(format!(
+                        "The update unexpectedly changes another app: {op_ref}."
+                    ));
+                }
+                if text(op, "action") != "uninstall" && op["remote"] != request["remote"] {
+                    return Err(format!(
+                        "The software source for {op_ref} changed. Open Sources to review it."
+                    ));
+                }
+            } else if !op_ref.starts_with("runtime/") {
+                return Err("The update contains an invalid Flatpak reference.".into());
+            }
+            if text(op, "action") == "uninstall" {
+                if !progress::valid_commit(text(op, "installedCommit")) {
+                    return Err(format!(
+                        "The installed component could not be verified: {op_ref}."
+                    ));
+                }
+                continue;
+            }
+            if !progress::valid_commit(text(op, "commit")) || text(op, "sourceKey").is_empty() {
+                return Err(format!(
+                    "The update source could not be verified for {op_ref}."
+                ));
+            }
+            // Previously used sources must retain their URL and trust options.
+            // Newly required runtimes may use another already configured source;
+            // checked_operation and Flatpak verify that source independently.
+            if let Some(old) = super::rows(&request["plan"])
+                .iter()
+                .find(|old| text(old, "action") != "uninstall" && old["remote"] == op["remote"])
+            {
+                if old["sourceUrl"] != op["sourceUrl"] || old["sourceKey"] != op["sourceKey"] {
+                    return Err(format!(
+                        "The software source for {op_ref} changed. Open Sources to review it."
+                    ));
+                }
+            }
+        }
+        Ok(target)
     }
 }
 pub fn configure(tx: &Transaction) -> Policy {
@@ -128,7 +192,7 @@ pub fn checked_operation(
     let mut row = operation_info(op);
     if op.operation_type() == libflatpak::TransactionOperationType::Uninstall {
         let current = installed(installation, text(&row, "ref"))?
-            .ok_or("A component scheduled for removal changed. Check for updates again.")?;
+            .ok_or("A component scheduled for removal is no longer installed. Retry this item to resolve its current dependencies.")?;
         let commit = current.commit().unwrap_or_default();
         if !progress::valid_commit(&commit) {
             return Err("The installed component could not be verified.".into());
@@ -550,6 +614,62 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn current_policy() -> Policy {
+        Policy {
+            replacements: Default::default(),
+            error: Default::default(),
+        }
+    }
+    #[test]
+    fn current_solver_accepts_new_commits_dependencies_and_cleanup_without_changing_origin() {
+        let policy = current_policy();
+        let reference = "app/org.example.App/x86_64/stable";
+        let original = json!({"ref":reference,"action":"update","commit":"a".repeat(64),
+            "remote":"fixture","sourceUrl":"https://example.org/repo","sourceKey":"trusted"});
+        let request = json!({"flatpakRef":reference,"remote":"fixture","plan":[original.clone()]});
+        let mut latest = original;
+        latest["commit"] = "b".repeat(64).into();
+        let mut runtime = latest.clone();
+        runtime["ref"] = "runtime/org.example.New/x86_64/stable".into();
+        let removal = json!({"ref":"runtime/org.example.Old/x86_64/stable","action":"uninstall","installedCommit":"c".repeat(64)});
+        assert_eq!(
+            policy
+                .validate_current_plan(&request, &[latest.clone(), runtime, removal])
+                .unwrap(),
+            reference
+        );
+        for key in ["remote", "sourceUrl", "sourceKey"] {
+            let mut changed = latest.clone();
+            changed[key] = "changed".into();
+            assert!(
+                policy.validate_current_plan(&request, &[changed]).is_err(),
+                "{key}"
+            );
+        }
+        latest["ref"] = "app/org.example.Unrelated/x86_64/stable".into();
+        assert!(policy.validate_current_plan(&request, &[latest]).is_err());
+    }
+    #[test]
+    fn rebase_targets_are_solver_owned_and_cycles_are_rejected() {
+        let policy = current_policy();
+        let old = "app/org.example.Old/x86_64/stable";
+        let next = "app/org.example.New/x86_64/stable";
+        policy
+            .replacements
+            .borrow_mut()
+            .insert(old.into(), next.into());
+        let request = json!({"flatpakRef":old,"remote":"fixture","plan":[]});
+        let rows = [
+            json!({"ref":old,"action":"uninstall","installedCommit":"a".repeat(64)}),
+            json!({"ref":next,"action":"install","remote":"fixture","sourceKey":"verified","commit":"b".repeat(64)}),
+        ];
+        assert_eq!(policy.validate_current_plan(&request, &rows).unwrap(), next);
+        policy
+            .replacements
+            .borrow_mut()
+            .insert(next.into(), old.into());
+        assert!(policy.validate_current_plan(&request, &rows).is_err());
+    }
     #[test]
     fn full_plan_accepts_related_apps_but_pins_removal_deployments() {
         let removal = json!({"ref":"runtime/org.kde.Platform/x86_64/6.9","action":"uninstall",

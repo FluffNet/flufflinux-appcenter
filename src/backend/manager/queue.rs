@@ -49,6 +49,95 @@ fn display_job(job: &Value) -> Value {
 }
 
 impl Manager {
+    pub(super) fn retry_job(&mut self, index: usize) {
+        if self.stopping
+            || self.tasks.contains_key("sources")
+            || self.job_role(index).is_some()
+            || !self.jobs.get(index).is_some_and(|job| {
+                flag(job, "failed") && !flag(job, "active") && !flag(job, "hidden")
+            })
+        {
+            return;
+        }
+        let Some(mut request) = self.retry_requests.get(&index).cloned() else {
+            return;
+        };
+        if request["action"] == "update" {
+            // An explicit Retry is a new request for this installed app through
+            // its currently configured source. Do not retain obsolete commits
+            // or require a full update scan after the user fixes that source.
+            request["plan"] = json!([]);
+            request.as_object_mut().unwrap().remove("sourceUrl");
+        }
+        if self.enqueue_request(request) {
+            self.jobs[index]["hidden"] = true.into();
+            self.retry_requests.remove(&index);
+            self.release_finished_jobs();
+            self.publish_jobs();
+            self.start_next();
+        }
+    }
+    fn remember_retry(&mut self, index: usize) {
+        let request = &self.requests[index];
+        if flag(request, "prepareOnly")
+            || !matches!(text(request, "action"), "install" | "update" | "source")
+            || !flag(&self.jobs[index], "failed")
+        {
+            return;
+        }
+        let mut compact = json!({});
+        for key in [
+            "action",
+            "id",
+            "key",
+            "name",
+            "developer",
+            "icon",
+            "installation",
+            "flatpakRef",
+            "targetRef",
+            "remote",
+            "sourceUrl",
+            "source",
+            "sourceReviewed",
+            "addon",
+            "oldCommit",
+            "commit",
+            "installedArch",
+            "installedBranch",
+        ] {
+            if let Some(value) = request.get(key) {
+                compact[key] = value.clone();
+            }
+        }
+        if flag(request, "addon") {
+            compact["parent"] = crate::backend::addons::compact_parent(&request["parent"]);
+        }
+        compact["plan"] = rows(&request["plan"])
+            .iter()
+            .map(|op| {
+                let mut row = json!({});
+                for key in [
+                    "ref",
+                    "action",
+                    "commit",
+                    "remote",
+                    "sourceUrl",
+                    "sourceKey",
+                    "installedCommit",
+                    "installedOrigin",
+                ] {
+                    if let Some(value) = op.get(key) {
+                        row[key] = value.clone();
+                    }
+                }
+                row
+            })
+            .collect::<Vec<_>>()
+            .into();
+        self.retry_requests.insert(index, compact);
+        self.patch_job(index, json!({"canRetry":true}));
+    }
     pub(super) fn publish_jobs(&mut self) {
         let mut totals = HashMap::new();
         let mut positions = HashMap::new();
@@ -236,7 +325,10 @@ impl Manager {
         true
     }
     pub(super) fn start_next(&mut self) {
-        if self.stopping {
+        if self.stopping
+            || self.tasks.contains_key("sources")
+            || (self.catalog.background_refresh && self.tasks.contains_key("catalog"))
+        {
             return;
         }
         for index in 0..self.jobs.len() {
@@ -443,6 +535,14 @@ impl Manager {
                 let operations = rows(&message["operations"]);
                 let mut patch = progress::stages(operations, "preparing");
                 patch["operations"] = message["operations"].clone();
+                if self.jobs[index]["action"] == "update" {
+                    self.requests[index]["plan"] = message["operations"].clone();
+                    patch["plan"] = message["operations"].clone();
+                    if !text(message, "targetRef").is_empty() {
+                        self.requests[index]["targetRef"] = message["targetRef"].clone();
+                        patch["targetRef"] = message["targetRef"].clone();
+                    }
+                }
                 self.patch_job(index, patch);
                 if !flag(&self.jobs[index], "prepareOnly") {
                     self.queue_changed();
@@ -535,7 +635,17 @@ impl Manager {
                 patch["currentRef"] = message["ref"].clone();
                 self.patch_job(index, patch);
             }
-            "status" => self.patch_job(index, json!({"status":message["status"]})),
+            "status" => {
+                let mut patch = json!({"status":message["status"]});
+                if flag(message, "retrying") {
+                    merge(
+                        &mut patch,
+                        &json!({"operations":[],"phase":"preparing","progressIndeterminate":true,
+                        "hasDownload":false,"attempt":message["attempt"],"errorKind":message["errorKind"]}),
+                    );
+                }
+                self.patch_job(index, patch);
+            }
             "result" => self.job_result(role, index, message),
             _ => {}
         }
@@ -637,7 +747,8 @@ impl Manager {
             self.apply_removal(&job);
         }
         self.patch_job(index,json!({"active":false,"queued":false,"failed":!ok&&!cancelled,"cancelled":cancelled,
-            "progress":if ok{json!(1)}else{job["progress"].clone()},"status":if ok{if removing{""}else{"Complete"}}else if cancelled{"Cancelled"}else{"Failed"},"error":text(message,"error")}));
+            "progress":if ok{json!(1)}else{job["progress"].clone()},"status":if ok{if removing{""}else{"Complete"}}else if cancelled{"Cancelled"}else{"Failed"},"error":crate::backend::failure::detail(text(message,"error")),
+            "errorKind":message["errorKind"],"retryable":message["retryable"],"attempts":message["attempts"]}));
         self.clear_reviews(index);
         if !preparation {
             self.queue_changed();
@@ -698,8 +809,22 @@ impl Manager {
         let preparation = flag(&self.requests[index], "prepareOnly");
         if !flag(&context, "result") {
             let cancelled = flag(&self.jobs[index], "cancelling");
+            if !cancelled
+                && !preparation
+                && !self.stopping
+                && role == "install"
+                && number(&self.jobs[index], "workerRestarts") == 0
+                && flag(event, "crashed")
+            {
+                self.clear_reviews(index);
+                self.patch_job(index,json!({"active":true,"queued":true,"workerRestarts":1,
+                    "status":"Preparing…","phase":"preparing","progressIndeterminate":true,"hasDownload":false}));
+                self.queue_changed();
+                return;
+            }
             self.patch_job(index,json!({"active":false,"queued":false,"failed":!cancelled,"cancelled":cancelled,
-                "status":if cancelled{""}else{"The Flatpak worker stopped unexpectedly"},"error":if cancelled{""}else{text(event,"stderr")}}));
+                "status":if cancelled{""}else{"The Flatpak worker stopped unexpectedly"},"error":if cancelled{String::new()}else{crate::backend::failure::detail(text(event,"stderr"))},
+                "errorKind":if flag(event,"timedOut"){"timeout"}else{"worker-stopped"}}));
             if preparation && !cancelled && !self.stopping {
                 self.error(format!(
                     "The Flatpak worker stopped unexpectedly\n{}",
@@ -711,6 +836,7 @@ impl Manager {
             }
         }
         self.clear_reviews(index);
+        self.remember_retry(index);
         self.requests[index] = Value::Null;
         // Once the worker has exited, history needs only its display state.
         // Active requests/recovery records keep the full operation metadata.
@@ -773,12 +899,71 @@ impl Manager {
             self.jobs.pop();
             self.requests.pop();
         }
+        self.retry_requests.retain(|index, _| {
+            self.jobs.get(*index).is_some_and(|job| {
+                flag(job, "failed") && !flag(job, "active") && !flag(job, "hidden")
+            })
+        });
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn failed_retry_retains_only_intent_requeues_without_a_scan_and_clear_releases_it() {
+        let mut manager = Manager::new(vec![]);
+        let mut input = request("org.example.App");
+        input["permissions"] = json!({"large":"x".repeat(100000)});
+        input["plan"] = json!([{"ref":"app/org.example.App/x86_64/stable","commit":"a".repeat(64),
+            "remote":"fixture","action":"update","sourceUrl":"https://example.org","sourceKey":"trusted",
+            "unused":"x".repeat(100000)}]);
+        input["action"] = "update".into();
+        manager.enqueue(input);
+        manager.job_message("install",&json!({"type":"result","success":false,"error":"network fixture","errorKind":"network"}));
+        let context = manager.tasks.remove("install").unwrap().context;
+        manager.job_finished("install", context, &json!({"code":1}));
+        assert!(manager.requests[0].is_null());
+        assert!(flag(&manager.jobs[0], "canRetry"));
+        assert!(manager.retry_requests[&0].to_string().len() < 2000);
+        manager.tasks.clear();
+        manager.retry_job(0);
+        assert!(manager.retry_requests.is_empty());
+        assert!(manager.tasks.contains_key("install"));
+        assert!(!manager.tasks.contains_key("updates"));
+        assert_eq!(manager.requests[1]["action"], "update");
+        manager.job_message(
+            "install",
+            &json!({"type":"result","success":false,"error":"still offline"}),
+        );
+        let context = manager.tasks.remove("install").unwrap().context;
+        manager.job_finished("install", context, &json!({"code":1}));
+        assert_eq!(manager.retry_requests.len(), 1);
+        manager.dispatch("clearDownloadHistory", &json!([]));
+        assert!(manager.retry_requests.is_empty());
+    }
+    #[test]
+    fn worker_crash_restarts_at_most_once_and_cancel_does_not_restart() {
+        let mut manager = Manager::new(vec![]);
+        manager.enqueue(request("org.example.App"));
+        for attempt in 0..2 {
+            let context = manager.tasks.remove("install").unwrap().context;
+            manager.job_finished("install", context, &json!({"crashed":true,"code":11}));
+            if attempt == 0 {
+                assert!(flag(&manager.jobs[0], "active"));
+                manager.start_next();
+            }
+        }
+        assert!(flag(&manager.jobs[0], "failed"));
+        assert_eq!(number(&manager.jobs[0], "workerRestarts"), 1);
+        assert!(!manager.tasks.contains_key("install"));
+        manager.tasks.clear();
+        manager.enqueue(request("org.example.Cancel"));
+        manager.cancel_job(1);
+        let context = manager.tasks.remove("install").unwrap().context;
+        manager.job_finished("install", context, &json!({"crashed":true,"code":9}));
+        assert!(!manager.jobs.iter().any(|job| flag(job, "active")));
+    }
     use crate::backend::permissions;
     fn request(id: &str) -> Value {
         json!({"id":id,"action":"install","name":id,"installation":"user"})

@@ -40,6 +40,8 @@ struct CatalogState {
     source_success: bool,
     source_reported: bool,
     source_refreshed: u64,
+    expiry_pending: bool,
+    background_refresh: bool,
 }
 pub struct Manager {
     properties: Value,
@@ -54,6 +56,7 @@ pub struct Manager {
     sources: HashMap<String, Value>,
     jobs: Vec<Value>,
     requests: Vec<Value>,
+    retry_requests: HashMap<usize, Value>,
     batch: u64,
     reviews: VecDeque<Value>,
     review_token: u64,
@@ -101,6 +104,7 @@ impl Manager {
             sources: HashMap::new(),
             jobs: vec![],
             requests: vec![],
+            retry_requests: HashMap::new(),
             batch: 0,
             reviews: VecDeque::new(),
             review_token: 0,
@@ -336,8 +340,10 @@ impl Manager {
         self.set("sourcesBusy", self.tasks.contains_key("sources").into());
         self.set(
             "catalogLoading",
-            (self.catalog.pending || self.catalog.awaiting || self.tasks.contains_key("catalog"))
-                .into(),
+            ((self.catalog.pending || self.catalog.awaiting || self.tasks.contains_key("catalog"))
+                && !(self.catalog.background_refresh
+                    && !rows(&self.properties["catalog"]).is_empty()))
+            .into(),
         );
         self.set(
             "catalogSourcesUnavailable",
@@ -413,6 +419,7 @@ impl Manager {
                 }
             }
             "loadCatalog" => self.load_catalog(arg(0).as_str().unwrap_or("")),
+            "catalogExpiry" => self.catalog_expiry(chrono::Utc::now()),
             "setCatalogNetworkState" => {
                 self.catalog.network_ready = arg(1).as_bool().unwrap_or(false);
                 self.catalog.offline = arg(0) == "offline";
@@ -452,6 +459,14 @@ impl Manager {
             "cancelJob" => {
                 if let Some(index) = arg(0).as_u64() {
                     self.cancel_job(index as usize);
+                }
+            }
+            "retryJob" => {
+                if let Some(index) = arg(0)
+                    .as_u64()
+                    .and_then(|index| usize::try_from(index).ok())
+                {
+                    self.retry_job(index);
                 }
             }
             "cancelAll" => self.cancel_all(),

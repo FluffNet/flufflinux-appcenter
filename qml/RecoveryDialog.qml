@@ -71,10 +71,15 @@ Dialog {
                         }
                         FluffButton {
                             objectName: "reviewRecoveredJobButton"
-                            text: qsTr("Review")
+                            text: modelData.action === "update" ? qsTr("Retry") : qsTr("Review")
                             visible: modelData.state === "interrupted"
                             enabled: !!dialog.backend && !dialog.recovery.checking && !dialog.recovery.error && !dialog.backend.busy
-                            onClicked: { dialog.close(); dialog.backend.reviewRecovery(index) }
+                            onClicked: {
+                                const updating = modelData.action === "update"
+                                dialog.close()
+                                dialog.backend.reviewRecovery(index)
+                                if (updating) window.showDownloads()
+                            }
                         }
                     }
                 }

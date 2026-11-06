@@ -321,7 +321,7 @@ Page {
                                 visible: !!job && (queuedStatus || !job.active || job.failed || job.error || job.cancelling
                                     || !updateProgress.planned || (job.index !== undefined && window.backend.review && window.backend.review.jobIndex === job.index))
                                 text: job ? (queuedStatus ? qsTr("Queued…") : qsTranslate("AppCenter", job.status || ""))
-                                    + (job.error ? "\n" + job.error : "") : ""
+                                    + (job.error ? "\n" + window.jobError(job) : "") : ""
                                 textFormat: Text.PlainText; Layout.fillWidth: true; wrapMode: Text.Wrap
                                 font.bold: queuedStatus
                                 color: job && job.failed ? window.accentTextColor : queuedStatus ? window.textColor : window.mutedTextColor

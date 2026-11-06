@@ -33,7 +33,7 @@ def command(env, *args):
     return result.stdout.strip()
 
 
-def worker(env, request, cancel=False):
+def worker(env, request, cancel=False, on_event=None):
     events = []
     child = subprocess.Popen([str(BINARY), "--transaction-worker", json.dumps(request)],
                              env=env, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
@@ -50,6 +50,8 @@ def worker(env, request, cancel=False):
             assert line, child.stderr.read().decode()
             event = json.loads(line)
             events.append(event)
+            if on_event:
+                on_event(event, child)
             assert event["type"] != "review", "Updates must not create/add a source"
             if event["type"] == "result":
                 child.stdin.close(); child.wait(timeout=10)
@@ -152,12 +154,11 @@ def test(root):
     changed_source = dict(request, plan=[dict(op, sourceUrl="file:///wrong-source") for op in request["plan"]])
     assert not worker(env, changed_source)[-1]["success"]
     changed_commit = dict(request, plan=[dict(op, commit="0" * 64) for op in request["plan"]])
-    assert not worker(env, changed_commit)[-1]["success"]
     assert {ref: commit(env, ref) for ref in old} == before
     # A normal update must resolve the source's current head, not request an
     # arbitrary commit (which requires root for a system installation). If a
-    # release arrives after the scan, the reviewed plan must reject it before
-    # deployment instead of silently using either the old or new release.
+    # release arrives after the scan, automatically resolve the current release
+    # from that same source. An old dependency graph is not an install request.
     changed_build = root / f"build-{IDS[0]}-v2"
     fixture = changed_build / "files/bin/fixture"
     fixture.write_text(fixture.read_text() + "# Release published after the update check\n")
@@ -165,13 +166,17 @@ def test(root):
     command(env, "flatpak", "build-update-repo", str(root / "repo"))
     try:
         advanced = worker(env, request)
-        assert not advanced[-1]["success"] and "changed" in advanced[-1]["error"], advanced
-        assert not any(event["type"] == "updated" for event in advanced), advanced
-        assert {ref: commit(env, ref) for ref in old} == before, "An unreviewed release was deployed"
+        assert advanced[-1]["success"], advanced
+        assert any(event["type"] == "plan" and event.get("replanned") for event in advanced), advanced
+        assert commit(env, refs[0]) != request["commit"], "The newly published release was not installed"
+        assert commit(env, refs[1]) == old[refs[1]], "An unselected app was updated"
     finally:
         command(env, "ostree", "--repo=" + str(root / "repo"), "reset", refs[0], request["commit"])
         command(env, "flatpak", "build-update-repo", str(root / "repo"))
-    first = worker(env, request)
+        reset(root)
+    # Even a mismatching recorded commit cannot pin an arbitrary deployment:
+    # Flatpak's current same-source solver graph remains authoritative.
+    first = worker(env, changed_commit)
     assert first[-1]["success"], first
     assert any(event["type"] == "updated" and event["historySaved"] for event in first), first
     assert commit(env, refs[0]) == request["commit"]
@@ -196,6 +201,12 @@ def test(root):
     assert not disabled["updates"] and disabled["skipped"], disabled
     assert not worker(env, request)[-1]["success"], "Disabled source was used for updating"
     command(env, "flatpak", "remote-modify", "--user", "--enable", "update-fixture")
+    # Queue Retry constructs a current installed-app intent, not another global
+    # scan or a replay of stale commits/source snapshots.
+    retry = {key: value for key, value in request.items()
+             if key not in {"plan", "commit", "oldCommit", "sourceUrl"}}
+    assert worker(env, retry)[-1]["success"], "Retry after fixing a source required a new update scan"
+    reset(root)
     command(env, "flatpak", "remote-modify", "--user", "--url=" + (root / "offline-repo").as_uri(), "update-fixture")
     try:
         offline = json.loads(command(env, str(BINARY), "--updates-worker", '{"userOnly":true}').splitlines()[-1])
@@ -210,7 +221,7 @@ def test(root):
     assert not command(env, "flatpak", "remotes", "--user", "--columns=name"), "Unexpected source restoration"
     command(env, "flatpak", "remote-add", "--user", "--no-gpg-verify", "update-fixture", str(root / "repo"))
     assert len(scan(env)) == 3
-    print("PASS: manual metadata-only scan, versions, sizes, permission diff, cancel, stale source/plan, newly published release rejected, selected apps only, shared runtime, persistent dates, no-op, empty scan, v1 restore, disabled/offline sources", flush=True)
+    print("PASS: manual metadata-only scan, versions, sizes, permission diff, cancel, changed source rejected, stale plan/current release recovered, selected apps only, shared runtime, persistent dates, no-op, empty scan, v1 restore, disabled/offline sources", flush=True)
 
 
 if __name__ == "__main__":

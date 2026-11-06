@@ -59,6 +59,11 @@ ApplicationWindow {
         return indexed
     }
     function catalogApp(id) { return catalogByAppId["$" + String(id).replace(/\.desktop$/, "")] || null }
+    function jobError(job) {
+        if (!job || !job.error) return ""
+        return job.error + (job.errorKind === "network"
+            ? "\n" + qsTr("Please check your internet connection and try again.") : "")
+    }
     property var selectedApp: null
     property var backend: typeof fluffBackend !== "undefined" ? fluffBackend : null
     property var catalogStats: typeof fluffCatalogStats !== "undefined" ? fluffCatalogStats : null
