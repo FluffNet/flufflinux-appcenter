@@ -76,7 +76,7 @@ int main(int argc, char **argv) {
     FlatpakManager manager({});
     until([&] { return !manager.installedLoading(); });
     const auto path=temp.filePath("catalog.json");
-    const auto age=QDateTime::currentDateTimeUtc().addSecs(-12*3600+2);
+    const auto age=QDateTime::currentDateTimeUtc().addSecs(-6*3600+2);
     assert(CatalogCache::write(path,CatalogInputs::fingerprint(),apps("Cached fixture"),age));
     manager.loadCatalog(path);
     for (int i=0;i<200;++i) manager.installApp({{"id",QString("org.example.App%1").arg(i)},{"name","Fixture"}});

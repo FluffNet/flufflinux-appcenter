@@ -13,7 +13,8 @@ use std::{
 
 pub const IMAGE_LIMIT: u64 = 8 * 1024 * 1024;
 const CACHE_LIMIT: u64 = 128 * 1024 * 1024;
-const LIFETIME: Duration = Duration::from_secs(storage::CACHE_LIFETIME as u64);
+// Screenshot retention is independent of the catalog metadata refresh period.
+const LIFETIME: Duration = Duration::from_secs(12 * 3600);
 
 pub fn valid_url(value: &str) -> bool {
     value.len() <= 8192

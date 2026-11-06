@@ -57,6 +57,13 @@ TestCase {
         verify(retry.visible && clear.visible)
         compare(retry.width,176)
         compare(clear.width,retry.width)
+        for (const button of [retry,clear]) {
+            const icon=findChild(button,"queueActionIcon")
+            verify(icon.visible)
+            compare(icon.source,button.icon.name)
+            compare(icon.color,main.textColor)
+            verify(!findChild(button,"appActionIcon").visible)
+        }
         verify(clear.y>=retry.y+retry.height)
         const point=retry.mapToItem(stack.currentItem,0,0)
         verify(point.x>=0 && point.x+retry.width<=stack.currentItem.width)

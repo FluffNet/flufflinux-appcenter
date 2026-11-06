@@ -86,6 +86,21 @@ AppCenter.Main {
                 main.check(probe.findChild(root,"retryDownloadButton").visible, "Retry shown")
                 main.check(probe.findChild(root,"clearFailedDownloadButton").visible, "Clear preserved")
                 main.check(probe.findChild(root,"retryDownloadButton").width === probe.findChild(root,"clearFailedDownloadButton").width, "Equal action widths")
+                for (const name of ["retryDownloadButton","clearFailedDownloadButton"]) {
+                    const icon=probe.findChild(probe.findChild(root,name),"queueActionIcon")
+                    main.check(icon.visible && icon.valid,"Queue action icon loaded")
+                    main.check(icon.color === main.textColor,"Queue action icon follows the palette")
+                    const pixels=probe.grabImage(main.contentItem)
+                    const origin=icon.mapToItem(main.contentItem,0,0)
+                    const scale=main.screen.devicePixelRatio
+                    let ink=0
+                    for (let y=Math.round(origin.y*scale);y<Math.round((origin.y+icon.height)*scale);++y)
+                        for (let x=Math.round(origin.x*scale);x<Math.round((origin.x+icon.width)*scale);++x)
+                        if (pixels.alpha(x,y)>0 && Math.abs(pixels.red(x,y)-main.surfaceColor.r*255)
+                            +Math.abs(pixels.green(x,y)-main.surfaceColor.g*255)
+                            +Math.abs(pixels.blue(x,y)-main.surfaceColor.b*255)>80) ++ink
+                    main.check(ink>10,"Queue action glyph has visible pixels")
+                }
                 main.check(probe.findChild(root,"downloadJobError").effectiveHorizontalAlignment === (main.rtl ? Text.AlignRight : Text.AlignLeft), "Error alignment follows reading direction")
                 main.check(probe.findChild(root,"downloadJobError").text.indexOf(qsTr("Please check your internet connection and try again."))>=0, "Localized recovery guidance")
             } else {

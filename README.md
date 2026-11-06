@@ -37,7 +37,7 @@ The current development version is **2026.11**.
 - Use translated interface text and right-to-left layouts where available,
   without translating catalog application names. The translation rollout is
   still in progress; the editable catalogs need native-speaker review.
-- Reuse a 12-hour application-list cache for faster repeat launches.
+- Reuse a 6-hour application-list cache for faster repeat launches.
 
 ## App updates and background work
 
@@ -137,10 +137,13 @@ instead; direct installation will not overwrite it.
 
 ## Catalog and configuration
 
-A valid application-list cache is reused immediately for up to 12 hours.
-After it expires, App Center refreshes the source metadata and rebuilds the
-list, showing **Loading...** with a percentage. First launch requires this
-initial catalog load. This refresh does not update installed apps.
+A valid application-list cache is reused immediately for up to 6 hours after
+its last successful source refresh. Reopening App Center does not restart
+this period. Once it expires, App Center waits for the queue to become idle,
+then refreshes the source metadata in the background while keeping the old
+catalog visible. A failed refresh preserves the old cache and retries later.
+First launch requires an initial catalog load, showing **Loading...** with a
+percentage. Refreshing the catalog does not update installed apps.
 
 Fully offline connections disable browsing and update checks. LAN-only or
 limited connections can still try the configured sources; connection failures

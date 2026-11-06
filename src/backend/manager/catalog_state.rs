@@ -389,7 +389,7 @@ mod tests {
     fn cached(now: chrono::DateTime<chrono::Utc>) -> Manager {
         let mut manager = Manager::new(vec![json!({"id":"org.example.App","name":"Cached app"})]);
         manager.catalog.path = "/tmp/appcenter-expiry-fixture.json".into();
-        manager.catalog.saved = (now - chrono::Duration::hours(13)).to_rfc3339();
+        manager.catalog.saved = (now - chrono::Duration::hours(7)).to_rfc3339();
         manager.catalog.refreshed = true;
         manager.merge(
             "updates",
@@ -474,7 +474,7 @@ mod tests {
         let path = directory.path().join("catalog.json");
         let fingerprint = catalog::fingerprint().unwrap();
         let apps = [json!({"id":"org.example.App","name":"Cached app"})];
-        for age in [1, 13] {
+        for age in [1, 5, 7] {
             storage::write_cache(
                 &path,
                 &fingerprint,
@@ -484,11 +484,25 @@ mod tests {
             .unwrap();
             let mut manager = Manager::new(vec![]);
             manager.load_catalog(path.to_str().unwrap());
-            manager.initial();
+            let initial = manager.initial();
             assert_eq!(manager.properties["catalog"][0], apps[0]);
             assert_eq!(manager.properties["catalogLoading"], false);
-            assert_eq!(manager.tasks.contains_key("sources"), age == 13);
-            assert_eq!(manager.catalog.background_refresh, age == 13);
+            assert_eq!(manager.tasks.contains_key("sources"), age == 7);
+            assert_eq!(manager.catalog.background_refresh, age == 7);
+            if age < 6 {
+                let timer = initial["commands"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .find(|c| c["action"] == "catalogExpiry")
+                    .unwrap();
+                let interval = timer["interval"].as_u64().unwrap();
+                let remaining = (6 - age) as u64 * 3600 * 1000;
+                assert!(
+                    (remaining - 5000..=remaining).contains(&interval),
+                    "Reopening must preserve the cache's original refresh age"
+                );
+            }
             assert!(storage::read_cache(&path, &fingerprint, chrono::Utc::now()).is_some());
         }
     }
