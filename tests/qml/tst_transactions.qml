@@ -598,6 +598,11 @@ TestCase {
         const bytes = findChild(root, "downloadBytesLabel")
         const percentage = findChild(root, "overallPercentageLabel")
         waitForRendering(root)
+        if (bar.indeterminate) {
+            verify(!percentage.visible, "Unknown deployment progress has no percentage")
+            verify(findChild(root, "progressStageLabel").visible)
+            return
+        }
         verify(percentage.visible)
         compare(percentage.horizontalAlignment, Text.AlignRight)
         const percentageTop = percentage.mapToItem(bar, 0, 0)
@@ -683,16 +688,17 @@ TestCase {
         verify(!findChild(page, "appJobStatus").visible)
         verifyProgressHeader(page)
         const deployment = Object.assign({}, job, {downloadProgress: 1, downloadComplete: true, progress: 0.95, downloadedSize: "128.00 MiB", downloadTotalSize: "128.00 MiB",
-            phase: "install", installCompleted: 1, installProgress: 0.5})
+            phase: "install", progressIndeterminate:true, installCompleted: 1, installProgress: 0.5})
         backend.jobs = [deployment]
         compare(bar.value, 0.95)
-        verify(bar.activeStep && !bar.indeterminate)
-        compare(findChild(page, "overallPercentageLabel").text, "95%")
+        verify(bar.indeterminate)
+        verify(!findChild(page, "overallPercentageLabel").visible)
+        compare(findChild(page, "progressStageLabel").text, "Installing…")
         compare(findChild(page, "completedOperationsLabel"), null)
         verify(!findChild(page, "downloadBytesLabel").visible)
         verifyProgressHeader(page)
         // A dependency deploying before the next pull must not hide the total.
-        backend.jobs = [Object.assign({}, job, {phase: "install", downloadSpeed: "0.00 MiB/s"})]
+        backend.jobs = [Object.assign({}, job, {phase: "install", progressIndeterminate: true, downloadSpeed: "0.00 MiB/s"})]
         verify(findChild(page, "downloadBytesLabel").visible)
         // Download info stays top-left and wraps without displacing the percentage.
         const previousWidth = main.width
@@ -715,11 +721,11 @@ TestCase {
         compare(findChild(card, "overallPercentageLabel").text, "50%")
         verifyProgressHeader(card)
         captureTouchLayout(stack.currentItem, "downloads-progress-header")
-        backend.jobs = [Object.assign({}, job, {hasDownload: false, phase: "install"})]
+        backend.jobs = [Object.assign({}, job, {hasDownload: false, phase: "install", progressIndeterminate:true})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(!findChild(card, "downloadBytesLabel").visible)
         verify(findChild(card, "overallInstallProgress").visible)
-        verify(findChild(card, "overallInstallProgress").activeStep)
+        verify(findChild(card, "overallInstallProgress").indeterminate)
         compare(findChild(card, "completedOperationsLabel"), null)
         compare(findChild(card, "downloadBytesLabel").color, main.textColor)
         compare(findChild(card, "overallPercentageLabel").color, main.textColor)

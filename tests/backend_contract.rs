@@ -137,8 +137,8 @@ fn staged_progress_distinguishes_pull_deployment_and_bundle_import() {
     let mut app = json!({"action":"install","downloadBytes":100,"phase":"waiting"});
     let stages = |r: &Value, a: &Value, phase| progress::stages(&[r.clone(), a.clone()], phase);
     let result = stages(&runtime, &app, "download");
-    assert_eq!(result["downloadProgress"], 0.375);
-    assert!((result["progress"].as_f64().unwrap() - 0.3375).abs() < 1e-9);
+    assert_eq!(result["downloadProgress"], 0.25);
+    assert_eq!(result["progress"], 0.25);
     assert_eq!(result["downloadTotalBytes"], 400);
     runtime["phase"] = "install".into();
     runtime["downloadProgress"] = 1.into();
@@ -152,7 +152,7 @@ fn staged_progress_distinguishes_pull_deployment_and_bundle_import() {
     app["downloadProgress"] = 0.5.into();
     app["estimating"] = true.into();
     let result = stages(&runtime, &app, "download");
-    assert_eq!(result["downloadProgress"], 0.875);
+    assert!((result["downloadProgress"].as_f64().unwrap() - 2.0 / 3.0).abs() < 1e-9);
     assert_eq!(result["downloadEstimating"], true);
     app["phase"] = "install".into();
     app["downloadProgress"] = 1.into();
@@ -160,7 +160,8 @@ fn staged_progress_distinguishes_pull_deployment_and_bundle_import() {
     let result = stages(&runtime, &app, "install");
     assert_eq!(result["downloadComplete"], true);
     assert_eq!(result["installCompleted"], 1);
-    assert!((result["progress"].as_f64().unwrap() - 0.95).abs() < 1e-9);
+    assert_eq!(result["progress"], 0.99);
+    assert_eq!(result["progressIndeterminate"], true);
     assert_eq!(result["downloadTotalBytes"], result["receivedBytes"]);
     app["phase"] = "complete".into();
     assert_eq!(stages(&runtime, &app, "complete")["progress"], 0.99);
@@ -168,7 +169,8 @@ fn staged_progress_distinguishes_pull_deployment_and_bundle_import() {
     app["action"] = "install-bundle".into();
     app["progress"] = 0.5.into();
     let result = progress::stages(&[app.clone()], "install");
-    assert_eq!(result["progress"], 0.45);
+    assert_eq!(result["progress"], 0.5);
+    assert_eq!(result["progressIndeterminate"], true);
     assert_eq!(result["receivedBytes"], 0);
     assert_eq!(result["downloadComplete"], true);
     assert_eq!(stages(&runtime, &app, "install")["downloadTotalBytes"], 200);

@@ -66,7 +66,7 @@ TestCase {
     function test_progress_fill_direction(data) {
         bar.LayoutMirroring.enabled = data.rtl
         bar.LayoutMirroring.childrenInherit = true
-        bar.value = data.value; bar.indeterminate = false; bar.activeStep = false
+        bar.value = data.value; bar.indeterminate = false
         waitForPolish(bar)
         const fill = findChild(bar, "progressFill")
         const first = fill.mapToItem(bar, 0, 0).x
@@ -77,17 +77,18 @@ TestCase {
     function test_activity_direction_data() { return [{tag:"ltr",rtl:false}, {tag:"rtl",rtl:true}] }
     function test_activity_direction(data) {
         bar.LayoutMirroring.enabled = data.rtl
-        bar.value = 0.35; bar.activeStep = true; bar.indeterminate = false
+        bar.value = 0.95; bar.indeterminate = false
         waitForPolish(bar)
-        const activity = findChild(bar, "progressActivity")
-        const first = activity.mapToItem(bar, 0, 0).x
-        const last = activity.mapToItem(bar, 1, 0).x
-        verify(data.rtl ? last < first : last > first, "Activity movement mirrors with the fill")
-        bar.activeStep = false; bar.indeterminate = true
+        compare(findChild(bar, "progressActivity"), null, "No second animated fragment beyond 95%")
+        const stableFill = findChild(bar, "progressFill")
+        compare(stableFill.x, 0)
+        fuzzyCompare(stableFill.width, bar.width * 0.95, 0.1)
+        bar.indeterminate = true
         const fill = findChild(bar, "progressFill")
         const start = fill.mapToItem(bar, 0, 0).x
         const end = fill.mapToItem(bar, 1, 0).x
         verify(data.rtl ? end < start : end > start, "Indeterminate movement mirrors too")
         bar.indeterminate = false
+        compare(fill.x, 0, "Returning to determinate progress resets the animated offset")
     }
 }

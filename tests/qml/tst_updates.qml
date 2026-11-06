@@ -533,7 +533,7 @@ TestCase {
         verify(progress.visible && bar.visible && !bar.indeterminate)
         compare(findChild(progress, "queuePositionLabel").text, "App 2/5")
         verify(findChild(progress, "queuePositionLabel").visible)
-        compare(bar.value, 0.5); verify(!bar.activeStep)
+        compare(bar.value, 0.5); compare(findChild(bar,"progressActivity"), null)
         compare(bytes.text, "128.00 MiB / 512.00 MiB (2.30 MiB/s)"); verify(bytes.visible)
         compare(bytes.color, main.textColor); compare(percentage.text, "50%")
         verify(!status.visible, "Shared display replaces duplicate download status")
@@ -541,13 +541,14 @@ TestCase {
         verify(bytes.x + bytes.width <= percentage.x, "Bytes and percentage must not overlap")
         verify(bytes.contentWidth <= bytes.width + 1, "Bytes wrap in narrow cards")
         verify(bar.width > 0 && bar.width <= card.width)
-        backend.jobs = [Object.assign({}, job, {phase:"install", progress:0.95, downloadComplete:true,
+        backend.jobs = [Object.assign({}, job, {phase:"install", progress:0.95, progressIndeterminate:true, downloadComplete:true,
             downloadTotalSize:"256.00 MiB"})]
-        verify(!bytes.visible); verify(bar.activeStep); compare(percentage.text, "95%")
+        verify(!bytes.visible); verify(bar.indeterminate); verify(!percentage.visible)
+        compare(findChild(progress,"progressStageLabel").text,"Installing…")
         compare(size.text, "Size: 256.00 MiB")
-        backend.jobs = [Object.assign({}, job, {hasDownload:false, downloadComplete:true,
+        backend.jobs = [Object.assign({}, job, {hasDownload:false, downloadComplete:true, progressIndeterminate:true,
             downloadTotalSize:"0 B", phase:"install"})]
-        verify(!bytes.visible && bar.visible && bar.activeStep); compare(size.text, "Size: 0 B")
+        verify(!bytes.visible && bar.visible && bar.indeterminate); compare(size.text, "Size: 0 B")
         backend.jobs = [Object.assign({}, job, {operations:[], status:"Preparing…"})]
         verify(bar.indeterminate); verify(!bytes.visible && !percentage.visible)
         verify(status.visible); compare(status.text, "Preparing…")

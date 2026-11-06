@@ -142,7 +142,7 @@ AppCenter.Main {
                     plan:[{ref:row.id, commit:"fixture", downloadBytes:(index ? 10 : 512) * 1048576}]}))
                 fixture.updates = Object.assign({}, fixture.updates, {items:rows})
                 fixture.jobs = [{index:0, key:rows[0].key, id:rows[0].id, action:"update", name:rows[0].name,
-                    active:true, queued:false, status:"Downloading…", phase:"download", progress:0.225,
+                    active:true, queued:false, status:"Downloading…", phase:"download", progress:0.25,
                     hasDownload:true, downloadComplete:false, receivedBytes:134217728, downloadTotalBytes:536870912,
                     downloadedSize:"128.00 MiB", downloadTotalSize:"512.00 MiB", downloadSpeed:"2.30 MiB/s",
                     operations:[{ref:rows[0].id, commit:"fixture", downloadBytes:536870912,
@@ -155,22 +155,23 @@ AppCenter.Main {
                 const progress = probe.findChild(row, "updateJobProgress")
                 main.check(progress.visible, "Shared progress visible")
                 main.check(probe.findChild(progress, "downloadBytesLabel").text === "128.00 MiB / 512.00 MiB (2.30 MiB/s)", "Live transfer metrics")
-                main.check(probe.findChild(progress, "overallPercentageLabel").text === "22%", "Live percentage")
+                main.check(probe.findChild(progress, "overallPercentageLabel").text === "25%", "Live percentage matches transfer bytes")
                 main.check(!probe.findChild(row, "updateJobStatus").visible, "No redundant transfer status")
                 main.check(probe.findChild(row, "updateDownloadSize").text === "Size: 512.00 MiB", "Resolved row size")
                 main.check(!probe.findChild(updatesPage, "updatesDownloadSummary").visible, "Selection size hidden during updates")
                 main.check(!probe.findChild(row, "selectUpdate-" + row.modelData.key).visible, "Checkbox hidden during updates")
                 main.capture(stack, main.stage === 17 ? "downloading" : "downloading-compact", main.stage + 1)
             } else if (main.stage === 18) {
-                fixture.jobs = [Object.assign({}, fixture.jobs[0], {phase:"install", progress:0.9, downloadComplete:true}), fixture.jobs[1]]
+                fixture.jobs = [Object.assign({}, fixture.jobs[0], {phase:"install", progress:0.9, progressIndeterminate:true, downloadComplete:true}), fixture.jobs[1]]
                 main.stage = 19
             } else if (main.stage === 19) {
                 const row = probe.findChild(updatesPage, "updateRow-user:org.example.Refresh")
                 main.check(!probe.findChild(row, "downloadBytesLabel").visible, "Finished download metrics hidden")
-                main.check(probe.findChild(row, "overallInstallProgress").activeStep, "Deployment activity shown")
+                main.check(probe.findChild(row, "overallInstallProgress").indeterminate, "Deployment activity shown")
+                main.check(!probe.findChild(row, "overallPercentageLabel").visible, "No invented deployment percentage")
                 main.capture(stack, "installing", 20)
             } else if (main.stage === 20) {
-                fixture.jobs = [Object.assign({}, fixture.jobs[0], {phase:"download", progress:0.225, downloadComplete:false}), fixture.jobs[1]]
+                fixture.jobs = [Object.assign({}, fixture.jobs[0], {phase:"download", progress:0.25, progressIndeterminate:false, downloadComplete:false}), fixture.jobs[1]]
                 main.width = 720; main.height = 520; main.stage = 21
             } else if (main.stage === 22) { console.log("UPDATE_PRESENTATION_PASS"); Qt.quit() }
         }

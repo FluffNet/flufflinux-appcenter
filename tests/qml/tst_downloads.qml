@@ -75,7 +75,7 @@ TestCase {
         compare(stack.currentItem.objectName, "downloadsPage")
         queue.jobs = [job("Firefox", 1, false, false), job("VLC", 0.6, true, false)]
         compare(queue.activeCount, 1)
-        compare(queue.progress, 0.6)
+        compare(queue.progress, 0.8)
         main.goBack()
         tryCompare(stack, "busy", false)
         compare(stack.currentItem, catalog)
@@ -116,5 +116,20 @@ TestCase {
         compare(queue.runningCount, 0); verify(!bar.visible)
         queue.jobs = []
         verify(!button.visible && !bar.visible)
+    }
+    function test_queue_progress_keeps_completed_work_and_ignores_old_batches() {
+        const queue = main.downloadQueue
+        const first = Object.assign(job("Firefox",0.9,true,false),{queueBatch:2})
+        const second = Object.assign(job("VLC",0,true,false),{queueBatch:2,queued:true})
+        const history = Object.assign(job("Old",1,false,false),{queueBatch:1,index:99})
+        queue.jobs = [history,first,second]
+        compare(queue.progress,0.45)
+        queue.jobs = [history,Object.assign({},first,{active:false,progress:1}),second]
+        compare(queue.progress,0.5, "Completing a job must not reset the header to zero")
+        queue.jobs = [history,Object.assign({},first,{active:false,progress:1}),Object.assign({},second,{queued:false,progress:0.5})]
+        compare(queue.progress,0.75)
+        queue.jobs = [Object.assign({},first,{active:false}),Object.assign({},second,{active:false})]
+        compare(queue.progress,1)
+        queue.jobs = []
     }
 }

@@ -113,6 +113,14 @@ int main(int argc, char **argv) {
             QFile signal(qEnvironmentVariable("BACKGROUND_TEST_CONTROL") + "/" + request["id"].toString());
             if (!signal.open(QIODevice::ReadOnly)) return;
             const auto command = signal.readAll();
+            if (command == "install" || command == "download") {
+                const bool downloading = command == "download";
+                signal.close(); signal.remove();
+                send({{"type", "operation"}, {"ref", ref}, {"phase", downloading ? "download" : "install"},
+                      {"progress", downloading ? .99 : 1.}, {"downloadProgress", downloading ? .99 : 1.},
+                      {"receivedBytes", 524288}, {"status", downloading ? "Downloading…" : "Installing…"}});
+                return;
+            }
             if (command == "crash") std::_Exit(7);
             send({{"type", "result"}, {"success", command == "ok"}, {"error", "Fixture failure"}}); worker.quit();
         });
@@ -153,7 +161,16 @@ int main(int argc, char **argv) {
     waitFor([&] { return desktop.views.size() == 1 && desktop.views.first().value("processedBytes").toULongLong() == 524288; });
     assert(background.closed() && !window.isVisible() && background.trackedJobs() == 1);
     assert(desktop.views.first().value("totalBytes").toULongLong() == 1048576);
-    assert(desktop.views.first().value("percent").toUInt() == 45);
+    assert(desktop.views.first().value("percent").toUInt() == 50);
+    write(temp.filePath("org.example.A"), "install");
+    waitFor([&] { return desktop.views.first().value("percent").toUInt() == 0
+        && desktop.views.first().value("totalBytes").toULongLong() == 0
+        && desktop.views.first().value("processedBytes").toULongLong() == 0; });
+    assert(manager.jobs()[0].toMap().value("progressIndeterminate").toBool());
+    write(temp.filePath("org.example.A"), "download");
+    waitFor([&] { return desktop.views.first().value("percent").toUInt() == 50
+        && desktop.views.first().value("totalBytes").toULongLong() == 1048576
+        && desktop.views.first().value("processedBytes").toULongLong() == 524288; });
     waitFor([&] { return desktop.views.first().value("title") == "Installing 1/2: org.example.A"; });
     const auto firstElapsed = desktop.views.first().value("elapsedTime").toLongLong();
     assert(firstElapsed >= 150);

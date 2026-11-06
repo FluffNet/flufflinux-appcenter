@@ -525,11 +525,8 @@ impl Manager {
                     merge(&mut patch, &rate);
                 }
                 patch["operations"] = operations.into();
-                patch["progress"] = job["progress"]
-                    .as_f64()
-                    .unwrap_or(0.0)
-                    .max(patch["progress"].as_f64().unwrap_or(0.0))
-                    .into();
+                // The percentage must describe the same current byte totals
+                // shown by the UI, even if Flatpak revises a size estimate.
                 patch["status"] = if job["action"] == "uninstall" {
                     "Uninstalling…".into()
                 } else {
@@ -845,6 +842,35 @@ mod tests {
         manager.desktop_commands.clear();
         manager.next_desktop_cache();
         assert!(manager.tasks.contains_key("installed"));
+    }
+    #[test]
+    fn byte_progress_reaches_jobs_without_flatpak_object_percent_inflation() {
+        let mut manager = Manager::new(vec![]);
+        manager.enqueue(request("a.b.App"));
+        let reference = "app/a.b.App/x86_64/stable";
+        manager.job_message(
+            "install",
+            &json!({"type":"plan","operations":[
+            {"ref":reference,"action":"install","downloadBytes":200,"phase":"waiting"}]}),
+        );
+        for (received, percent) in [(2, 1), (54, 27)] {
+            manager.job_message("install", &json!({"type":"operation","ref":reference,
+                "phase":"download","progress":0.99,"downloadProgress":0.99,"receivedBytes":received}));
+            assert_eq!(manager.jobs[0]["progressPercent"], percent);
+            assert_eq!(manager.jobs[0]["receivedBytes"], received);
+            assert_eq!(manager.jobs[0]["downloadTotalBytes"], 200);
+            assert_eq!(manager.jobs[0]["progressIndeterminate"], false);
+        }
+        manager.job_message(
+            "install",
+            &json!({"type":"operation","ref":reference,
+            "phase":"install","progress":1,"downloadProgress":1,"receivedBytes":54}),
+        );
+        assert_eq!(manager.jobs[0]["progressIndeterminate"], true);
+        assert!(manager.jobs[0]["active"] == true);
+        manager.job_message("install", &json!({"type":"result","success":true}));
+        assert_eq!(manager.jobs[0]["progress"], 1);
+        assert_eq!(manager.jobs[0]["active"], false);
     }
     #[test]
     fn related_updates_reconcile_only_matching_installation_and_commit() {

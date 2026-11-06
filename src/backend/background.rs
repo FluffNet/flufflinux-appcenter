@@ -1,6 +1,6 @@
 //! Notification, batch and sleep-inhibition policy. KDE widgets only display
 //! these commands; no decision depends on a notification remaining visible.
-use super::{flag, number, text};
+use super::{flag, number, progress, text};
 use crate::i18n::{format as tr_format, translate as tr};
 use serde_json::{json, Value};
 use std::collections::{BTreeMap, HashMap};
@@ -20,9 +20,14 @@ fn name(job: &Value) -> &str {
 }
 fn numbered(job: &Value) -> String {
     if number(job, "queueTotal") > 1 {
-        tr_format("%1/%2: %3", &[
-            &number(job, "queuePosition").to_string(),
-            &number(job, "queueTotal").to_string(), name(job)])
+        tr_format(
+            "%1/%2: %3",
+            &[
+                &number(job, "queuePosition").to_string(),
+                &number(job, "queueTotal").to_string(),
+                name(job),
+            ],
+        )
     } else {
         name(job).into()
     }
@@ -46,12 +51,13 @@ fn html(value: &str) -> String {
         .replace('\'', "&#39;")
 }
 fn presentation(job: &Value) -> Value {
+    let indeterminate = flag(job, "progressIndeterminate");
     let downloading =
         flag(job, "hasDownload") && !flag(job, "downloadComplete") && job["phase"] == "download";
     json!({"title":tr_format(verb(job,false), &[&numbered(job)]),"completionTitle":tr_format(verb(job,true), &[&numbered(job)]),
         "message":if downloading{tr_format("%1 / %2 (%3)", &[text(job,"downloadedSize"),text(job,"downloadTotalSize"),text(job,"downloadSpeed")])}else{tr(text(job,"status"))},
-        "totalBytes":number(job,"downloadTotalBytes"),"receivedBytes":number(job,"receivedBytes"),"speed":number(job,"downloadSpeedBytes"),
-        "percent":(job["progress"].as_f64().unwrap_or(0.0).clamp(0.0,0.99)*100.0).floor() as u64,"failed":flag(job,"failed"),"error":text(job,"error")})
+        "totalBytes":if indeterminate{0}else{number(job,"downloadTotalBytes")},"receivedBytes":if indeterminate{0}else{number(job,"receivedBytes")},"speed":if indeterminate{0}else{number(job,"downloadSpeedBytes")},
+        "percent":if indeterminate{0}else{progress::percentage(job["progress"].as_f64().unwrap_or(0.0))},"indeterminate":indeterminate,"failed":flag(job,"failed"),"error":text(job,"error")})
 }
 impl Background {
     pub fn synchronize(
@@ -83,11 +89,14 @@ impl Background {
             if self.batch != 0 && number(job, "queueBatch") == self.batch {
                 // Completion summaries need no plans, permission metadata or
                 // per-operation progress. Do not retain another full queue.
-                self.batch_jobs.insert(number(job, "index"), json!({
-                    "id":job["id"], "name":job["name"], "action":job["action"],
-                    "active":flag(job,"active"), "failed":flag(job,"failed"),
-                    "cancelled":flag(job,"cancelled")
-                }));
+                self.batch_jobs.insert(
+                    number(job, "index"),
+                    json!({
+                        "id":job["id"], "name":job["name"], "action":job["action"],
+                        "active":flag(job,"active"), "failed":flag(job,"failed"),
+                        "cancelled":flag(job,"cancelled")
+                    }),
+                );
             }
         }
         let mut finished = !self.reported && !self.batch_jobs.is_empty();
@@ -146,8 +155,10 @@ impl Background {
                             _ => "Installed",
                         }
                     };
-                    lines.push(html(&tr_format("%1. %2 - %3", &[
-                        &(lines.len() + 1).to_string(), name(job), &tr(result)])));
+                    lines.push(html(&tr_format(
+                        "%1. %2 - %3",
+                        &[&(lines.len() + 1).to_string(), name(job), &tr(result)],
+                    )));
                 }
                 commands.push(json!({"kind":"summary","title":tr(if failed{"App queue finished with errors"}else{"App queue complete"}),"body":lines.join("\n"),"timeout":5000}));
             }
@@ -162,6 +173,23 @@ mod tests {
     use super::*;
     fn job(index: u64) -> Value {
         json!({"index":index,"id":format!("a.b.App{index}"),"name":"<App>","action":"install","active":true,"queued":false,"queueBatch":1,"queuePosition":index+1,"queueTotal":2})
+    }
+    #[test]
+    fn native_progress_matches_byte_fraction_and_clears_unknown_deployment_percent() {
+        let mut job = job(0);
+        job["progress"] = (54.0 / 200.0).into();
+        job["downloadTotalBytes"] = 200.into();
+        job["receivedBytes"] = 54.into();
+        let downloading = presentation(&job);
+        assert_eq!(downloading["percent"], 27);
+        assert_eq!(downloading["receivedBytes"], 54);
+        job["progressIndeterminate"] = true.into();
+        job["status"] = "Installing…".into();
+        let installing = presentation(&job);
+        assert_eq!(installing["percent"], 0);
+        assert_eq!(installing["totalBytes"], 0);
+        assert_eq!(installing["receivedBytes"], 0);
+        assert_eq!(installing["message"], "Installing…");
     }
     #[test]
     fn reopen_detaches_and_reclose_reregisters_without_restarting_jobs() {
