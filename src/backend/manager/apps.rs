@@ -49,9 +49,23 @@ impl Manager {
                     .all(|key| candidate[*key] == app[*key])
             })?
         };
-        Some(
-            json!({"action":"install","id":id,"name":app["name"],"installation":"user","flatpakRef":chosen["flatpakRef"],"remote":chosen["remote"],"sourceUrl":chosen["sourceUrl"]}),
-        )
+        let mut request = json!({"action":"install","id":id,"name":app["name"],"installation":"user","flatpakRef":chosen["flatpakRef"],"remote":chosen["remote"],"sourceUrl":chosen["sourceUrl"]});
+        // Retain the selected catalog source's known app size if a later
+        // metadata read fails offline. Its dependency total must be recalculated.
+        let known_size = chosen["downloadBytes"].as_u64().or_else(|| {
+            if ["remote", "flatpakRef", "sourceUrl"]
+                .iter()
+                .all(|key| chosen[*key] == app[*key])
+            {
+                app["downloadBytes"].as_u64()
+            } else {
+                None
+            }
+        });
+        if let Some(size) = known_size {
+            request["previewSizes"] = json!({"state":"partial","appBytes":size,"appSize":bytes(size)});
+        }
+        Some(request)
     }
     pub(super) fn install_info(&mut self, app: Value) {
         if self.stopping || text(&app, "id").is_empty() {
@@ -80,8 +94,9 @@ impl Manager {
             return;
         }
         self.set("installSizes", json!({id.as_str():{"state":"loading"}}));
-        // Remote-ref enumeration can allocate a whole repository's metadata.
-        // Keep it out of the GUI process and bound its lifetime and output.
+        // Remote-ref enumeration can allocate a whole repository's metadata
+        // and restore a summary discarded by uninstall. Keep both operations
+        // out of the GUI process and bound their lifetime and output.
         self.worker(
             "sizes",
             "--sizes-worker",
@@ -678,6 +693,41 @@ mod tests {
         assert!(!manager.tasks.contains_key("sizes"));
     }
 
+    #[test]
+    fn unavailable_size_worker_preserves_only_the_selected_sources_known_app_size() {
+        let stable = json!({"id":"a.b.App","remote":"stable","sourceUrl":"https://example.org/stable",
+            "flatpakRef":"app/a.b.App/x86_64/stable","downloadBytes":1048576});
+        let beta = json!({"id":"a.b.App","remote":"beta","sourceUrl":"https://example.org/beta",
+            "flatpakRef":"app/a.b.App/x86_64/beta","downloadBytes":2097152});
+        let mut app = stable.clone();
+        app["sources"] = json!([stable, beta.clone()]);
+        for event in [json!({"code":0,"stdout":"{\"state\":\"unavailable\"}"}),
+            json!({"code":1,"timedOut":true})] {
+            let mut manager = Manager::new(vec![app.clone()]);
+            manager.install_info(beta.clone());
+            let serial = manager.tasks["sizes"].serial;
+            let mut event = event;
+            event["role"] = "sizes".into();
+            event["kind"] = "finished".into();
+            event["serial"] = serial.into();
+            manager.event(&event);
+            let size = &manager.properties["installSizes"]["a.b.App"];
+            assert_eq!(size["state"], "partial");
+            assert_eq!(size["appBytes"], 2097152);
+            assert_eq!(size["appSize"], bytes(2097152));
+            assert!(size.get("totalBytes").is_none());
+            assert!(size.get("totalSize").is_none());
+        }
+        // A local catalog rebuild can itself lose the just-evicted summary's
+        // size. The open page still has a valid estimate for this exact source.
+        let mut rebuilt = beta.clone();
+        rebuilt.as_object_mut().unwrap().remove("downloadBytes");
+        let manager = Manager::new(vec![rebuilt]);
+        assert_eq!(
+            manager.install_request(&beta).unwrap()["previewSizes"]["appBytes"],
+            2097152
+        );
+    }
     #[test]
     fn failed_size_reads_keep_partial_local_preview_without_inventing_a_total() {
         for event in [

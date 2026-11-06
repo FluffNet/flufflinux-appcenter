@@ -1,5 +1,7 @@
-//! Local metadata only. Size inspection never refreshes a source or resolves a
-//! network transaction, and missing dependency metadata stays unknown.
+//! Cached metadata first. Flatpak can discard repository summaries during
+//! uninstall; restore a missing summary for the selected registered source in
+//! this bounded worker. Never deploy apps, add sources or refresh AppStream.
+//! Missing dependency metadata stays unknown rather than inventing a total.
 use super::{bytes, normalized_id, process, sources, text};
 use gio::prelude::*;
 use libflatpak::{prelude::*, Installation, QueryFlags, RefKind, RemoteRef};
@@ -30,7 +32,7 @@ fn base(reference: &str) -> String {
     reference.split('/').take(3).collect::<Vec<_>>().join("/")
 }
 impl Lookup {
-    fn load(&mut self, installation: &Installation) {
+    fn load(&mut self, installation: &Installation, request: &Value) {
         for reference in installation
             .list_installed_refs(gio::Cancellable::NONE)
             .unwrap_or_default()
@@ -57,12 +59,31 @@ impl Lookup {
             {
                 continue;
             }
-            let refs = installation
-                .list_remote_refs_sync_full(&name, QueryFlags::ONLY_CACHED, gio::Cancellable::NONE)
-                .unwrap_or_default()
-                .into_iter()
-                .map(|r| (r.format_ref().unwrap_or_default().to_string(), r))
-                .collect();
+            let cached = installation
+                .list_remote_refs_sync_full(&name, QueryFlags::ONLY_CACHED, gio::Cancellable::NONE);
+            let selected_name = if text(request, "remote").is_empty() {
+                "flathub"
+            } else {
+                text(request, "remote")
+            };
+            let selected = name == selected_name
+                && (text(request, "sourceUrl").is_empty() || url == text(request, "sourceUrl"));
+            // Reuse Flatpak's configured URL and signature verification. A
+            // request cannot redirect this fetch to an unregistered source.
+            // Fetch only when the cache read failed, not on every page visit.
+            let refs = match cached {
+                Ok(refs) => refs,
+                Err(_) if selected => installation
+                    .list_remote_refs_sync_full(&name, QueryFlags::NONE, gio::Cancellable::NONE)
+                    .unwrap_or_else(|error| {
+                        eprintln!("Could not restore cached size metadata for {name}: {error}");
+                        vec![]
+                    }),
+                Err(_) => vec![],
+            }
+            .into_iter()
+            .map(|r| (r.format_ref().unwrap_or_default().to_string(), r))
+            .collect();
             self.sources.push(Source { name, url, refs });
         }
     }
@@ -272,7 +293,7 @@ pub fn local(request: &Value) -> Value {
         total: 0,
     };
     for installation in sources::installations().unwrap_or_default() {
-        lookup.load(&installation);
+        lookup.load(&installation, request);
     }
     if let Some(schema) = gio::SettingsSchemaSource::default()
         .and_then(|s| s.lookup("org.gnome.desktop.interface", true))
