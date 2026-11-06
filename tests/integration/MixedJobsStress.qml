@@ -18,6 +18,8 @@ AppCenter.Main {
     property int ticks: 0
     property double lastBeat: 0
     property double longestPause: 0
+    property var sizeTarget: null
+    property int sizeSamplesDuringUpdates: 0
     TestCase { id: probe; when: false }
     function check(value,message) {
         if (!value) { console.error("MIXED_JOBS_FAIL",phase,message,JSON.stringify(backendJobs));Qt.exit(2);throw new Error(message) }
@@ -42,6 +44,9 @@ AppCenter.Main {
             } else if (main.phase===1) {
                 if (backend.updateStatus.state!=="ready" || backend.busy) return
                 main.check(main.updateItems.length===13,"12 app updates plus one shared runtime")
+                const sizeApp=main.findInstalled({id:"org.example.MixedRemove01"})
+                main.sizeTarget={id:sizeApp.id,remote:sizeApp.installedOrigin,flatpakRef:sizeApp.installedRef}
+                backend.requestInstallInfo(main.sizeTarget)
                 backend.installSelectedUpdates()
                 const cancelled=backend.jobs.find(j=>j.id==="org.example.MixedUpdate02")
                 main.check(!!cancelled && cancelled.queued,"Cancellation target is still queued")
@@ -71,6 +76,12 @@ AppCenter.Main {
                 const removals=backend.jobs.filter(j=>j.action==="uninstall" && j.active && !j.queued)
                 if (updates.length && removals.length) ++main.overlapSamples
                 if (updates.length) ++main.activeSamples
+                if (!main.findInstalled(main.sizeTarget)) {
+                    const size=backend.installSizes[main.sizeTarget.id]
+                    main.check(!!size && (size.state==="loading" || size.state==="ready"),
+                        "Concurrent removals never expose a false unavailable estimate")
+                    if (updates.length && size.state==="ready") ++main.sizeSamplesDuringUpdates
+                }
                 if (!stack.busy && stack.depth===1) {
                     const page=probe.findChild(stack.get(0),"updatesPage")
                     for (const job of updates) {
@@ -87,6 +98,7 @@ AppCenter.Main {
                 if (!backend.busy && !main.installedLoading && !main.catalogLoading) {
                     main.check(main.reviewed===12,"Every removal received its own confirmation")
                     main.check(main.overlapSamples>0,"Update and removal lanes overlapped")
+                    main.check(main.sizeSamplesDuringUpdates>0,"Reinstall sizes resolved while updates were active")
                     main.check(main.longestPause<1000,"No one-second GUI event-loop stall")
                     main.showUpdates();main.phase=3
                 }
@@ -99,7 +111,8 @@ AppCenter.Main {
                     "Only the cancelled update remains")
                 console.log("MIXED_JOBS_PASS",JSON.stringify({locale:Qt.locale().name,rtl:main.rtl,
                     reviews:main.reviewed,overlapSamples:main.overlapSamples,updateSamples:main.activeSamples,
-                    navigationCycles:main.navigationCycles,longestPauseMs:main.longestPause}))
+                    navigationCycles:main.navigationCycles,longestPauseMs:main.longestPause,
+                    sizeSamplesDuringUpdates:main.sizeSamplesDuringUpdates}))
                 Qt.quit()
             }
         }

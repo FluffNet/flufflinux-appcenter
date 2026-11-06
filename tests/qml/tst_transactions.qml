@@ -396,7 +396,8 @@ TestCase {
         const page = stack.currentItem
         const appSize = findChild(page, "appDownloadSize")
         const totalSize = findChild(page, "totalDownloadSize")
-        compare(appSize.text, "Unavailable")
+        compare(appSize.text, "Loading...")
+        compare(totalSize.text, "Loading...")
         backend.installSizes = {"org.example.Size": {state: "ready", appSize: "2 MiB", totalSize: "3 MiB"}}
         compare(appSize.text, "2 MiB")
         compare(totalSize.text, "3 MiB")
@@ -434,6 +435,7 @@ TestCase {
         verify(website.width < website.parent.width / 2)
         backend.installSizes = {"org.example.Size": {state: "unavailable"}}
         verify(totalSize.visible && totalCaption.visible)
+        compare(appSize.text, "Unavailable")
         compare(totalSize.text, "Unavailable")
         verify(findChild(page, "installAppButton").enabled)
         backend.installSizes = {"org.example.Size": {state: "partial", appSize: "2 MiB"}}
@@ -541,12 +543,16 @@ TestCase {
         compare(findChild(page, "appDownloadSize").text, "10 MiB")
         compare(findChild(page, "appAvailableVersion").text, "1.0")
         verify(!findChild(page, "totalDownloadSize").visible)
-        // The manager refreshes the tracked app's sizes before it publishes
-        // the new installed list. The same page must reveal those fresh values.
-        backend.installSizes = {"org.example.Installed": {state: "ready", appSize: "2 MiB", totalSize: "2 MiB"}}
+        // Removal publishes a pending estimate with the installed-list change
+        // and immediately starts its size worker, even while other jobs remain.
+        backend.installSizes = {"org.example.Installed": {state: "loading"}}
         backend.installedApps = []
         compare(stack.currentItem, page)
         verify(findChild(page, "appDownloadSize").visible)
+        compare(findChild(page, "appDownloadSize").text, "Loading...")
+        verify(findChild(page, "totalDownloadSize").visible)
+        compare(findChild(page, "totalDownloadSize").text, "Loading...")
+        backend.installSizes = {"org.example.Installed": {state: "ready", appSize: "2 MiB", totalSize: "2 MiB"}}
         compare(findChild(page, "appDownloadSize").text, "2 MiB")
         compare(findChild(page, "appAvailableVersion").text, "2.0")
         verify(!findChild(page, "totalDownloadSize").visible)

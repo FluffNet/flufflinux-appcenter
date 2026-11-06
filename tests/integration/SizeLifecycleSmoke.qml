@@ -10,6 +10,9 @@ AppCenter.Main {
     catalogStats: null
     property int step: 0
     property int cycles: 0
+    property int removalLoadingTransitions: 0
+    property double removalCompletedAt: 0
+    property double longestEstimateMs: 0
     property var first: null
     property var second: null
     property var before: ({})
@@ -42,6 +45,17 @@ AppCenter.Main {
     Connections {
         target: main.backend
         function onInputError(message) { main.fail(message) }
+        function onInstalledAppsChanged() {
+            if (main.step !== 4 || main.findInstalled(main.first)) return
+            const size = main.backend.installSizes[main.first.id]
+            if (!size || (size.state !== "loading" && size.state !== "ready")) {
+                main.fail("Removal exposed missing sizes instead of loading"); return
+            }
+            if (size.state === "loading") {
+                ++main.removalLoadingTransitions
+                main.removalCompletedAt = Date.now()
+            }
+        }
     }
     Timer {
         interval:100; running:true; repeat:true
@@ -50,7 +64,10 @@ AppCenter.Main {
             if (backend.jobs.some(j=>j.failed)) { main.fail(JSON.stringify(backend.jobs));return }
             if (backend.review && backend.review.token) {
                 if (!backend.review.removing) { main.fail("Unexpected non-removal review");return }
-                backend.answerReview(backend.review.token,true)
+                // Keep the second removal waiting for consent until the first
+                // app's estimate arrives. This proves sizes do not await idle.
+                if (main.step !== 4 || backend.review.appId === main.first.id)
+                    backend.answerReview(backend.review.token,true)
             }
             const stack=probe.findChild(main,"navigationStack")
             if (stack.busy || backend.catalogLoading || backend.installedLoading || backend.sourcesBusy) return
@@ -69,22 +86,34 @@ AppCenter.Main {
                 main.openApp(main.second);main.step=2;break
             case 2:
                 if (!main.checkSizes(main.second)) return
-                main.openApp(main.first);backend.installApp(main.first);main.step=3;break
+                main.openApp(main.first)
+                backend.installApp(main.first);backend.installApp(main.second);main.step=3;break
             case 3:
-                if (backend.busy || !main.findInstalled(main.first)) return
-                backend.uninstallApp(main.findInstalled(main.first));main.step=4;break
+                if (backend.busy || !main.findInstalled(main.first) || !main.findInstalled(main.second)) return
+                backend.uninstallApp(main.findInstalled(main.first))
+                backend.uninstallApp(main.findInstalled(main.second));main.step=4;break
             case 4:
-                if (backend.busy || main.findInstalled(main.first)) return
+                if (main.findInstalled(main.first)) return
                 // Do not reopen or replace the app page before checking it.
                 if (!main.checkSizes(main.first)) return
+                if (!backend.busy || !main.findInstalled(main.second)) {
+                    main.fail("Size estimate waited for the rest of the queue");return
+                }
+                main.longestEstimateMs=Math.max(main.longestEstimateMs,Date.now()-main.removalCompletedAt)
                 if (backend.installSizes[main.first.id].totalBytes !== main.before.appBytes) {
                     main.fail("Reinstall estimate must exclude the runtime left installed");return
                 }
+                main.step=6;break
+            case 6:
+                if (backend.busy || main.findInstalled(main.second)) return
                 main.openApp(main.second);main.step=5;break
             case 5:
                 if (!main.checkSizes(main.second)) return
-                if (++main.cycles < 3) { main.openApp(main.first);main.step=1;break }
-                console.log("SIZE_LIFECYCLE_PASS",main.cycles,"install/remove cycles, both app pages, one process")
+                if (++main.cycles < 10) { main.openApp(main.first);main.step=1;break }
+                if (main.removalLoadingTransitions < 10) {
+                    main.fail("Expected immediate loading on every removal"); return
+                }
+                console.log("SIZE_LIFECYCLE_PASS",main.cycles,"two-app install/remove cycles, estimates while queue busy, one process; longest estimate ms",main.longestEstimateMs)
                 Qt.quit();break
             }
         }

@@ -19,7 +19,9 @@ ColumnLayout {
     readonly property bool showDependencyTotal: !(sizeInfo.appSize && sizeInfo.totalSize
                                                   && sizeInfo.appSize === sizeInfo.totalSize)
     function sizeText(field) {
-        return sizeInfo[field] || (sizeInfo.state === "loading" ? qsTr("Loading...") : qsTr("Unavailable"))
+        // A missing result is pending, not evidence that a size is unavailable.
+        return sizeInfo[field] || (!sizeInfo.state || sizeInfo.state === "loading"
+                                  ? qsTr("Loading...") : qsTr("Unavailable"))
     }
     visible: typeof window.backend !== "undefined" && !!window.backend
     Layout.fillWidth: true

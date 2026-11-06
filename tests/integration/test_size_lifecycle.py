@@ -1,4 +1,4 @@
-"""Three install/remove cycles while size pages stay open. Only temporary Flatpaks."""
+"""Ten two-app install/remove cycles with priority size reads. Only temporary Flatpaks."""
 import gzip
 import functools
 import json
@@ -130,5 +130,5 @@ with tempfile.TemporaryDirectory(prefix="appcenter-size-cycle-") as directory:
     server.server_close()
     offline = size(request)
     assert offline["state"] == "unavailable", offline
-    print("PASS: both app size fields survive three install/remove cycles in one GUI process")
+    print("PASS: immediate loading and correct estimates during ten two-app install/remove cycles, including a non-idle queue")
     print("PASS: metadata-only summary recovery, warm reuse without network, correct runtime totals, disabled/changed sources and offline failure")

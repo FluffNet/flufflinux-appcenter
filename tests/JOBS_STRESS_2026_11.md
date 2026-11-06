@@ -96,3 +96,35 @@ memory soak and QML checks. Logs are written to `target/jobs-stress/`.
 
 Passing these cases is evidence for the tested behavior, not a guarantee that
 every possible update, removal, operating-system or network failure is covered.
+
+## Follow-up: immediate size estimates after removal
+
+Removal now publishes a loading estimate with the installed-state change and
+immediately starts the visible app's bounded size worker, before scheduling
+another queued transaction. It does not wait for the queue to drain or rebuild
+the catalog first. A replaced size worker cannot overwrite the new estimate.
+An initial missing result also displays the existing translated `Loading...`
+text; `Unavailable` remains reserved for an unsuccessful lookup or a genuinely
+unknown field in a completed partial result.
+
+The expanded real size-lifecycle test passed in English, Hebrew RTL and German.
+Each session performed ten cycles installing and removing two temporary apps
+(60 installs and 60 removals across all three sessions). During each cycle,
+the second removal was deliberately kept queued until the first app's reinstall
+estimate arrived. Both size labels updated without reopening the page, and
+the estimates were observed ready within about 210 ms at worst on this VM.
+The same test verifies summary-cache eviction/recovery, metadata-only fetching,
+warm reuse, runtime-aware totals, disabled/mismatched sources and offline failure.
+
+All three real mixed update/removal suites passed with additional checks that
+the reinstall estimate resolves while updates are still active. No false
+unavailable state was observed during concurrent removal. The existing
+approval, cancellation, data-preservation and final-commit checks also passed.
+Sampled GUI peaks were 143672-144500 KiB; sampled combined process-tree peaks
+were 303152-327920 KiB. These are samples from temporary fixtures, not a
+universal memory or latency guarantee.
+
+The follow-up passed 156 Rust tests (one existing opt-in test ignored), strict
+Clippy, the release build, and 146 QML checks covering transactions, RTL and
+long labels. The stress runner now includes the expanded size-lifecycle test
+for all three locales.

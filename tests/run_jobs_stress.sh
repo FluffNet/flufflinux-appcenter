@@ -14,6 +14,9 @@ for suite in test_updates test_full_update_plan test_transaction_retries test_ad
 done
 for job_locale in en_US.UTF-8 he_IL.UTF-8 de_DE.UTF-8; do
     LANGUAGE="$job_locale" LANG="$job_locale" \
+        python3 tests/integration/test_size_lifecycle.py target/debug/flufflinux-appcenter \
+        > "target/jobs-stress/sizes-$job_locale.log" 2>&1
+    LANGUAGE="$job_locale" LANG="$job_locale" \
         python3 tests/integration/test_mixed_jobs_stress.py target/debug/flufflinux-appcenter \
         > "target/jobs-stress/mixed-$job_locale.log" 2>&1
 done

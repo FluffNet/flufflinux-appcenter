@@ -815,7 +815,23 @@ impl Manager {
             })
             .cloned()
             .collect();
+        let viewed_id = normalized_id(text(&self.size_app, "id")).to_owned();
+        let refresh_sizes = !viewed_id.is_empty()
+            && !apps
+                .iter()
+                .any(|app| normalized_id(text(app, "id")) == viewed_id);
+        if refresh_sizes {
+            // Removal changes dependency totals and can evict source summaries.
+            // Publish the pending estimate before revealing install controls.
+            self.cancel_reader("sizes");
+            self.set("installSizes", json!({viewed_id:{"state":"loading"}}));
+        }
         self.set("installedApps", apps.into());
+        if refresh_sizes {
+            // Prioritize the visible page before scheduling the next queued
+            // transaction. This bounded metadata reader never deploys packages.
+            self.install_info(self.size_app.clone());
+        }
         self.update_date();
     }
     pub(super) fn job_finished(&mut self, role: &str, context: Value, event: &Value) {
@@ -1381,6 +1397,40 @@ mod tests {
             &json!([{"kind":"finished","role":"install","serial":serial,"code":1}]),
         );
         assert!(manager.jobs.is_empty() && manager.requests.is_empty());
+    }
+    #[test]
+    fn removal_marks_viewed_reinstall_sizes_loading_before_publishing_installed_state() {
+        for viewed in ["a.b.Removed", "a.b.Other", "a.b.StillInstalled"] {
+            let mut manager = Manager::new(vec![]);
+            let removed = json!({"id":"a.b.Removed","installation":"user",
+                "installedArch":"x86_64","installedBranch":"stable"});
+            manager.properties["installedApps"] = json!([
+                removed, {"id":"a.b.StillInstalled","installation":"user"}]);
+            manager.install_info(json!({"id":viewed}));
+            let old_serial = manager.tasks.get("sizes").map(|task| task.serial);
+            manager.enqueue(request("a.b.OtherQueuedWork"));
+            manager.initial();
+            manager.apply_removal(&removed);
+            let delta = manager.initial();
+            assert_eq!(rows(&manager.properties["installedApps"]).len(), 1);
+            assert!(manager.tasks.contains_key("install"), "Other queued work remains active");
+            if viewed == "a.b.StillInstalled" {
+                assert_eq!(manager.properties["installSizes"], json!({}));
+                assert!(!manager.tasks.contains_key("sizes"));
+                continue;
+            }
+            assert!(manager.tasks.contains_key("sizes"), "Start sizes without waiting for the queue");
+            assert_ne!(Some(manager.tasks["sizes"].serial), old_serial);
+            assert_eq!(manager.properties["installSizes"][viewed]["state"], "loading");
+            if viewed == "a.b.Removed" {
+                assert_eq!(delta["state"]["installSizes"][viewed]["state"], "loading");
+            }
+            if let Some(serial) = old_serial {
+                manager.event(&json!({"kind":"finished","role":"sizes","serial":serial,
+                    "code":0,"stdout":"{\"state\":\"ready\",\"appSize\":\"old estimate\"}"}));
+                assert_eq!(manager.properties["installSizes"][viewed]["state"], "loading");
+            }
+        }
     }
     #[test]
     fn removal_waits_for_its_own_consent() {
