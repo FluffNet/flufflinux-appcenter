@@ -15,16 +15,21 @@ impl Manager {
                 saved.with_timezone(&chrono::Utc)
                     + chrono::Duration::seconds(storage::CACHE_LIFETIME)
                     - now
-            })
-            .map(|remaining| remaining.num_milliseconds())
-            .unwrap_or(0);
+            });
         // A failed/partial refresh keeps its original age. Do not spin at an
         // already expired timestamp or repeatedly retry while offline.
-        self.catalog_expiry_timer(if remaining > 0 {
-            (remaining as u64).min(storage::CACHE_LIFETIME as u64 * 1000)
-        } else {
-            15 * 60 * 1000
-        });
+        self.catalog_expiry_timer(
+            remaining
+                .filter(|remaining| *remaining > chrono::Duration::zero())
+                .map(|remaining| {
+                    // Qt's coarse timer can fire just before expiry. A
+                    // positive fraction of a millisecond is still fresh:
+                    // retry in 1 ms, not the failed-refresh backoff period.
+                    (remaining.num_milliseconds().max(1) as u64)
+                        .min(storage::CACHE_LIFETIME as u64 * 1000)
+                })
+                .unwrap_or(15 * 60 * 1000),
+        );
     }
     pub(super) fn catalog_expiry(&mut self, now: chrono::DateTime<chrono::Utc>) {
         self.catalog_expiry_timer(0);
@@ -397,6 +402,22 @@ mod tests {
         );
         manager.initial();
         manager
+    }
+    #[test]
+    fn early_expiry_with_less_than_a_millisecond_remaining_does_not_back_off() {
+        let now = chrono::Utc::now();
+        let mut manager = cached(now);
+        manager.catalog.saved = (now - chrono::Duration::seconds(storage::CACHE_LIFETIME)
+            + chrono::Duration::microseconds(500)).to_rfc3339();
+        manager.catalog_expiry(now);
+        assert!(!manager.catalog.expiry_pending);
+        assert!(!manager.tasks.contains_key("sources"));
+        assert!(manager.commands.iter()
+            .any(|command| command["action"] == "catalogExpiry" && command["interval"] == 1));
+        assert!(!manager.commands.iter()
+            .any(|command| command["action"] == "catalogExpiry" && command["interval"] == 900000));
+        manager.catalog_expiry(now + chrono::Duration::milliseconds(1));
+        assert!(manager.tasks.contains_key("sources"));
     }
     #[test]
     fn expiry_waits_for_two_hundred_jobs_and_the_final_worker_exit() {

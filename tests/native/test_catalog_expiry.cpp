@@ -19,9 +19,11 @@ static void write(const QString &path, const QByteArray &bytes, bool executable 
     if (executable) file.setPermissions(QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
 }
 static void until(const std::function<bool()> &condition) {
+    static int checkpoint = 0;
+    ++checkpoint;
     QElapsedTimer deadline; deadline.start();
     while (!condition() && deadline.elapsed() < 12000) { QCoreApplication::processEvents(); QThread::msleep(5); }
-    assert(condition());
+    if (!condition()) qFatal("Catalog expiry timed out at checkpoint %d", checkpoint);
 }
 static QVariantList apps(const QString &name) {
     return {QVariantMap{{"id","org.example.Cached"},{"name",name}}};
