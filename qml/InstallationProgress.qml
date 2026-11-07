@@ -7,6 +7,7 @@ ColumnLayout {
     property var job: null
     readonly property bool planned: !!job && (job.operations || []).length > 0
     readonly property bool removing: !!job && job.action === "uninstall"
+    readonly property bool indeterminate: !planned || removing || (!!job && job.progressIndeterminate === true)
     // A queued operation has not started: only its Pending status is shown.
     visible: !!job && job.active === true && job.queued !== true
              && (!removing || job.removalConfirmed === true)
@@ -43,18 +44,25 @@ ColumnLayout {
             objectName: "overallPercentageLabel"
             Layout.alignment: Qt.AlignTop | Qt.AlignRight
             horizontalAlignment: Text.AlignRight
-            text: qsTr("%1%").arg(Math.floor(Math.min(0.99, progress.job ? (progress.job.progress || 0) : 0) * 100 + 0.000001))
+            visible: !progress.indeterminate
+            text: qsTr("%1%").arg(progress.job && progress.job.progressPercent !== undefined
+                ? progress.job.progressPercent : Math.floor(Math.min(1, progress.job ? (progress.job.progress || 0) : 0) * 100 + 0.000001))
             color: window.textColor
         }
+    }
+    Label {
+        objectName: "progressStageLabel"
+        Layout.fillWidth: true
+        visible: progress.planned && !progress.removing && progress.indeterminate
+        text: qsTranslate("AppCenter", progress.job && progress.job.phase === "install" ? "Installing…" : "Preparing…")
+        color: window.textColor
+        wrapMode: Text.Wrap
     }
     FluffProgressBar {
         objectName: "overallInstallProgress"
         Layout.fillWidth: true
         value: progress.job ? (progress.job.progress || 0) : 0
-        indeterminate: !progress.planned || progress.removing
-        // Show activity in the unfinished section without inventing percentage
-        // updates when Flatpak supplies no fine-grained deployment callbacks.
-        activeStep: progress.planned && !progress.removing && progress.job.phase === "install"
+        indeterminate: progress.indeterminate
         Accessible.name: qsTr("Overall installation progress")
     }
 }

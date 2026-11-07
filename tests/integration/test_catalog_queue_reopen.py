@@ -155,6 +155,6 @@ with tempfile.TemporaryDirectory(prefix="appcenter-queue-cache-") as directory:
     assert "catalog-cache-ready" in reopened, "BUG: a completed background queue invalidated the fresh startup cache"
     assert updated["savedAt"] == original["savedAt"], "Local rebuild extended source-refresh lifetime"
     assert updated["fingerprint"] != original["fingerprint"], "New installation state was not saved"
-    print("PASS: real background installs, delayed local parser survives shutdown, immediate cached reopen, original 12-hour deadline preserved")
+    print("PASS: real background installs, delayed local parser survives shutdown, immediate cached reopen, original 6-hour deadline preserved")
     if reopen_during_save:
         print("PASS: reopening during the save reuses the original process and visible app list; closing again allows the same save to finish")

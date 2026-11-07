@@ -27,6 +27,7 @@ pub fn record(job: &Value) -> Value {
             "name",
             "installation",
             "flatpakRef",
+            "targetRef",
             "remote",
             "sourceUrl",
             "source",

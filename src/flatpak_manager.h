@@ -83,6 +83,7 @@ public:
     Q_INVOKABLE void openSource(QString source) { dispatch("openSource", {source}); }
     Q_INVOKABLE void answerReview(int token, bool accept) { dispatch("answerReview", {token, accept}); }
     Q_INVOKABLE void cancelJob(int index) { dispatch("cancelJob", {index}); }
+    Q_INVOKABLE void retryJob(int index) { dispatch("retryJob", {index}); }
     Q_INVOKABLE void cancelAll() { dispatch("cancelAll", {}); }
     Q_INVOKABLE void clearDownloadHistory() { dispatch("clearDownloadHistory", {}); }
     Q_INVOKABLE void clearFailedJob(int index) { dispatch("clearFailedJob", {index}); }

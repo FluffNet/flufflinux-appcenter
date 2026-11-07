@@ -49,6 +49,96 @@ fn display_job(job: &Value) -> Value {
 }
 
 impl Manager {
+    pub(super) fn retry_job(&mut self, index: usize) {
+        if self.stopping
+            || self.tasks.contains_key("sources")
+            || self.job_role(index).is_some()
+            || !self.jobs.get(index).is_some_and(|job| {
+                flag(job, "failed") && !flag(job, "active") && !flag(job, "hidden")
+            })
+        {
+            return;
+        }
+        let Some(mut request) = self.retry_requests.get(&index).cloned() else {
+            return;
+        };
+        if request["action"] == "update" {
+            // An explicit Retry is a new request for this installed app through
+            // its currently configured source. Do not retain obsolete commits
+            // or require a full update scan after the user fixes that source.
+            request["plan"] = json!([]);
+            request.as_object_mut().unwrap().remove("sourceUrl");
+        }
+        if self.enqueue_request(request) {
+            self.jobs[index]["hidden"] = true.into();
+            self.retry_requests.remove(&index);
+            self.release_finished_jobs();
+            self.publish_jobs();
+            self.start_next();
+        }
+    }
+    fn remember_retry(&mut self, index: usize) {
+        let request = &self.requests[index];
+        if flag(request, "prepareOnly")
+            || !matches!(text(request, "action"), "install" | "update" | "source")
+            || !flag(&self.jobs[index], "failed")
+        {
+            return;
+        }
+        let mut compact = json!({});
+        for key in [
+            "action",
+            "id",
+            "key",
+            "name",
+            "developer",
+            "icon",
+            "installation",
+            "flatpakRef",
+            "targetRef",
+            "remote",
+            "sourceUrl",
+            "source",
+            "sourceReviewed",
+            "addon",
+            "oldCommit",
+            "commit",
+            "scanPlan",
+            "installedArch",
+            "installedBranch",
+        ] {
+            if let Some(value) = request.get(key) {
+                compact[key] = value.clone();
+            }
+        }
+        if flag(request, "addon") {
+            compact["parent"] = crate::backend::addons::compact_parent(&request["parent"]);
+        }
+        compact["plan"] = rows(&request["plan"])
+            .iter()
+            .map(|op| {
+                let mut row = json!({});
+                for key in [
+                    "ref",
+                    "action",
+                    "commit",
+                    "remote",
+                    "sourceUrl",
+                    "sourceKey",
+                    "installedCommit",
+                    "installedOrigin",
+                ] {
+                    if let Some(value) = op.get(key) {
+                        row[key] = value.clone();
+                    }
+                }
+                row
+            })
+            .collect::<Vec<_>>()
+            .into();
+        self.retry_requests.insert(index, compact);
+        self.patch_job(index, json!({"canRetry":true}));
+    }
     pub(super) fn publish_jobs(&mut self) {
         let mut totals = HashMap::new();
         let mut positions = HashMap::new();
@@ -161,6 +251,16 @@ impl Manager {
     // Batch callers publish once, after all selections have been validated.
     // Do not rebuild/copy the growing queue for every selected update.
     pub(super) fn enqueue_request(&mut self, mut request: Value) -> bool {
+        if request["action"] == "update" {
+            // The resolved plan can shrink after earlier jobs deploy shared
+            // runtimes. Keep the original scan identity separate so Updates
+            // can still attach the live job and distinguish later scans.
+            request["scanPlan"] = rows(request.get("scanPlan").unwrap_or(&request["plan"]))
+                .iter()
+                .map(|op| json!({"ref":op["ref"],"commit":op["commit"]}))
+                .collect::<Vec<_>>()
+                .into();
+        }
         let id = normalized_id(text(&request, "id")).to_owned();
         if request["action"] != "update" {
             request["id"] = id.clone().into();
@@ -236,7 +336,10 @@ impl Manager {
         true
     }
     pub(super) fn start_next(&mut self) {
-        if self.stopping {
+        if self.stopping
+            || self.tasks.contains_key("sources")
+            || (self.catalog.background_refresh && self.tasks.contains_key("catalog"))
+        {
             return;
         }
         for index in 0..self.jobs.len() {
@@ -443,6 +546,14 @@ impl Manager {
                 let operations = rows(&message["operations"]);
                 let mut patch = progress::stages(operations, "preparing");
                 patch["operations"] = message["operations"].clone();
+                if self.jobs[index]["action"] == "update" {
+                    self.requests[index]["plan"] = message["operations"].clone();
+                    patch["plan"] = message["operations"].clone();
+                    if !text(message, "targetRef").is_empty() {
+                        self.requests[index]["targetRef"] = message["targetRef"].clone();
+                        patch["targetRef"] = message["targetRef"].clone();
+                    }
+                }
                 self.patch_job(index, patch);
                 if !flag(&self.jobs[index], "prepareOnly") {
                     self.queue_changed();
@@ -525,11 +636,8 @@ impl Manager {
                     merge(&mut patch, &rate);
                 }
                 patch["operations"] = operations.into();
-                patch["progress"] = job["progress"]
-                    .as_f64()
-                    .unwrap_or(0.0)
-                    .max(patch["progress"].as_f64().unwrap_or(0.0))
-                    .into();
+                // The percentage must describe the same current byte totals
+                // shown by the UI, even if Flatpak revises a size estimate.
                 patch["status"] = if job["action"] == "uninstall" {
                     "Uninstalling…".into()
                 } else {
@@ -538,7 +646,17 @@ impl Manager {
                 patch["currentRef"] = message["ref"].clone();
                 self.patch_job(index, patch);
             }
-            "status" => self.patch_job(index, json!({"status":message["status"]})),
+            "status" => {
+                let mut patch = json!({"status":message["status"]});
+                if flag(message, "retrying") {
+                    merge(
+                        &mut patch,
+                        &json!({"operations":[],"phase":"preparing","progressIndeterminate":true,
+                        "hasDownload":false,"attempt":message["attempt"],"errorKind":message["errorKind"]}),
+                    );
+                }
+                self.patch_job(index, patch);
+            }
             "result" => self.job_result(role, index, message),
             _ => {}
         }
@@ -592,6 +710,11 @@ impl Manager {
             self.error(text(message, "error"));
         }
         if ok && job["action"] == "update" {
+            let pending: std::collections::HashSet<_> = self.jobs.iter().enumerate()
+                .filter(|(other, job)| *other != index && job["action"] == "update"
+                    && flag(job, "active") && !flag(job, "cancelled"))
+                .map(|(_, job)| text(job, "key").to_owned())
+                .collect();
             let items: Vec<_> = rows(&self.properties["updateItems"])
                 .iter()
                 .filter(|row| {
@@ -600,7 +723,8 @@ impl Manager {
                             && rows(&job["operations"]).iter().any(|op| {
                                 op["ref"] == row["flatpakRef"]
                                     && (op["action"] == "uninstall"
-                                        || op["commit"] == row["commit"])
+                                        || (op["commit"] == row["commit"]
+                                            && !pending.contains(text(row, "key"))))
                             }))
                 })
                 .cloned()
@@ -640,7 +764,8 @@ impl Manager {
             self.apply_removal(&job);
         }
         self.patch_job(index,json!({"active":false,"queued":false,"failed":!ok&&!cancelled,"cancelled":cancelled,
-            "progress":if ok{json!(1)}else{job["progress"].clone()},"status":if ok{if removing{""}else{"Complete"}}else if cancelled{"Cancelled"}else{"Failed"},"error":text(message,"error")}));
+            "progress":if ok{json!(1)}else{job["progress"].clone()},"status":if ok{if removing{""}else{"Complete"}}else if cancelled{"Cancelled"}else{"Failed"},"error":crate::backend::failure::detail(text(message,"error")),
+            "errorKind":message["errorKind"],"retryable":message["retryable"],"attempts":message["attempts"]}));
         self.clear_reviews(index);
         if !preparation {
             self.queue_changed();
@@ -690,7 +815,23 @@ impl Manager {
             })
             .cloned()
             .collect();
+        let viewed_id = normalized_id(text(&self.size_app, "id")).to_owned();
+        let refresh_sizes = !viewed_id.is_empty()
+            && !apps
+                .iter()
+                .any(|app| normalized_id(text(app, "id")) == viewed_id);
+        if refresh_sizes {
+            // Removal changes dependency totals and can evict source summaries.
+            // Publish the pending estimate before revealing install controls.
+            self.cancel_reader("sizes");
+            self.set("installSizes", json!({viewed_id:{"state":"loading"}}));
+        }
         self.set("installedApps", apps.into());
+        if refresh_sizes {
+            // Prioritize the visible page before scheduling the next queued
+            // transaction. This bounded metadata reader never deploys packages.
+            self.install_info(self.size_app.clone());
+        }
         self.update_date();
     }
     pub(super) fn job_finished(&mut self, role: &str, context: Value, event: &Value) {
@@ -701,8 +842,22 @@ impl Manager {
         let preparation = flag(&self.requests[index], "prepareOnly");
         if !flag(&context, "result") {
             let cancelled = flag(&self.jobs[index], "cancelling");
+            if !cancelled
+                && !preparation
+                && !self.stopping
+                && role == "install"
+                && number(&self.jobs[index], "workerRestarts") == 0
+                && flag(event, "crashed")
+            {
+                self.clear_reviews(index);
+                self.patch_job(index,json!({"active":true,"queued":true,"workerRestarts":1,
+                    "status":"Preparing…","phase":"preparing","progressIndeterminate":true,"hasDownload":false}));
+                self.queue_changed();
+                return;
+            }
             self.patch_job(index,json!({"active":false,"queued":false,"failed":!cancelled,"cancelled":cancelled,
-                "status":if cancelled{""}else{"The Flatpak worker stopped unexpectedly"},"error":if cancelled{""}else{text(event,"stderr")}}));
+                "status":if cancelled{""}else{"The Flatpak worker stopped unexpectedly"},"error":if cancelled{String::new()}else{crate::backend::failure::detail(text(event,"stderr"))},
+                "errorKind":if flag(event,"timedOut"){"timeout"}else{"worker-stopped"}}));
             if preparation && !cancelled && !self.stopping {
                 self.error(format!(
                     "The Flatpak worker stopped unexpectedly\n{}",
@@ -714,6 +869,7 @@ impl Manager {
             }
         }
         self.clear_reviews(index);
+        self.remember_retry(index);
         self.requests[index] = Value::Null;
         // Once the worker has exited, history needs only its display state.
         // Active requests/recovery records keep the full operation metadata.
@@ -776,12 +932,130 @@ impl Manager {
             self.jobs.pop();
             self.requests.pop();
         }
+        self.retry_requests.retain(|index, _| {
+            self.jobs.get(*index).is_some_and(|job| {
+                flag(job, "failed") && !flag(job, "active") && !flag(job, "hidden")
+            })
+        });
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn replanned_update_retains_scan_identity_through_progress_failure_and_retry() {
+        let mut manager = Manager::new(vec![]);
+        let reference = "app/a.b.App/x86_64/stable";
+        let original = json!([{"ref":reference,"commit":"scan","downloadBytes":200},
+            {"ref":"runtime/a.b.Shared/x86_64/stable","commit":"runtime","downloadBytes":500}]);
+        manager.enqueue(json!({"id":"a.b.App","action":"update","key":"user:app",
+            "installation":"user","flatpakRef":reference,"plan":original}));
+        let identity = json!([{"ref":reference,"commit":"scan"},
+            {"ref":"runtime/a.b.Shared/x86_64/stable","commit":"runtime"}]);
+        let resolved = json!([{"ref":reference,"commit":"current","downloadBytes":100,"action":"update"}]);
+        manager.job_message("install", &json!({"type":"plan","operations":resolved}));
+        manager.job_message("install", &json!({"type":"operation","ref":reference,
+            "phase":"download","receivedBytes":27,"progress":0.99,"downloadProgress":0.99}));
+        assert_eq!(manager.properties["jobs"][0]["scanPlan"], identity);
+        assert_eq!(manager.properties["jobs"][0]["plan"][0]["commit"], "current");
+        assert_eq!(manager.requests[0]["plan"], resolved);
+        assert_eq!(manager.properties["jobs"][0]["progressPercent"], 27);
+        assert_eq!(crate::backend::recovery::record(&manager.jobs[0])["operations"][0]["commit"], "current");
+        manager.job_message("install", &json!({"type":"result","success":false,"error":"fixture"}));
+        let context = manager.tasks.remove("install").unwrap().context;
+        manager.job_finished("install", context, &json!({"code":1}));
+        manager.tasks.clear();
+        manager.retry_job(0);
+        assert_eq!(manager.jobs[1]["scanPlan"], identity);
+        assert_eq!(manager.requests[1]["plan"], json!([]));
+    }
+    #[test]
+    fn completed_app_keeps_queued_runtime_rows_until_their_own_jobs_finish() {
+        let mut manager = Manager::new(vec![]);
+        let app = "app/a.b.App/x86_64/stable";
+        let runtime = "runtime/a.b.Platform/x86_64/stable";
+        let locale = "runtime/a.b.Platform.Locale/x86_64/stable";
+        let items = json!([
+            {"key":"app","id":"a.b.App","flatpakRef":app,"installation":"user","commit":"new"},
+            {"key":"platform","id":"a.b.Platform","flatpakRef":runtime,"installation":"user","commit":"new"},
+            {"key":"locale","id":"a.b.Platform.Locale","flatpakRef":locale,"installation":"user","commit":"new"}]);
+        manager.merge("updates",json!({"state":"ready","items":items}));
+        for item in rows(&items) {
+            let mut request = item.clone();
+            request["action"] = "update".into();
+            manager.enqueue(request);
+        }
+        manager.jobs[0]["operations"] = json!([
+            {"ref":app,"action":"update","commit":"new"},
+            {"ref":runtime,"action":"update","commit":"new"},
+            {"ref":locale,"action":"update","commit":"new"}]);
+        manager.job_message("install", &json!({"type":"result","success":true}));
+        assert_eq!(rows(&manager.properties["updateItems"]).len(), 2);
+        let context = manager.tasks.remove("install").unwrap().context;
+        manager.job_finished("install",context,&json!({"code":0}));
+        manager.start_next();
+        manager.jobs[1]["operations"] = json!([
+            {"ref":runtime,"action":"update","commit":"new"},
+            {"ref":locale,"action":"update","commit":"new"}]);
+        manager.job_message("install", &json!({"type":"result","success":true}));
+        assert_eq!(rows(&manager.properties["updateItems"]).len(), 1);
+        assert_eq!(manager.properties["updateItems"][0]["key"], "locale");
+    }
+    #[test]
+    fn failed_retry_retains_only_intent_requeues_without_a_scan_and_clear_releases_it() {
+        let mut manager = Manager::new(vec![]);
+        let mut input = request("org.example.App");
+        input["permissions"] = json!({"large":"x".repeat(100000)});
+        input["plan"] = json!([{"ref":"app/org.example.App/x86_64/stable","commit":"a".repeat(64),
+            "remote":"fixture","action":"update","sourceUrl":"https://example.org","sourceKey":"trusted",
+            "unused":"x".repeat(100000)}]);
+        input["action"] = "update".into();
+        manager.enqueue(input);
+        manager.job_message("install",&json!({"type":"result","success":false,"error":"network fixture","errorKind":"network"}));
+        let context = manager.tasks.remove("install").unwrap().context;
+        manager.job_finished("install", context, &json!({"code":1}));
+        assert!(manager.requests[0].is_null());
+        assert!(flag(&manager.jobs[0], "canRetry"));
+        assert!(manager.retry_requests[&0].to_string().len() < 2000);
+        manager.tasks.clear();
+        manager.retry_job(0);
+        assert!(manager.retry_requests.is_empty());
+        assert!(manager.tasks.contains_key("install"));
+        assert!(!manager.tasks.contains_key("updates"));
+        assert_eq!(manager.requests[1]["action"], "update");
+        manager.job_message(
+            "install",
+            &json!({"type":"result","success":false,"error":"still offline"}),
+        );
+        let context = manager.tasks.remove("install").unwrap().context;
+        manager.job_finished("install", context, &json!({"code":1}));
+        assert_eq!(manager.retry_requests.len(), 1);
+        manager.dispatch("clearDownloadHistory", &json!([]));
+        assert!(manager.retry_requests.is_empty());
+    }
+    #[test]
+    fn worker_crash_restarts_at_most_once_and_cancel_does_not_restart() {
+        let mut manager = Manager::new(vec![]);
+        manager.enqueue(request("org.example.App"));
+        for attempt in 0..2 {
+            let context = manager.tasks.remove("install").unwrap().context;
+            manager.job_finished("install", context, &json!({"crashed":true,"code":11}));
+            if attempt == 0 {
+                assert!(flag(&manager.jobs[0], "active"));
+                manager.start_next();
+            }
+        }
+        assert!(flag(&manager.jobs[0], "failed"));
+        assert_eq!(number(&manager.jobs[0], "workerRestarts"), 1);
+        assert!(!manager.tasks.contains_key("install"));
+        manager.tasks.clear();
+        manager.enqueue(request("org.example.Cancel"));
+        manager.cancel_job(1);
+        let context = manager.tasks.remove("install").unwrap().context;
+        manager.job_finished("install", context, &json!({"crashed":true,"code":9}));
+        assert!(!manager.jobs.iter().any(|job| flag(job, "active")));
+    }
     use crate::backend::permissions;
     fn request(id: &str) -> Value {
         json!({"id":id,"action":"install","name":id,"installation":"user"})
@@ -845,6 +1119,35 @@ mod tests {
         manager.desktop_commands.clear();
         manager.next_desktop_cache();
         assert!(manager.tasks.contains_key("installed"));
+    }
+    #[test]
+    fn byte_progress_reaches_jobs_without_flatpak_object_percent_inflation() {
+        let mut manager = Manager::new(vec![]);
+        manager.enqueue(request("a.b.App"));
+        let reference = "app/a.b.App/x86_64/stable";
+        manager.job_message(
+            "install",
+            &json!({"type":"plan","operations":[
+            {"ref":reference,"action":"install","downloadBytes":200,"phase":"waiting"}]}),
+        );
+        for (received, percent) in [(2, 1), (54, 27)] {
+            manager.job_message("install", &json!({"type":"operation","ref":reference,
+                "phase":"download","progress":0.99,"downloadProgress":0.99,"receivedBytes":received}));
+            assert_eq!(manager.jobs[0]["progressPercent"], percent);
+            assert_eq!(manager.jobs[0]["receivedBytes"], received);
+            assert_eq!(manager.jobs[0]["downloadTotalBytes"], 200);
+            assert_eq!(manager.jobs[0]["progressIndeterminate"], false);
+        }
+        manager.job_message(
+            "install",
+            &json!({"type":"operation","ref":reference,
+            "phase":"install","progress":1,"downloadProgress":1,"receivedBytes":54}),
+        );
+        assert_eq!(manager.jobs[0]["progressIndeterminate"], true);
+        assert!(manager.jobs[0]["active"] == true);
+        manager.job_message("install", &json!({"type":"result","success":true}));
+        assert_eq!(manager.jobs[0]["progress"], 1);
+        assert_eq!(manager.jobs[0]["active"], false);
     }
     #[test]
     fn related_updates_reconcile_only_matching_installation_and_commit() {
@@ -1094,6 +1397,40 @@ mod tests {
             &json!([{"kind":"finished","role":"install","serial":serial,"code":1}]),
         );
         assert!(manager.jobs.is_empty() && manager.requests.is_empty());
+    }
+    #[test]
+    fn removal_marks_viewed_reinstall_sizes_loading_before_publishing_installed_state() {
+        for viewed in ["a.b.Removed", "a.b.Other", "a.b.StillInstalled"] {
+            let mut manager = Manager::new(vec![]);
+            let removed = json!({"id":"a.b.Removed","installation":"user",
+                "installedArch":"x86_64","installedBranch":"stable"});
+            manager.properties["installedApps"] = json!([
+                removed, {"id":"a.b.StillInstalled","installation":"user"}]);
+            manager.install_info(json!({"id":viewed}));
+            let old_serial = manager.tasks.get("sizes").map(|task| task.serial);
+            manager.enqueue(request("a.b.OtherQueuedWork"));
+            manager.initial();
+            manager.apply_removal(&removed);
+            let delta = manager.initial();
+            assert_eq!(rows(&manager.properties["installedApps"]).len(), 1);
+            assert!(manager.tasks.contains_key("install"), "Other queued work remains active");
+            if viewed == "a.b.StillInstalled" {
+                assert_eq!(manager.properties["installSizes"], json!({}));
+                assert!(!manager.tasks.contains_key("sizes"));
+                continue;
+            }
+            assert!(manager.tasks.contains_key("sizes"), "Start sizes without waiting for the queue");
+            assert_ne!(Some(manager.tasks["sizes"].serial), old_serial);
+            assert_eq!(manager.properties["installSizes"][viewed]["state"], "loading");
+            if viewed == "a.b.Removed" {
+                assert_eq!(delta["state"]["installSizes"][viewed]["state"], "loading");
+            }
+            if let Some(serial) = old_serial {
+                manager.event(&json!({"kind":"finished","role":"sizes","serial":serial,
+                    "code":0,"stdout":"{\"state\":\"ready\",\"appSize\":\"old estimate\"}"}));
+                assert_eq!(manager.properties["installSizes"][viewed]["state"], "loading");
+            }
+        }
     }
     #[test]
     fn removal_waits_for_its_own_consent() {

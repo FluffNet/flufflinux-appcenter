@@ -203,14 +203,29 @@ Page {
                         icon.name: "dialog-cancel"
                         onClicked: if (window.backend) window.backend.cancelJob(modelData.index)
                     }
-                    AppActionButton {
-                        objectName: "clearFailedDownloadButton"
-                        Layout.fillWidth: false
+                    ColumnLayout {
                         visible: modelData.failed === true && !modelData.active
-                        text: qsTr("Clear")
-                        icon.name: "edit-clear-history"
-                        Accessible.name: qsTr("Clear failed operation for %1").arg(modelData.name)
-                        onClicked: if (window.backend) window.backend.clearFailedJob(modelData.index)
+                        Layout.fillWidth: false
+                        Layout.preferredWidth: 176
+                        Layout.maximumWidth: 176
+                        spacing: 8
+                        AppActionButton {
+                            objectName: "retryDownloadButton"
+                            visible: modelData.canRetry === true
+                            enabled: !window.backend || !window.backend.sourcesBusy
+                            text: qsTr("Retry")
+                            icon.name: "view-refresh"
+                            onClicked: if (window.backend) window.backend.retryJob(modelData.index)
+                        }
+                        AppActionButton {
+                            objectName: "clearFailedDownloadButton"
+                            Layout.fillWidth: false
+                            visible: modelData.failed === true && !modelData.active
+                            text: qsTr("Clear")
+                            icon.name: "edit-clear-history"
+                            Accessible.name: qsTr("Clear failed operation for %1").arg(modelData.name)
+                            onClicked: if (window.backend) window.backend.clearFailedJob(modelData.index)
+                        }
                     }
                     AppActionButton {
                         objectName: "openDownloadButton"
@@ -245,7 +260,9 @@ Page {
                 Label {
                     objectName: "downloadJobError"
                     Layout.fillWidth: true; visible: !!modelData.error
-                    text: modelData.error || ""; textFormat: Text.PlainText; wrapMode: Text.Wrap
+                    text: window.jobError(modelData); textFormat: Text.PlainText; wrapMode: Text.Wrap
+                    LayoutMirroring.enabled: false
+                    horizontalAlignment: page.mirrored ? Text.AlignRight : Text.AlignLeft
                     color: window.accentTextColor
                 }
             }

@@ -9,6 +9,7 @@ Button {
     PointerFocusHandler {}
     id: control
     property bool downloadArrow: false
+    readonly property bool queueActionIcon: icon.name === "view-refresh" || icon.name === "edit-clear-history"
     hoverEnabled: true
     Layout.fillWidth: true
     Layout.minimumWidth: 176
@@ -37,11 +38,20 @@ Button {
             }
             Image {
                 objectName: "appActionIcon"
-                visible: !control.downloadArrow && control.icon.name !== "media-playback-start"
+                visible: !control.downloadArrow && !control.queueActionIcon && control.icon.name !== "media-playback-start"
                 Layout.preferredWidth: 24; Layout.preferredHeight: 24
                 sourceSize: Qt.size(24, 24)
                 source: !visible ? "" : control.icon.source.toString().length > 0 ? control.icon.source : window.iconSource(control.icon.name)
                 fillMode: Image.PreserveAspectFit
+            }
+            Kirigami.Icon {
+                objectName: "queueActionIcon"
+                visible: !control.downloadArrow && control.queueActionIcon
+                Layout.preferredWidth: 24; Layout.preferredHeight: 24
+                source: visible ? control.icon.name : ""
+                isMask: true
+                color: window.textColor
+                Accessible.ignored: true
             }
             Kirigami.Icon {
                 objectName: "openActionIcon"

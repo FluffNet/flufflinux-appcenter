@@ -17,9 +17,13 @@ QtObject {
     readonly property int activeCount: jobs.filter(function(job) { return job.active === true }).length
     readonly property var currentJobs: jobs.filter(function(job) { return job.active === true })
     readonly property int runningCount: currentJobs.filter(function(job) { return job.queued !== true }).length
-    readonly property real progress: currentJobs.length ? currentJobs.reduce(function(total, job) {
-        return total + job.progress
-    }, 0) / currentJobs.length : (jobs.length ? 1 : 0)
+    readonly property int currentBatch: Math.max(0, ...jobs.map(job => Number(job.queueBatch || 0)))
+    readonly property var batchJobs: jobs.filter(job => Number(job.queueBatch || 0) === currentBatch)
+    // Finished items stay in this batch's denominator. Averaging only active
+    // jobs made the toolbar jump backwards every time an app completed.
+    readonly property real progress: batchJobs.length ? batchJobs.reduce(function(total, job) {
+        return total + (job.active ? Math.max(0, Math.min(0.99, Number(job.progress || 0))) : 1)
+    }, 0) / batchJobs.length : 0
     onActiveCountChanged: if (activeCount > 0) completionSeen = false
 
     function markViewed() {

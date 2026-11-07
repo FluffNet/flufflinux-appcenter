@@ -19,7 +19,9 @@ ColumnLayout {
     readonly property bool showDependencyTotal: !(sizeInfo.appSize && sizeInfo.totalSize
                                                   && sizeInfo.appSize === sizeInfo.totalSize)
     function sizeText(field) {
-        return sizeInfo[field] || (sizeInfo.state === "loading" ? qsTr("Loading...") : qsTr("Unavailable"))
+        // A missing result is pending, not evidence that a size is unavailable.
+        return sizeInfo[field] || (!sizeInfo.state || sizeInfo.state === "loading"
+                                  ? qsTr("Loading...") : qsTr("Unavailable"))
     }
     visible: typeof window.backend !== "undefined" && !!window.backend
     Layout.fillWidth: true
@@ -41,7 +43,7 @@ ColumnLayout {
         text: actions.awaitingRemovalConfirmation ? qsTr("Waiting for confirmation")
               : actions.pending ? qsTr("Pending…")
               : actions.running && actions.removing && !actions.job.failed ? qsTr("Uninstalling…")
-              : actions.job ? qsTranslate("AppCenter", actions.job.status || "") + (actions.job.error ? "\n" + actions.job.error : "") : ""
+              : actions.job ? qsTranslate("AppCenter", actions.job.status || "") + (actions.job.error ? "\n" + window.jobError(actions.job) : "") : ""
         textFormat: Text.PlainText; wrapMode: Text.Wrap
         font.bold: actions.pending
         color: actions.job && actions.job.failed ? window.accentTextColor : actions.pending ? window.textColor : window.mutedTextColor

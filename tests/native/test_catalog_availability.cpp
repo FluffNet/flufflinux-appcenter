@@ -281,7 +281,7 @@ int main(int argc, char **argv) {
     QFile deployments(temporary.filePath("data/flatpak/.changed"));
     assert(deployments.open(QIODevice::WriteOnly)); deployments.write("changed"); deployments.close();
     current = CatalogInputs::fingerprint(); assert(!current.isEmpty() && current != previous);
-    qInfo("PASS: 12-hour cache, refresh-before-parse, no stale display, no warm source requests, unchanged local rebuild age, offline deferral, LAN/limited failure/recovery, invalidation and parse races");
+    qInfo("PASS: 6-hour cache, refresh-before-parse, no stale display, no warm source requests, unchanged local rebuild age, offline deferral, LAN/limited failure/recovery, invalidation and parse races");
     qInfo("PASS: nonblocking startup, deferred app links, failed worker, aggregate failures, partial/empty success, Settings, retry, cached fallback, no update checks");
     qInfo("PASS: overall progress, chunked IPC, monotonic retries, completion only after success, no false completion on source/parser failure");
 }

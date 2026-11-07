@@ -54,6 +54,22 @@ TestCase {
         mouseClick(findChild(dialog(), "retryRecoveryIoButton"))
         compare(mock.retried, 1); compare(mock.reviewed, -1)
     }
+    function test_interrupted_update_requires_explicit_retry_and_opens_queue() {
+        mock.recovery=({notice:1,items:[{name:"Example",action:"update",state:"interrupted"}],error:""})
+        tryCompare(dialog(),"visible",true)
+        compare(mock.reviewed,-1)
+        tryVerify(function(){ return findChild(dialog().contentItem,"reviewRecoveredJobButton") !== null })
+        const button=findChild(dialog().contentItem,"reviewRecoveredJobButton")
+        compare(button.text,"Retry")
+        verify(button.enabled)
+        waitForRendering(button)
+        mouseClick(button)
+        compare(mock.reviewed,0)
+        const stack=findChild(main,"navigationStack")
+        tryCompare(stack,"busy",false)
+        compare(stack.currentItem.objectName,"downloadsPage")
+        main.showCatalog(); tryCompare(stack,"busy",false)
+    }
     function test_notice_waits_until_window_reopened() {
         main.visible = false
         mock.recovery = ({notice: 1, items: [{name: "Example", action: "install", state: "interrupted"}], error: ""})

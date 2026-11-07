@@ -28,6 +28,7 @@ TestCase {
         function launchApp(app) { requested = "open:" + app.id }
         function answerReview(token, accept) { acceptedToken = accept ? token : -token; review = ({}) }
         function cancelJob(index) { requested = "cancel:" + index }
+        function retryJob(index) { requested = "retry:" + index }
     }
     AppCenter.Main { id: main; backend: backend; visible: true }
     function initTestCase() {
@@ -38,6 +39,43 @@ TestCase {
     function init() {
         main.requestActivate()
         waitForRendering(main.contentItem)
+    }
+    function test_failed_queue_retry_and_clear_fit_narrow_layouts_data() {
+        return [{tag:"ltr",rtl:false},{tag:"rtl",rtl:true}]
+    }
+    function test_failed_queue_retry_and_clear_fit_narrow_layouts(data) {
+        const oldWidth=main.width
+        main.width=720
+        main.contentItem.LayoutMirroring.enabled=data.rtl
+        backend.jobs=[{index:9,id:"org.example.Failed",name:"Long application name for a failed update",
+            active:false,failed:true,canRetry:true,action:"update",error:"[28] Timeout was reached",errorKind:"network",operations:[]}]
+        main.showDownloads()
+        const stack=findChild(main,"navigationStack")
+        tryCompare(stack,"busy",false)
+        const retry=findChild(stack.currentItem,"retryDownloadButton")
+        const clear=findChild(stack.currentItem,"clearFailedDownloadButton")
+        verify(retry.visible && clear.visible)
+        compare(retry.width,176)
+        compare(clear.width,retry.width)
+        for (const button of [retry,clear]) {
+            const icon=findChild(button,"queueActionIcon")
+            verify(icon.visible)
+            compare(icon.source,button.icon.name)
+            compare(icon.color,main.textColor)
+            verify(!findChild(button,"appActionIcon").visible)
+        }
+        verify(clear.y>=retry.y+retry.height)
+        const point=retry.mapToItem(stack.currentItem,0,0)
+        verify(point.x>=0 && point.x+retry.width<=stack.currentItem.width)
+        verify(findChild(stack.currentItem,"downloadJobError").text.indexOf("Please check your internet connection")>=0)
+        compare(findChild(stack.currentItem,"downloadJobError").effectiveHorizontalAlignment,
+            data.rtl ? Text.AlignRight : Text.AlignLeft)
+        mouseClick(retry)
+        compare(backend.requested,"retry:9")
+        main.showCatalog();tryCompare(stack,"busy",false)
+        backend.jobs=[]
+        main.width=oldWidth
+        main.contentItem.LayoutMirroring.enabled=Qt.binding(function(){return main.rtl})
     }
     function captureTouchLayout(page, name) {
         let captured = false
@@ -358,7 +396,8 @@ TestCase {
         const page = stack.currentItem
         const appSize = findChild(page, "appDownloadSize")
         const totalSize = findChild(page, "totalDownloadSize")
-        compare(appSize.text, "Unavailable")
+        compare(appSize.text, "Loading...")
+        compare(totalSize.text, "Loading...")
         backend.installSizes = {"org.example.Size": {state: "ready", appSize: "2 MiB", totalSize: "3 MiB"}}
         compare(appSize.text, "2 MiB")
         compare(totalSize.text, "3 MiB")
@@ -396,6 +435,7 @@ TestCase {
         verify(website.width < website.parent.width / 2)
         backend.installSizes = {"org.example.Size": {state: "unavailable"}}
         verify(totalSize.visible && totalCaption.visible)
+        compare(appSize.text, "Unavailable")
         compare(totalSize.text, "Unavailable")
         verify(findChild(page, "installAppButton").enabled)
         backend.installSizes = {"org.example.Size": {state: "partial", appSize: "2 MiB"}}
@@ -503,12 +543,16 @@ TestCase {
         compare(findChild(page, "appDownloadSize").text, "10 MiB")
         compare(findChild(page, "appAvailableVersion").text, "1.0")
         verify(!findChild(page, "totalDownloadSize").visible)
-        // The manager refreshes the tracked app's sizes before it publishes
-        // the new installed list. The same page must reveal those fresh values.
-        backend.installSizes = {"org.example.Installed": {state: "ready", appSize: "2 MiB", totalSize: "2 MiB"}}
+        // Removal publishes a pending estimate with the installed-list change
+        // and immediately starts its size worker, even while other jobs remain.
+        backend.installSizes = {"org.example.Installed": {state: "loading"}}
         backend.installedApps = []
         compare(stack.currentItem, page)
         verify(findChild(page, "appDownloadSize").visible)
+        compare(findChild(page, "appDownloadSize").text, "Loading...")
+        verify(findChild(page, "totalDownloadSize").visible)
+        compare(findChild(page, "totalDownloadSize").text, "Loading...")
+        backend.installSizes = {"org.example.Installed": {state: "ready", appSize: "2 MiB", totalSize: "2 MiB"}}
         compare(findChild(page, "appDownloadSize").text, "2 MiB")
         compare(findChild(page, "appAvailableVersion").text, "2.0")
         verify(!findChild(page, "totalDownloadSize").visible)
@@ -598,6 +642,11 @@ TestCase {
         const bytes = findChild(root, "downloadBytesLabel")
         const percentage = findChild(root, "overallPercentageLabel")
         waitForRendering(root)
+        if (bar.indeterminate) {
+            verify(!percentage.visible, "Unknown deployment progress has no percentage")
+            verify(findChild(root, "progressStageLabel").visible)
+            return
+        }
         verify(percentage.visible)
         compare(percentage.horizontalAlignment, Text.AlignRight)
         const percentageTop = percentage.mapToItem(bar, 0, 0)
@@ -683,16 +732,17 @@ TestCase {
         verify(!findChild(page, "appJobStatus").visible)
         verifyProgressHeader(page)
         const deployment = Object.assign({}, job, {downloadProgress: 1, downloadComplete: true, progress: 0.95, downloadedSize: "128.00 MiB", downloadTotalSize: "128.00 MiB",
-            phase: "install", installCompleted: 1, installProgress: 0.5})
+            phase: "install", progressIndeterminate:true, installCompleted: 1, installProgress: 0.5})
         backend.jobs = [deployment]
         compare(bar.value, 0.95)
-        verify(bar.activeStep && !bar.indeterminate)
-        compare(findChild(page, "overallPercentageLabel").text, "95%")
+        verify(bar.indeterminate)
+        verify(!findChild(page, "overallPercentageLabel").visible)
+        compare(findChild(page, "progressStageLabel").text, "Installing…")
         compare(findChild(page, "completedOperationsLabel"), null)
         verify(!findChild(page, "downloadBytesLabel").visible)
         verifyProgressHeader(page)
         // A dependency deploying before the next pull must not hide the total.
-        backend.jobs = [Object.assign({}, job, {phase: "install", downloadSpeed: "0.00 MiB/s"})]
+        backend.jobs = [Object.assign({}, job, {phase: "install", progressIndeterminate: true, downloadSpeed: "0.00 MiB/s"})]
         verify(findChild(page, "downloadBytesLabel").visible)
         // Download info stays top-left and wraps without displacing the percentage.
         const previousWidth = main.width
@@ -715,11 +765,11 @@ TestCase {
         compare(findChild(card, "overallPercentageLabel").text, "50%")
         verifyProgressHeader(card)
         captureTouchLayout(stack.currentItem, "downloads-progress-header")
-        backend.jobs = [Object.assign({}, job, {hasDownload: false, phase: "install"})]
+        backend.jobs = [Object.assign({}, job, {hasDownload: false, phase: "install", progressIndeterminate:true})]
         card = findChild(stack.currentItem, "downloadJobProgress")
         verify(!findChild(card, "downloadBytesLabel").visible)
         verify(findChild(card, "overallInstallProgress").visible)
-        verify(findChild(card, "overallInstallProgress").activeStep)
+        verify(findChild(card, "overallInstallProgress").indeterminate)
         compare(findChild(card, "completedOperationsLabel"), null)
         compare(findChild(card, "downloadBytesLabel").color, main.textColor)
         compare(findChild(card, "overallPercentageLabel").color, main.textColor)

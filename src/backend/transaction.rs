@@ -1,7 +1,7 @@
 //! Killable, unprivileged Flatpak transactions. UI requests never bypass consent.
 use super::{
-    addons, bytes, flag, local_preview, number, process, progress, repositories, rows, sources,
-    storage, text, updates, valid_id,
+    addons, bytes, failure::Failure, flag, local_preview, number, process, repositories, rows,
+    sources, storage, text, updates, valid_id,
 };
 use gio::prelude::*;
 use libflatpak::{prelude::*, RefKind, Transaction, TransactionOperationType as OpType};
@@ -34,6 +34,14 @@ struct Control {
     wake: Condvar,
 }
 impl Control {
+    fn pause(&self, delay: Duration) -> bool {
+        let reply = self.reply.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = self
+            .wake
+            .wait_timeout_while(reply, delay, |_| !self.cancel.is_cancelled())
+            .unwrap_or_else(|e| e.into_inner());
+        !self.cancel.is_cancelled()
+    }
     fn new() -> Arc<Self> {
         let control = Arc::new(Self {
             cancel: gio::Cancellable::new(),
@@ -103,6 +111,9 @@ struct State {
     isolated_preview: bool,
     declined: bool,
     operation_error: bool,
+    failure: Option<Failure>,
+    failed_ref: String,
+    attempts: u64,
     progress: HashMap<String, libflatpak::TransactionProgress>,
 }
 impl State {
@@ -191,6 +202,18 @@ fn download_status(raw: &str) -> bool {
     }
     false
 }
+fn diagnostic_plan(operations: &[Value]) -> Vec<Value> {
+    // Refs and commit prefixes are enough to identify a changed dependency.
+    // Do not put repository URLs, credentials or signing data into logs.
+    operations
+        .iter()
+        .take(16)
+        .map(|op| {
+            json!({"ref":op["ref"],"action":op["action"],
+        "commit":text(op,"commit").chars().take(12).collect::<String>()})
+        })
+        .collect()
+}
 fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
     let policy = state.borrow().updating.then(|| updates::configure(tx));
     let s = state.clone();
@@ -214,9 +237,21 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
             } else { updates::operation_info(&op) };
             total+=number(&row,"downloadBytes");operations.push(row);
         }
-        if w.updating&&!updates::matches_resolved_plan(&installation,rows(&w.request["plan"]),&operations){w.problem="The update or its dependencies changed. Check for updates again before continuing.".into();return false;}
+        let mut target = String::new();
+        let mut replanned = false;
+        if let Some(policy) = &policy {
+            target = match policy.validate_current_plan(&w.request, &operations) {
+                Ok(target) => target,
+                Err(error) => { w.problem=error; return false; }
+            };
+            replanned = !updates::matches_resolved_plan(&installation, rows(&w.request["plan"]), &operations);
+            if replanned {
+                eprintln!("Refreshed update plan for {}: {} -> {}", w.id,
+                    json!(diagnostic_plan(rows(&w.request["plan"]))),json!(diagnostic_plan(&operations)));
+            }
+        }
         send(json!({"type":"identity","appId":w.id}));
-        let plan=json!({"type":"plan","appId":w.id,"operations":operations,"appBytes":app_size,"totalBytes":total,"appSize":bytes(app_size),"totalSize":bytes(total),"state":"ready"});w.plan_ready=true;
+        let plan=json!({"type":"plan","appId":w.id,"operations":operations,"targetRef":target,"replanned":replanned,"appBytes":app_size,"totalBytes":total,"appSize":bytes(app_size),"totalSize":bytes(total),"state":"ready"});w.plan_ready=true;
         if flag(&w.request,"prepareOnly"){w.preview_plan=Some(plan);return false;}
         send(plan);
         if flag(&w.request,"estimateOnly"){return false;}
@@ -229,18 +264,38 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
         if !w.addon{if let Err(error)=w.close_app(){w.problem=error;return false;}}true
     });
     let s = state.clone();
-    tx.connect_add_new_remote(move|_,_,_,name,url|{
-        let mut w=s.borrow_mut();
-        if w.updating{w.problem="This update needs a new software source. Configure it first, then check for updates again.".into();return false;}
-        if flag(&w.request,"estimateOnly"){w.problem="Sizes will be available after the required software source is configured.".into();return false;}
-        if !repositories::safe_url(url){w.problem="The new repository must use HTTPS without embedded credentials.".into();return false;}
+    tx.connect_add_new_remote(move |_, _, _, name, url| {
+        let mut w = s.borrow_mut();
+        if w.updating {
+            w.problem =
+                "This update needs a new software source. Add it in Sources, then retry this item."
+                    .into();
+            return false;
+        }
+        if flag(&w.request, "estimateOnly") {
+            w.problem =
+                "Sizes will be available after the required software source is configured.".into();
+            return false;
+        }
+        if !repositories::safe_url(url) {
+            w.problem = "The new repository must use HTTPS without embedded credentials.".into();
+            return false;
+        }
         // Only the disposable preview installation may add a source without consent.
         // A real install needs consent from its app page or a separate review.
-        if w.isolated_preview{return true;}
-        if source_reviewed(&w.request,url){return true;}
-        if sources::official_definition(url).is_some(){return true;}
-        let accepted = w.review_source(name,url);
-        if !accepted { w.control.cancel.cancel(); }
+        if w.isolated_preview {
+            return true;
+        }
+        if source_reviewed(&w.request, url) {
+            return true;
+        }
+        if sources::official_definition(url).is_some() {
+            return true;
+        }
+        let accepted = w.review_source(name, url);
+        if !accepted {
+            w.control.cancel.cancel();
+        }
         accepted
     });
     let s = state.clone();
@@ -376,10 +431,16 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
     tx.connect_operation_error(move |_, op, error, _| {
         let mut w = state.borrow_mut();
         w.operation_error = true;
-        w.problem = error.to_string();
+        let failure = Failure::native(error);
+        let detail = error.to_string();
+        if failure.replaces(w.failure) {
+            w.problem = detail.clone();
+            w.failure = Some(failure);
+            w.failed_ref = op.get_ref().unwrap_or_default().into();
+        }
         w.operation(
             &op.get_ref().unwrap_or_default(),
-            &w.problem,
+            &detail,
             0.0,
             "failed",
             0.0,
@@ -521,50 +582,87 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
     }
     connect(&tx, state.clone());
     if updating {
-        let reference = text(&request, "flatpakRef");
-        let commit = text(&request, "commit");
-        let parsed = libflatpak::Ref::parse(reference)
-            .map_err(|_| "Invalid update selection. Check for updates again.")?;
-        if parsed.name().as_deref() != Some(id)
-            || !progress::valid_commit(commit)
-            || !progress::valid_commit(text(&request, "oldCommit"))
-            || rows(&request["plan"]).is_empty()
-        {
-            return Err("Invalid update selection. Check for updates again.".into());
+        let mut reference = text(&request, "flatpakRef").to_owned();
+        let parsed = libflatpak::Ref::parse(&reference).map_err(|_| {
+            "The saved update has an invalid app reference. Open the app page and try again."
+        })?;
+        if parsed.name().as_deref() != Some(id) || !sources::valid_name(remote) {
+            return Err("The saved update does not match this app or its source. Open the app page and try again.".into());
         }
-        // A preceding queued transaction may already have performed this whole
-        // plan, including replacing/removing the original app.
-        if rows(&request["plan"])
-            .iter()
-            .all(|op| updates::operation_satisfied(&installation, op))
-        {
-            return Ok(());
-        }
-        let current = installation
-            .installed_ref(
-                parsed.kind(),
-                id,
-                parsed.arch().as_deref(),
-                parsed.branch().as_deref(),
-                Some(&cancel),
-            )
-            .map_err(|_| "This app is no longer installed. Check for updates again.")?;
+        // Resolve even apparently completed old plans: a newer publication can
+        // exist now. A real Flatpak no-op verifies the current installation and
+        // must not update history dates or claim an old snapshot is complete.
+        let current = installation.installed_ref(
+            parsed.kind(),
+            id,
+            parsed.arch().as_deref(),
+            parsed.branch().as_deref(),
+            Some(&cancel),
+        );
+        let current = match current {
+            Ok(current) => current,
+            Err(error)
+                if error.matches(libflatpak::Error::NotInstalled)
+                    && !text(&request, "targetRef").is_empty()
+                    && request["targetRef"] != request["flatpakRef"] =>
+            {
+                // A partially completed rebase (or another updater) may have
+                // removed the old ID already. Resume only an installed known
+                // successor, never reinstall an app the user removed.
+                let target = libflatpak::Ref::parse(text(&request, "targetRef"))
+                    .map_err(|e| e.to_string())?;
+                if target.kind() != parsed.kind() || target.arch() != parsed.arch() {
+                    return Err("The saved app replacement has an incompatible reference.".into());
+                }
+                let current = installation
+                    .installed_ref(
+                        target.kind(),
+                        target.name().as_deref().ok_or("Invalid replacement app")?,
+                        target.arch().as_deref(),
+                        target.branch().as_deref(),
+                        Some(&cancel),
+                    )
+                    .map_err(|e| e.to_string())?;
+                reference = text(&request, "targetRef").into();
+                let mut w = state.borrow_mut();
+                w.id = target.name().unwrap_or_default().into();
+                w.request["id"] = w.id.clone().into();
+                w.request["flatpakRef"] = reference.clone().into();
+                current
+            }
+            Err(error) if error.matches(libflatpak::Error::NotInstalled) => {
+                return Err(
+                    "This app is no longer installed. It has not been reinstalled automatically."
+                        .into(),
+                )
+            }
+            Err(error) => return Err(error.to_string()),
+        };
         if current.origin().as_deref() != Some(remote) {
-            return Err("The installed source changed. Check for updates again.".into());
+            return Err("The installed app now uses a different software source. Open Sources to review it.".into());
         }
-        if current.commit().as_deref() != Some(commit)
-            && current.commit().as_deref() != Some(text(&request, "oldCommit"))
+        let origin=installation.remote_by_name(remote,Some(&cancel))
+            .map_err(|_| "The app's software source is missing. Add or enable it in Sources, then retry this item.")?;
+        if origin.is_disabled()
+            || (!text(&request, "sourceUrl").is_empty()
+                && sources::url(&origin) != text(&request, "sourceUrl"))
         {
-            return Err("The installed version changed. Check for updates again.".into());
+            return Err("The app's software source changed or is disabled. Open Sources, then retry this item.".into());
         }
-        for op in rows(&request["plan"]) {
+        // Another queued transaction or package manager can advance an installed
+        // deployment. Resolve its current update rather than rejecting the old
+        // installed-commit snapshot. The installed origin must remain the same.
+        for op in rows(&request["plan"])
+            .iter()
+            .filter(|op| op["ref"] == request["targetRef"] || op["ref"] == request["flatpakRef"])
+        {
             if text(op, "action") == "uninstall" {
                 continue;
             }
             let remote = installation
                 .remote_by_name(text(op, "remote"), Some(&cancel))
                 .map_err(|_| {
-                    "An update source changed or was disabled. Check for updates again."
+                    "An update source is missing or disabled. Open Sources, then retry this item."
                 })?;
             if remote.is_disabled()
                 || sources::url(&remote) != text(op, "sourceUrl")
@@ -572,11 +670,11 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
                 || sources::source_key(&installation, &remote)? != text(op, "sourceKey")
             {
                 return Err(
-                    "An update source changed or was disabled. Check for updates again.".into(),
+                    "The update source configuration or signing keys changed. Open Sources to review it, then retry this item.".into(),
                 );
             }
         }
-        tx.add_update(reference, &[], None)
+        tx.add_update(&reference, &[], None)
             .map_err(|e| e.to_string())?;
     } else if removing {
         let current = installation
@@ -615,8 +713,29 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
         {
             return Err("Catalog has an invalid Flatpak application reference.".into());
         }
-        tx.add_install(remote, &reference, &[])
-            .map_err(|e| e.to_string())?;
+        match installation.installed_ref(
+            parsed.kind(),
+            id,
+            parsed.arch().as_deref(),
+            parsed.branch().as_deref(),
+            Some(&cancel),
+        ) {
+            Ok(current) => {
+                if current.origin().as_deref() != Some(remote) {
+                    return Err("This app is already installed from a different source. Open its app page to review the installed source.".into());
+                }
+                // Another updater or an earlier partial attempt can deploy it
+                // before a stale Install action reaches this worker. Verify the
+                // current same-origin release instead of failing AlreadyInstalled.
+                tx.add_update(&reference, &[], None)
+                    .map_err(|e| e.to_string())?;
+            }
+            Err(error) if error.matches(libflatpak::Error::NotInstalled) => {
+                tx.add_install(remote, &reference, &[])
+                    .map_err(|e| e.to_string())?;
+            }
+            Err(error) => return Err(error.to_string()),
+        }
     } else if action == "source" {
         if let Some(path) = &bundle_path {
             let bundle = libflatpak::BundleRef::new(&gio::File::for_path(path))
@@ -770,6 +889,12 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
         }
     }
     {
+        if let Err(error) = &result {
+            let mut w = state.borrow_mut();
+            if w.failure.is_none() && w.problem.is_empty() {
+                w.failure = Some(Failure::native(error));
+            }
+        }
         let w = state.borrow();
         if result.is_err() || w.operation_error {
             if (flag(&request, "estimateOnly") || flag(&request, "prepareOnly"))
@@ -797,6 +922,50 @@ fn execute(state: Rc<RefCell<State>>) -> Result<(), String> {
         clear_data(id, &cancel)?;
     }
     Ok(())
+}
+fn execute_with_recovery(state: Rc<RefCell<State>>) -> Result<(), String> {
+    let request = state.borrow().request.clone();
+    let retry = matches!(text(&request, "action"), "install" | "update" | "source")
+        && !flag(&request, "prepareOnly")
+        && !flag(&request, "estimateOnly");
+    for attempt in 1..=3 {
+        {
+            let mut w = state.borrow_mut();
+            w.attempts = attempt;
+            w.problem.clear();
+            w.failure = None;
+            w.failed_ref.clear();
+            w.operation_error = false;
+            w.plan_ready = false;
+            w.progress.clear();
+        }
+        let result = execute(state.clone());
+        let (control, failure, cancelled) = {
+            let w = state.borrow();
+            (
+                w.control.clone(),
+                w.failure.unwrap_or_else(|| {
+                    Failure::message(result.as_ref().err().map(String::as_str).unwrap_or(""))
+                }),
+                w.declined || w.control.cancel.is_cancelled(),
+            )
+        };
+        if result.is_ok() || cancelled || !retry || !failure.retryable || attempt == 3 {
+            return result;
+        }
+        eprintln!(
+            "Retrying Flatpak transaction after {} failure (attempt {attempt}/3): {}",
+            failure.kind,
+            result.as_ref().unwrap_err()
+        );
+        send(
+            json!({"type":"status","status":"Preparing…","retrying":true,"attempt":attempt+1,"errorKind":failure.kind}),
+        );
+        if !control.pause(Duration::from_secs(if attempt == 1 { 1 } else { 3 })) {
+            return Err("Cancelled".into());
+        }
+    }
+    unreachable!()
 }
 pub fn run(request: Value) -> i32 {
     if unsafe { libc::geteuid() } == 0 {
@@ -837,22 +1006,38 @@ pub fn run(request: Value) -> i32 {
         isolated_preview: false,
         declined: false,
         operation_error: false,
+        failure: None,
+        failed_ref: String::new(),
+        attempts: 0,
         progress: HashMap::new(),
     }));
-    let result = execute(state.clone());
+    let result = execute_with_recovery(state.clone());
     debug_assert_eq!(
         Rc::strong_count(&state),
         1,
         "transaction callbacks retained worker state"
     );
     let success = result.is_ok();
-    let error = result.err().unwrap_or_default();
-    let cancelled =
-        state.borrow().declined || control.cancel.is_cancelled() || error == "Cancelled";
+    let error = super::failure::detail(&result.err().unwrap_or_default());
+    let failure = state
+        .borrow()
+        .failure
+        .unwrap_or_else(|| Failure::message(&error));
+    let error =
+        if !state.borrow().failed_ref.is_empty() && !error.contains(&state.borrow().failed_ref) {
+            format!("{}\n{error}", state.borrow().failed_ref)
+        } else {
+            error
+        };
+    let cancelled = state.borrow().declined
+        || control.cancel.is_cancelled()
+        || failure.kind == "cancelled"
+        || error == "Cancelled";
     let sources_changed =
         success && state.borrow().request["action"] == "source" && !state.borrow().isolated_preview;
     send(
-        json!({"type":"result","success":success,"cancelled":cancelled,"error":error,"sourcesChanged":sources_changed}),
+        json!({"type":"result","success":success,"cancelled":cancelled,"error":error,"sourcesChanged":sources_changed,
+            "errorKind":if cancelled{"cancelled"}else{failure.kind},"retryable":!cancelled&&failure.retryable,"attempts":state.borrow().attempts}),
     );
     // The stdin reader owns no transaction state and is intentionally detached.
     // Process exit must never wait indefinitely for another stdin byte.

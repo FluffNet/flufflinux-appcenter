@@ -11,7 +11,7 @@ use std::os::unix::fs::OpenOptionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-pub const CACHE_LIFETIME: i64 = 12 * 3600;
+pub const CACHE_LIFETIME: i64 = 6 * 3600;
 pub const CACHE_LIMIT: u64 = 64 * 1024 * 1024;
 const CACHE_VERSION: u32 = 3;
 static SEQUENCE: AtomicU64 = AtomicU64::new(0);
@@ -220,7 +220,7 @@ pub fn update_config(edit: impl FnOnce(&glib::KeyFile)) -> io::Result<()> {
 mod tests {
     use super::*;
     #[test]
-    fn cache_is_checksummed_and_expires_at_twelve_hours() {
+    fn cache_is_checksummed_and_expires_at_six_hours() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("catalog.json");
         let now = Utc::now();
@@ -243,7 +243,7 @@ mod tests {
     fn local_rebuild_preserves_refresh_age() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("catalog.json");
-        let saved = Utc::now() - chrono::Duration::hours(11);
+        let saved = Utc::now() - chrono::Duration::hours(5);
         write_cache(
             &path,
             "new-inputs",

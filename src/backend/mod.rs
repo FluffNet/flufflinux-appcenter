@@ -3,6 +3,7 @@ pub mod addons;
 pub mod background;
 pub mod catalog;
 pub mod ffi;
+mod failure;
 mod http;
 pub mod images;
 mod local_preview;
