@@ -408,7 +408,7 @@ fn connect(tx: &Transaction, state: Rc<RefCell<State>>) {
                 if file == "installation-dates.json" && op.operation_type() == OpType::Update {
                     continue;
                 }
-                saved &= storage::history_save(
+                saved &= storage::history_save_retry(
                     &storage::data_dir().join(file),
                     &w.scope,
                     &reference,

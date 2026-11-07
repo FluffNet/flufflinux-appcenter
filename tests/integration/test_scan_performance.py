@@ -103,6 +103,12 @@ with tempfile.TemporaryDirectory(prefix="appcenter-scan-perf-") as directory:
         assert child.returncode == 0, diagnostics[-5000:]
         rows = json.loads(output.splitlines()[-1])
         assert rows["type"] == "updates" and not rows["errors"] and not rows["skipped"], rows
+        if binary == candidate:
+            progress = [json.loads(line)["progress"] for line in output.splitlines()
+                        if json.loads(line).get("type") == "scan-progress"]
+            assert progress and progress[0] == 0 and progress[-1] == 99, progress
+            assert all(0 <= value <= 99 for value in progress), progress
+            assert progress == sorted(progress), "Parallel completion made scan progress regress"
         assert len(rows["updates"]) == app_count + 1, {"count":len(rows["updates"]),"ids":[r["id"] for r in rows["updates"]]}
         for row in rows["updates"]:
             assert row["plan"] and row["downloadBytes"] > 0 and row["commit"]

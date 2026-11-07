@@ -4,6 +4,47 @@ The update list still appears only after versions, download sizes, dependency
 plans and permission comparisons have been prepared. No provisional rows or
 new UI strings were introduced.
 
+## 2026.11-2 checking indicator
+
+The package candidate is now `2026.11-2`; the upstream application/Cargo
+version remains `2026.11` / `2026.11.0`. The accepted `2026.11-1` Desktop
+candidate and installed package are not replaced by these draft changes.
+
+Checking shows a percentage, the current source or app, and the existing
+activity spinner. The percentage describes completed scan stages, not network
+bytes or an estimate of remaining time. Each installation reserves 25% for
+source discovery, 20% for version metadata and 55% for planning/finalization.
+A slow Flathub response holds the percentage steady while the source remains
+visible. No timer invents progress. Source names and app identities remain
+untranslated; captions reuse existing translations.
+
+Worker progress is capped below 100 and the manager rejects regressions.
+Only a finished result publishes 100 alongside the fully populated list.
+Cancellation/error does not publish completion, and a new scan resets to zero.
+The same progress bar mirrors its fill in RTL.
+
+Live mixed-job testing also exposed brief contention between an update worker
+and removal history writes. Transaction workers now retry only WouldBlock
+history-lock errors for at most 500 ms; GUI history writes remain nonblocking
+and permanent errors are still reported. A held-lock/two-writer regression
+verifies eventual saving and preservation of both entries.
+
+Validation after these additions: 159 Rust checks including translation and
+launcher coverage passed, strict Clippy and release/fakeroot staging passed,
+and 63 Updates QML checks passed. The real complete-row comparison checks
+monotonic worker percentages in addition to unchanged plans/data. Nine live
+mixed update/removal runs passed (three each in English, Hebrew RTL and
+German), including progress reset and 100 only with complete results. Eighteen
+native screenshots cover both palettes, source/planning states and narrow
+long-label layouts. The narrow German heading can shrink further before
+wrapping to avoid a single orphaned character.
+
+Render those screenshots with:
+
+```sh
+python3 tests/integration/capture_update_check.py target/debug/flufflinux-appcenter
+```
+
 ## Baseline findings
 
 An instrumented scan of the development VM found 33 pending app/runtime

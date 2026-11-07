@@ -88,7 +88,7 @@ impl Manager {
         let properties = json!({"jobs":[],"review":{},"recovery":{"items":[],"error":"","checking":false,"saving":false,"notice":0},"busy":false,"backgroundWorkPending":false,
             "installedApps":[],"installedLoading":true,"installedError":"","iconRevision":0,
             "installSizes":{},"appPermissions":{},"appAddons":{},"screenshotFiles":{},
-            "updates":{"state":"idle","status":"","skipped":[],"error":"","lastChecked":"","lastUpdated":""},"updateItems":[],
+            "updates":{"state":"idle","progress":0,"phase":"","target":"","status":"","skipped":[],"error":"","lastChecked":"","lastUpdated":""},"updateItems":[],
             "catalog":[],"catalogLoading":false,"catalogProgress":0,"catalogSourcesUnavailable":false,
             "repositories":[],"sourcesBusy":false,"sourceInputStatus":"","sourcesError":"","popularity":super::popularity::cached()});
         let mut manager = Self {

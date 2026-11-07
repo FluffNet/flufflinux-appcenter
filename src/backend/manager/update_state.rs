@@ -4,7 +4,7 @@ impl Manager {
         if self.busy() || self.stopping {
             return;
         }
-        self.merge("updates",json!({"state":"checking","items":[],"error":"","skipped":[],"status":"Checking for app updates…"}));
+        self.merge("updates",json!({"state":"checking","progress":0,"phase":"inventory","target":"","items":[],"error":"","skipped":[],"status":"Checking for app updates…"}));
         self.update_sources_changed = false;
         self.worker(
             "updates",
@@ -56,6 +56,13 @@ impl Manager {
             return;
         }
         match text(message, "type") {
+            "scan-progress" => {
+                if let Some(percent) = message["progress"].as_u64() {
+                    let percent = percent.min(99).max(number(&self.properties["updates"], "progress"));
+                    self.merge("updates", json!({"progress":percent,
+                        "phase":message["phase"],"target":message["target"]}));
+                }
+            }
             "status" => self.merge("updates", json!({"status":message["message"]})),
             "sources" => {
                 self.update_sources_changed = true;
@@ -88,7 +95,7 @@ impl Manager {
         // The result marker is captured before the transport removes its task.
         if self.properties["updates"]["state"] == "checking" {
             if success(event) && result {
-                self.merge("updates", json!({"state":"ready"}));
+                self.merge("updates", json!({"state":"ready","progress":100,"phase":"complete","target":""}));
             } else {
                 self.merge("updates",json!({"state":"error","items":[],"error":if flag(event,"timedOut"){"Checking for app updates timed out. Try again."}else{"Could not finish checking for app updates. Try again."}}));
             }
@@ -103,6 +110,34 @@ impl Manager {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scan_progress_is_monotonic_and_only_a_finished_result_reaches_one_hundred() {
+        let mut manager = Manager::new(vec![]);
+        manager.check_updates();
+        assert_eq!(manager.properties["updates"]["progress"], 0);
+        for (input, expected) in [(12, 12), (8, 12), (100, 99), (999, 99)] {
+            manager.update_message(&json!({"type":"scan-progress","progress":input,
+                "phase":"metadata","target":"flathub"}));
+            assert_eq!(manager.properties["updates"]["progress"], expected);
+            assert!(rows(&manager.properties["updateItems"]).is_empty());
+        }
+        manager.updates_finished(false, &json!({"timedOut":true,"code":1}));
+        assert_eq!(manager.properties["updates"]["state"], "error");
+        assert_eq!(manager.properties["updates"]["progress"], 99);
+        manager.tasks.remove("updates");
+        manager.check_updates();
+        assert_eq!(manager.properties["updates"]["progress"], 0);
+        manager.update_message(&json!({"type":"scan-progress","progress":47,"phase":"plan","target":"App"}));
+        manager.cancel_updates();
+        manager.update_message(&json!({"type":"scan-progress","progress":90}));
+        assert_eq!(manager.properties["updates"]["progress"], 47);
+        manager.tasks.remove("updates");
+        manager.check_updates();
+        manager.updates_finished(true, &json!({"code":0}));
+        assert_eq!(manager.properties["updates"]["state"], "ready");
+        assert_eq!(manager.properties["updates"]["progress"], 100);
+    }
 
     #[test]
     fn status_merge_preserves_update_items_and_skips_unchanged_notifications() {

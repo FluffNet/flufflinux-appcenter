@@ -281,6 +281,43 @@ TestCase {
         ready()
         verify(!label.visible)
     }
+    function test_checking_progress_and_target_follow_layout_data() {
+        return [{tag:"ltr",rtl:false},{tag:"rtl",rtl:true}]
+    }
+    function test_checking_progress_and_target_follow_layout(data) {
+        main.contentItem.LayoutMirroring.enabled=data.rtl
+        open()
+        const bar=findChild(page(),"updateCheckProgress")
+        const percent=findChild(page(),"updateCheckPercentage")
+        const target=findChild(page(),"updateCheckTarget")
+        for (const value of [0,25,45,80,99]) {
+            backend.updates={state:"checking",items:[],progress:value,phase:"source",target:"flathub"}
+            waitForPolish(page())
+            verify(bar.visible)
+            compare(bar.indeterminate,false)
+            compare(bar.value,value)
+            compare(percent.text,value+"%")
+            verify(target.text.indexOf("Source:")>=0 && target.text.indexOf("flathub")>=0)
+            const fill=findChild(bar,"progressFill")
+            const start=fill.mapToItem(bar,0,0).x
+            const end=fill.mapToItem(bar,fill.width,0).x
+            fuzzyCompare(Math.min(start,end),data.rtl ? bar.width*(1-value/100) : 0,0.1)
+            fuzzyCompare(Math.abs(end-start),bar.width*value/100,0.1)
+        }
+        // Waiting on a slow source must not advance on a timer.
+        wait(200)
+        compare(bar.value,99)
+        backend.updates={state:"checking",items:[],progress:99,phase:"plan",target:"Untranslated App Name"}
+        compare(target.text,"Untranslated App Name")
+        backend.updates={state:"cancelled",items:[],progress:99}
+        verify(!bar.visible)
+        backend.updates={state:"checking",items:[],progress:0,phase:"inventory",target:""}
+        compare(bar.value,0)
+        verify(!target.visible)
+        ready()
+        verify(!bar.visible)
+        main.contentItem.LayoutMirroring.enabled=false
+    }
     function test_main_navigation_and_disabled_search() {
         const search = findChild(root(), "searchField")
         const sidebar = findChild(root(), "categorySidebar")
