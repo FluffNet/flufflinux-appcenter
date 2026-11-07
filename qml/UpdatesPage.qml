@@ -153,7 +153,7 @@ Page {
                 objectName: "appUpdatesTitle"
                 text: qsTr("App Updates"); color: window.textColor
                 font.pixelSize: 32; font.weight: Font.DemiBold
-                fontSizeMode: Text.HorizontalFit; minimumPixelSize: 24
+                fontSizeMode: Text.HorizontalFit; minimumPixelSize: 20
                 Layout.fillWidth: true; Layout.minimumWidth: 0
                 wrapMode: Text.Wrap
             }
@@ -339,23 +339,50 @@ Page {
                     }
                 }
             }
-            RowLayout {
+            ColumnLayout {
                 objectName: "updateCheckIndicator"
                 anchors.centerIn: parent
-                width: Math.min(implicitWidth, parent.width)
-                spacing: 10
+                width: Math.min(480, parent.width)
+                spacing: 12
                 visible: page.checking
-                LoadingSpinner {
-                    objectName: "updateCheckSpinner"
-                    running: page.checking && page.visible
-                    color: window.textColor
-                    Layout.preferredWidth: 24; Layout.preferredHeight: 24
-                }
-                PageStatusLabel {
-                    objectName: "updateCheckStatus"
-                    text: qsTr("Checking for app updates…")
-                    textFormat: Text.PlainText; wrapMode: Text.Wrap
+                RowLayout {
                     Layout.fillWidth: true
+                    spacing: 10
+                    LoadingSpinner {
+                        objectName: "updateCheckSpinner"
+                        running: page.checking && page.visible
+                        color: window.textColor
+                        Layout.preferredWidth: 24; Layout.preferredHeight: 24
+                    }
+                    PageStatusLabel {
+                        objectName: "updateCheckStatus"
+                        text: qsTr("Checking for app updates…")
+                        textFormat: Text.PlainText; wrapMode: Text.Wrap
+                        Layout.fillWidth: true; Layout.minimumWidth: 0
+                    }
+                    PageStatusLabel {
+                        objectName: "updateCheckPercentage"
+                        text: qsTr("%1%").arg(Math.floor(checkProgress.value))
+                        Layout.minimumWidth: 48
+                        horizontalAlignment: Text.AlignRight
+                    }
+                }
+                FluffProgressBar {
+                    id: checkProgress
+                    objectName: "updateCheckProgress"
+                    Layout.fillWidth: true
+                    from: 0; to: 100
+                    value: Math.max(0, Math.min(100, Number(page.updateData.progress || 0)))
+                    Accessible.name: qsTr("Checking for app updates…")
+                }
+                Label {
+                    objectName: "updateCheckTarget"
+                    Layout.fillWidth: true; Layout.minimumWidth: 0
+                    visible: String(page.updateData.target || "").length > 0
+                    text: (page.updateData.phase === "plan" ? "" : qsTr("Source:") + " ")
+                        + Bidi.format("%1", [String(page.updateData.target || "")], window.rtl)
+                    textFormat: Text.PlainText; wrapMode: Text.WrapAnywhere
+                    color: window.mutedTextColor
                 }
             }
             PageStatusLabel {

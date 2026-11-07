@@ -5,6 +5,13 @@ use libflatpak::{prelude::*, Installation, RefKind, Transaction};
 use serde_json::{json, Value};
 use std::{cell::RefCell, collections::BTreeMap, rc::Rc};
 
+fn scan_timing(stage: &str, target: &str, started: std::time::Instant) {
+    if std::env::var("APPCENTER_PROFILE_SCAN").as_deref() == Ok("1") {
+        eprintln!("APPCENTER_SCAN_TIMING {}", json!({"stage":stage,"target":target,
+            "elapsedUs":started.elapsed().as_micros()}));
+    }
+}
+
 pub fn operation_info(op: &libflatpak::TransactionOperation) -> Value {
     let reference = op.get_ref().unwrap_or_default();
     json!({"ref":reference.as_str(),"name":reference.split('/').nth(1).unwrap_or(""),"dependency":reference.starts_with("runtime/"),
@@ -210,7 +217,9 @@ pub fn checked_operation(
         return Err("The update source is disabled or could not be verified.".into());
     }
     row["sourceUrl"] = sources::url(&remote).into();
+    let started = std::time::Instant::now();
     row["sourceKey"] = sources::source_key(installation, &remote)?.into();
+    scan_timing("source-key", text(&row, "remote"), started);
     Ok(row)
 }
 
@@ -329,6 +338,80 @@ fn plan(installation: &Installation, reference: &str) -> Result<Plan, String> {
         })
     }
 }
+
+fn resolve_plans(
+    scope: &str,
+    references: &[String],
+    mut progress: impl FnMut(usize, bool),
+) -> Vec<Result<Plan, String>> {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    };
+    // Each thread owns its Flatpak handle and GLib context. Limit repository
+    // metadata duplication; never create one thread/process per update.
+    let workers = references.len().min(2);
+    let next = AtomicUsize::new(0);
+    let mut results: Vec<_> = references
+        .iter()
+        .map(|_| Err("Could not resolve update".into()))
+        .collect();
+    std::thread::scope(|threads| {
+        let (sender, receiver) = mpsc::sync_channel(workers.max(1));
+        for _ in 0..workers {
+            let sender = sender.clone();
+            let next = &next;
+            threads.spawn(move || {
+                let context = glib::MainContext::new();
+                let _ = context.with_thread_default(|| {
+                    let installation = sources::installation(scope);
+                    loop {
+                        let index = next.fetch_add(1, Ordering::Relaxed);
+                        let Some(reference) = references.get(index) else {
+                            break;
+                        };
+                        if sender.send((index, None)).is_err() {
+                            break;
+                        }
+                        let timer = std::time::Instant::now();
+                        let result = installation
+                            .as_ref()
+                            .map_err(Clone::clone)
+                            .and_then(|installation| plan(installation, reference));
+                        scan_timing("plan", &format!("{scope}:{reference}"), timer);
+                        if sender.send((index, Some(result))).is_err() {
+                            break;
+                        }
+                    }
+                });
+            });
+        }
+        drop(sender);
+        for (index, result) in receiver {
+            if let Some(result) = result {
+                results[index] = result;
+                progress(index, true);
+            } else {
+                progress(index, false);
+            }
+        }
+    });
+    results
+}
+fn scan_progress(
+    send: &mut impl FnMut(Value),
+    scope: usize,
+    scopes: usize,
+    local: usize,
+    phase: &str,
+    target: &str,
+) {
+    // This is completed scan work, not elapsed time or network byte progress.
+    // Each installation reserves 25% for discovery, 20% for version metadata
+    // and 55% for plans. Only the manager's finished result can publish 100%.
+    let percent = ((scope * 100 + local.min(100)) / scopes.max(1)).min(99);
+    send(json!({"type":"scan-progress","progress":percent,"phase":phase,"target":target}));
+}
 fn restoration_definition(scope: &str, origin: &str) -> Option<&'static str> {
     restoration_from_sources(scope, origin, &sources::list())
 }
@@ -359,10 +442,14 @@ fn restoration_from_sources(scope: &str, origin: &str, sources: &[Value]) -> Opt
         .then_some(expected)
 }
 pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
+    let scan_started = std::time::Instant::now();
     let mut updates = Vec::new();
     let mut errors = Vec::<String>::new();
     let mut skipped = Vec::new();
     let mut installations = Vec::new();
+    // Scope is deliberately excluded only after URL and trust/filter settings
+    // match. Never share metadata just because two remotes have the same name.
+    let mut source_versions = BTreeMap::<(String, String), BTreeMap<String, String>>::new();
     match sources::installation("user") {
         Ok(i) => installations.push(i),
         Err(e) => errors.push(format!("user: {e}")),
@@ -376,19 +463,25 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
     if installations.is_empty() {
         errors.push("No Flatpak installation could be read.".into());
     }
-    for installation in installations {
+    let scope_count = installations.len();
+    for (scope_index, installation) in installations.into_iter().enumerate() {
         let scope = sources::display_scope(&installation);
+        scan_progress(&mut send, scope_index, scope_count, 0, "inventory", "");
         send(json!({"type":"status","message":"Checking for app updates…"}));
         let installed = match installation.list_installed_refs(gio::Cancellable::NONE) {
             Ok(refs) => refs,
             Err(e) => {
                 errors.push(format!("{scope}: {e}"));
+                scan_progress(&mut send, scope_index, scope_count, 100, "inventory", "");
                 continue;
             }
         };
         let mut published: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
         let mut rebased = std::collections::HashSet::new();
         let mut refs = Vec::new();
+        let origin_count = installed.iter().map(|r| r.origin().unwrap_or_default())
+            .collect::<std::collections::BTreeSet<_>>().len().max(1);
+        let mut origins_done = 0;
         let mut skipped_source = |origin: &str, reason: &str| {
             let mut names: Vec<_> = installed
                 .iter()
@@ -423,6 +516,9 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
         for installed_ref in &installed {
             let origin = installed_ref.origin().unwrap_or_default().to_string();
             if !published.contains_key(&origin) {
+                scan_progress(&mut send, scope_index, scope_count,
+                    origins_done * 25 / origin_count, "source", &origin);
+                origins_done += 1;
                 let mut available = BTreeMap::new();
                 published.insert(origin.clone(), BTreeMap::new());
                 let mut remote = installation
@@ -477,11 +573,16 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
                     skipped_source(&origin, "is disabled.");
                     continue;
                 }
-                match installation.list_remote_refs_sync_full(
+                let remote_started = std::time::Instant::now();
+                let remote_refs = installation.list_remote_refs_sync_full(
                     &origin,
                     libflatpak::QueryFlags::NONE,
                     gio::Cancellable::NONE,
-                ) {
+                );
+                scan_timing("remote-refs", &format!("{scope}:{origin}"), remote_started);
+                scan_progress(&mut send, scope_index, scope_count,
+                    origins_done * 25 / origin_count, "source", &origin);
+                match remote_refs {
                     Ok(items) => {
                         for item in items {
                             if item.eol_rebase().is_some_and(|r| !r.is_empty()) {
@@ -512,17 +613,37 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
                 refs.push(installed_ref);
             }
         }
+        scan_progress(&mut send, scope_index, scope_count, 25, "metadata", "");
         let mut versions: BTreeMap<String, BTreeMap<String, String>> = BTreeMap::new();
+        let version_count = refs.iter().map(|r| r.origin().unwrap_or_default())
+            .collect::<std::collections::BTreeSet<_>>().len().max(1);
+        let mut versions_done = 0;
         for reference in &refs {
             let origin = reference.origin().unwrap_or_default().to_string();
             if versions.contains_key(&origin) {
                 continue;
             }
+            scan_progress(&mut send, scope_index, scope_count,
+                25 + versions_done * 20 / version_count, "metadata", &origin);
+            versions_done += 1;
             versions.insert(origin.clone(), BTreeMap::new());
-            if installation
-                .update_appstream_sync(&origin, None, gio::Cancellable::NONE)
-                .is_err()
-            {
+            let identity = installation
+                .remote_by_name(&origin, gio::Cancellable::NONE)
+                .ok()
+                .and_then(|remote| {
+                    sources::source_key(&installation, &remote)
+                        .ok()
+                        .map(|key| (sources::url(&remote), key))
+                });
+            if let Some(cached) = identity.as_ref().and_then(|key| source_versions.get(key)) {
+                versions.insert(origin.clone(), cached.clone());
+                continue;
+            }
+            let appstream_started = std::time::Instant::now();
+            let appstream_result = installation
+                .update_appstream_sync(&origin, None, gio::Cancellable::NONE);
+            scan_timing("appstream", &format!("{scope}:{origin}"), appstream_started);
+            if appstream_result.is_err() {
                 continue;
             }
             let scope_arg = match scope.as_str() {
@@ -530,11 +651,14 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
                 "system" => "--system".into(),
                 _ => format!("--installation={scope}"),
             };
-            if let Ok(output) = process::flatpak(
+            let versions_started = std::time::Instant::now();
+            let version_result = process::flatpak(
                 &[&scope_arg, "remote-ls", "--columns=ref,version", &origin],
                 15,
                 None,
-            ) {
+            );
+            scan_timing("versions", &format!("{scope}:{origin}"), versions_started);
+            if let Ok(output) = version_result {
                 if output.code != 0 {
                     continue;
                 }
@@ -546,9 +670,33 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
                             .insert(reference.trim().into(), version.trim().into());
                     }
                 }
+                if let Some(identity) = identity {
+                    source_versions.insert(identity, versions[&origin].clone());
+                }
             }
         }
-        for installed in refs {
+        scan_progress(&mut send, scope_index, scope_count, 45, "plan", "");
+        let references: Vec<_> = refs
+            .iter()
+            .map(|r| r.format_ref().unwrap_or_default().to_string())
+            .collect();
+        let mut plans_done = 0;
+        let plans = resolve_plans(&scope, &references, |index, completed| {
+            let installed = &refs[index];
+            let name = installed
+                .appdata_name()
+                .filter(|n| !n.is_empty())
+                .or_else(|| installed.name())
+                .unwrap_or_default();
+            if completed {
+                plans_done += 1;
+            } else {
+                send(json!({"type":"status","message":format!("Checking {name}…")}));
+            }
+            scan_progress(&mut send, scope_index, scope_count,
+                45 + plans_done * 54 / references.len().max(1), "plan", &name);
+        });
+        for (installed, resolved) in refs.into_iter().zip(plans) {
             let reference = installed.format_ref().unwrap_or_default().to_string();
             let origin = installed.origin().unwrap_or_default().to_string();
             let id = installed.name().unwrap_or_default();
@@ -556,14 +704,13 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
                 .appdata_name()
                 .filter(|n| !n.is_empty())
                 .unwrap_or_else(|| id.clone());
-            send(json!({"type":"status","message":format!("Checking {name}…")}));
             let Ok(remote) = installation.remote_by_name(&origin, gio::Cancellable::NONE) else {
                 continue;
             };
             if remote.is_disabled() {
                 continue;
             }
-            let plan = match plan(&installation, &reference) {
+            let plan = match resolved {
                 Ok(p) => p,
                 Err(e) => {
                     errors.push(format!("{id} ({scope}): {e}"));
@@ -607,13 +754,29 @@ pub fn scan(request: &Value, mut send: impl FnMut(Value)) -> Value {
                 "remote":origin,"sourceUrl":sources::url(&remote),"oldCommit":old_commit.as_str(),"commit":commit,"targetRef":plan.target,"oldVersion":old_version,"newVersion":new_version,
                 "runtime":reference.starts_with("runtime/"),"selected":true,"downloadBytes":download,"downloadSize":bytes(download),"plan":plan.operations,"permissions":plan.permissions}));
         }
+        scan_progress(&mut send, scope_index, scope_count, 100, "complete", "");
     }
+    scan_timing("total", "scan", scan_started);
     json!({"type":"updates","updates":updates,"errors":errors,"skipped":skipped,"checkedAt":chrono::Utc::now().to_rfc3339()})
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn completed_scan_stages_advance_across_scopes_without_premature_completion() {
+        let mut events = Vec::new();
+        for scope in 0..3 {
+            for local in [0, 25, 45, 60, 99, 100] {
+                scan_progress(&mut |event| events.push(event), scope, 3, local, "source", "flathub");
+            }
+        }
+        let values: Vec<_> = events.iter().map(|event| super::super::number(event, "progress")).collect();
+        assert_eq!(values.first(), Some(&0));
+        assert_eq!(values.last(), Some(&99));
+        assert!(values.windows(2).all(|pair| pair[0] <= pair[1]));
+        assert!(events.iter().all(|event| event["target"] == "flathub"));
+    }
     fn current_policy() -> Policy {
         Policy {
             replacements: Default::default(),

@@ -204,6 +204,25 @@ pub fn history_save(
     }
     write_json(path, &value)
 }
+/// Transaction workers can briefly overlap GUI/other-worker history writes.
+/// Keep the GUI's history_save nonblocking; only workers wait, with a deadline.
+pub fn history_save_retry(
+    path: &Path,
+    scope: &str,
+    reference: &str,
+    date: Option<&str>,
+) -> io::Result<()> {
+    let started = std::time::Instant::now();
+    loop {
+        match history_save(path, scope, reference, date) {
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock
+                && started.elapsed() < std::time::Duration::from_millis(500) => {
+                std::thread::sleep(std::time::Duration::from_millis(5));
+            }
+            result => return result,
+        }
+    }
+}
 pub fn config() -> glib::KeyFile {
     let file = glib::KeyFile::new();
     let _ = file.load_from_file(config_path(), glib::KeyFileFlags::KEEP_COMMENTS);
@@ -266,6 +285,24 @@ mod tests {
         assert!(FileLock::acquire(&path).is_err());
         drop(lock);
         assert!(FileLock::acquire(&path).is_ok());
+    }
+    #[test]
+    fn worker_history_waits_for_a_short_collision_without_losing_other_entries() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("update-dates.json");
+        let lock = FileLock::acquire(&path.with_extension("json.lock")).unwrap();
+        assert_eq!(history_save(&path, "user", "app/a.b.App/x86_64/stable", None)
+            .unwrap_err().kind(), io::ErrorKind::WouldBlock);
+        std::thread::scope(|threads| {
+            let first = threads.spawn(|| history_save_retry(&path, "user", "app/a.b.App/x86_64/stable", Some("2026-11-07T10:00:00Z")));
+            let second = threads.spawn(|| history_save_retry(&path, "system", "app/a.b.Other/x86_64/stable", Some("2026-11-07T11:00:00Z")));
+            std::thread::sleep(std::time::Duration::from_millis(20));
+            assert!(!first.is_finished() && !second.is_finished());
+            drop(lock);
+            first.join().unwrap().unwrap();
+            second.join().unwrap().unwrap();
+        });
+        assert_eq!(read_json(&path, 4096).unwrap()["installations"].as_object().unwrap().len(), 2);
     }
     #[test]
     fn incomplete_temporary_file_does_not_replace_cache() {

@@ -20,6 +20,7 @@ AppCenter.Main {
     property double longestPause: 0
     property var sizeTarget: null
     property int sizeSamplesDuringUpdates: 0
+    property int lastScanProgress: 0
     TestCase { id: probe; when: false }
     function check(value,message) {
         if (!value) { console.error("MIXED_JOBS_FAIL",phase,message,JSON.stringify(backendJobs));Qt.exit(2);throw new Error(message) }
@@ -37,6 +38,15 @@ AppCenter.Main {
             ++main.ticks
             const backend=main.backend
             const stack=probe.findChild(main,"navigationStack")
+            if (main.phase===1 || main.phase===4) {
+                const progress=Number(backend.updateStatus.progress)
+                if (backend.updateStatus.state==="checking") {
+                    main.check(progress>=main.lastScanProgress && progress<100,"Scan progress is monotonic and never completes early")
+                    main.lastScanProgress=progress
+                } else if (backend.updateStatus.state==="ready") {
+                    main.check(progress===100,"Finished scan publishes 100 percent with complete rows")
+                }
+            }
             if (main.phase===0) {
                 if (main.catalogLoading || main.installedLoading || backend.busy) return
                 main.check(main.installedApps.length===24,"24 isolated apps installed")
@@ -104,7 +114,7 @@ AppCenter.Main {
                 }
             } else if (main.phase===3 && !stack.busy) {
                 // Only the explicitly cancelled app should still need an update.
-                backend.checkForUpdates();main.phase=4
+                main.lastScanProgress=0;backend.checkForUpdates();main.phase=4
             } else if (main.phase===4) {
                 if (backend.updateStatus.state!=="ready" || backend.busy) return
                 main.check(main.updateItems.length===1 && main.updateItems[0].id==="org.example.MixedUpdate02",
